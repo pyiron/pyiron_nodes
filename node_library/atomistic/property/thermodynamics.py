@@ -14,7 +14,7 @@ def get_chemical_potential(
     import node_library.atomistic as atomistic
 
     wf.bulk = Workflow.create.atomistic.structure.build.bulk(name=element)  # con: no autocompletion
-    wf.minimize = atomistic.calculator.ase.minimize(atoms=wf.bulk, engine=engine)  # pressure = 0
+    wf.minimize = atomistic.calculator.ase.minimize(structure=wf.bulk, engine=engine)  # pressure = 0
     wf.n_atoms = atomistic.structure.calc.number_of_atoms(structure=wf.bulk)
     wf.energy = atomistic.calculator.output.get_energy_last(calculator=wf.minimize)
 

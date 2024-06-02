@@ -9,7 +9,7 @@ class OutputCalcStatic:
     from ase import Atoms
     import numpy as np
 
-    energy_pot: Optional[float] = field(default=None, metadata=wfMetaData(log_level=0))
+    energy: Optional[float] = field(default=None, metadata=wfMetaData(log_level=0))
     force: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
     stress: Optional[np.ndarray] = field(
         default=None, metadata=wfMetaData(log_level=10)
@@ -25,7 +25,21 @@ class OutputCalcStatic:
 
 
 @wf_data_class()
+class OutputCalcStaticList:
+    # from ase import Atoms
+    import numpy as np
+
+    energies: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
+    forces: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
+    stresses: Optional[np.ndarray] = field(
+        default=None, metadata=wfMetaData(log_level=10)
+    )
+    structures: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=10))
+
+
+@wf_data_class()
 class OutputCalcMinimize:
+    # energies: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
     initial: Optional[OutputCalcStatic] = field(
         default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
     )

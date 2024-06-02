@@ -71,19 +71,35 @@ def create_phonopy(
 
     cells = generate_supercells(
         phonopy,
-        parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
+        parameters=parameters,
+        #parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
     )
-    gs = pyiron_workflow.node_library.atomistic.calculator.ase.static(engine=engine)
-    df = gs.iter(atoms=cells, executor=executor, max_workers=max_workers)
-    phonopy.forces = df.forces
+
+    from node_library.atomistic.calculator.ase import static as calculator
+    gs = calculator(engine=engine)
+    df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)
+    # print ('df: ', df_new)
+    # print ('dataframe: ', df_new.out.keys())
+    # return df_new
+    df_new = extract_df(df_new, key='energy')
+    df_new = extract_df(df_new, key='forces', col='out')
+    phonopy.forces = df_new.forces
 
     # could be automatized (out = collect(gs, log_level))
     out = {}
-    out["energies"] = df.energy
-    out["forces"] = df.forces
-    out["df"] = df
+    out["energies"] = df_new.energy
+    out["forces"] = df_new.forces
+    out["df"] = df_new
 
     return phonopy, out
+
+
+def extract_df(df, key='energy', col=None):
+    val = [i[key][-1] for i in df.out.values]
+    df[key] = val
+    if col is not None:
+        del df[col]
+    return df
 
 
 @as_function_node()

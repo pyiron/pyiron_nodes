@@ -40,27 +40,40 @@ class DataStructureContainer:
 
 
 @as_function_node()
-def elastic_constants(structure, calculator=None, engine=None):
-    structure_table = generate_structures(structure).run()
+def elastic_constants(structure, calculator=None, engine=None, parameters=InputElasticTensor()):
+    structure_table = generate_structures(structure, parameters=parameters).run()
 
     if engine is None:
         from node_library.atomistic.engine.ase import M3GNet
+        from node_library.atomistic.engine.generic import OutputEngine
 
-        engine = M3GNet()
+        engine = OutputEngine(calculator=M3GNet())
+        # engine = M3GNet()
 
     if calculator is None:
-        from node_library.atomistic.calculator.ase import (
-            static as calculator,
-        )
+        from node_library.atomistic.calculator.ase import static as calculator
 
+    # print ('engine (elastic): ', engine)
+    # gs = calculator()  # (engine=engine.calculator)
     gs = calculator(engine=engine)
 
-    df_new = gs.iter(atoms=structure_table.structure, executor=None)
+    # df_new = gs.iter(engine=[engine.calculator], structure=structure_table.structure)  # , executor=None)
+    df_new = gs.iter(structure=structure_table.structure)  # , executor=None)
+    df_new = extract_df(df_new, key='energy').run()
+    # print (df_new)
     structure_table["energy"] = df_new.energy
 
-    elastic = analyse_structures(data_df=structure_table).run()
+    elastic = analyse_structures(data_df=structure_table, parameters=parameters).run()
 
     return elastic
+
+
+@as_function_node('df')
+def extract_df(df, key='energy', col='out'):
+    val = [i[key][-1] for i in df.out.values]
+    df[key] = val
+    del df[col]
+    return df
 
 
 @as_function_node()
@@ -71,10 +84,11 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
     out.v0 = structure.get_volume()
     out.LC = get_symmetry_family_from_SGN(out.SGN)
     out.Lag_strain_list = get_LAG_Strain_List(out.LC)
+
+    # print('eps_range: ', parameters, parameters.eps_range, parameters.num_of_point)
     out.epss = np.linspace(
         -parameters.eps_range, parameters.eps_range, parameters.num_of_point
     )
-
     return out
 
 
@@ -82,6 +96,8 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
 def generate_structures(
         structure, parameters: InputElasticTensor = InputElasticTensor()
 ):
+    # the following construct is not nice but works
+    # it may be helpful to have another way of backconverting a node_class object into the original functions
     analysis = symmetry_analysis(structure, parameters).run()
     structure_dict = {}
 

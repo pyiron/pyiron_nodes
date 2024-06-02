@@ -39,7 +39,7 @@ def cubic_bulk_cell(
         repeat,
     )
 
-    print ('create bulk')
+    # print ('create bulk')
     wf.bulk = bulk(name=element, cubic=True)
     wf.cell = repeat(structure=wf.bulk, repeat_scalar=cell_size)
 

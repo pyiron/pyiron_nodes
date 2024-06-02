@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
+import pandas
 
 from pyiron_workflow.function import as_function_node
 
@@ -22,8 +23,8 @@ def Scatter(
 
 @as_function_node("axis")
 def Plot(
-        x: Optional[list | np.ndarray] = None,
-        y: Optional[list | np.ndarray] = None,
+        x: Optional[list | np.ndarray | pandas.core.series.Series] = None,
+        y: Optional[list | np.ndarray | pandas.core.series.Series] = None,
         axis: Optional[object] = None,
         title: Optional[str] = '',
         color: Optional[str] = 'b',
@@ -34,8 +35,11 @@ def Plot(
 
     if axis is None:
         axis = plt
+        axis.title = title
+    else:
+        axis.set_title(title)  # Set the title of the plot
     axis.plot(x, y, color=color, marker=symbol, label=legend_label)
-    axis.set_title(title)  # Set the title of the plot
+
     return axis
 
 

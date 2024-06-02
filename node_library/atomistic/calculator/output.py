@@ -11,6 +11,8 @@ def get_energy_last(calculator: Optional[OutputCalcMinimize | OutputCalcStatic] 
     elif isinstance(calculator, OutputCalcStatic):
         energy_last = calculator.energy
     return energy_last
+    # print ('energy_last:', calculator.energy[-1], type(calculator.energy[-1]))
+    # return calculator.energy[-1]
 
 
 nodes = [get_energy_last]
