@@ -1,4 +1,4 @@
-from pyiron_workflow.function import as_function_node
+from pyiron_workflow import as_function_node
 from typing import Optional, Union
 
 from node_library.atomistic.calculator.data import OutputCalcMinimize, OutputCalcStatic

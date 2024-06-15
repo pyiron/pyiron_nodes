@@ -1,6 +1,6 @@
 from typing import Optional, Union
 
-from pyiron_workflow.function import as_function_node
+from pyiron_workflow import as_function_node
 from node_library.dev_tools import wf_data_class, parse_input_kwargs
 
 from phonopy.api_phonopy import Phonopy

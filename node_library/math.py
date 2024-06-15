@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Optional
 import numpy as np
 
-from pyiron_workflow.function import as_function_node
+from pyiron_workflow import as_function_node
 
 
 @as_function_node("sin")

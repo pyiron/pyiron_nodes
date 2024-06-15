@@ -1,5 +1,5 @@
 # from pyiron_workflow.function import as_function_node
-from pyiron_workflow.macro import as_macro_node
+from pyiron_workflow import as_macro_node
 from pyiron_workflow import Workflow
 
 

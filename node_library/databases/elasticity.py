@@ -1,4 +1,4 @@
-from pyiron_workflow.function import function_node
+from pyiron_workflow import function_node
 from typing import Optional
 
 

@@ -5,7 +5,7 @@ from typing import Optional
 
 # from pyiron_atomistics.atomistics.structure.atoms import Atoms
 
-from pyiron_workflow.function import as_function_node
+from pyiron_workflow import as_function_node
 from pyiron_workflow.workflow import Workflow
 
 from node_library.atomistic.calculator.data import (
@@ -249,7 +249,7 @@ def get_calculators():
     return calc_dict
 
 
-from pyiron_workflow.macro import as_macro_node
+from pyiron_workflow import as_macro_node
 
 # from pyiron_workflow.node_library.atomistic.engine.lammps import get_calculators
 # from pyiron_workflow.node_library.dev_tools import set_replacer
