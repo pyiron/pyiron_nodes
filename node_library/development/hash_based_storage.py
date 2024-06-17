@@ -20,6 +20,7 @@ import hashlib
 import json
 import pandas as pd
 import os
+import sys
 
 
 def compute_hash_value(input_dict, length=256):
@@ -73,7 +74,9 @@ class Node(Base):
     hash_value = Column(String)
     lib_path = Column(String)
     creation_date = Column(DateTime, default=datetime.utcnow)
-    data = Column(JSON)
+    # data = Column(JSON)
+    inputs = Column(JSON)
+    outputs = Column(JSON)
     output_ready = Column(Boolean)
     file_path = Column(String)
 
@@ -97,7 +100,8 @@ class Node(Base):
         self.hash_value = compute_hash_value(input_dict, length=length)
         # print('Node_init: ', input_dict)
         self.lib_path = path  # str(Path(path).resolve())
-        self.data = input_dict['inputs']
+        # self.data = input_dict['inputs']
+        self.inputs = input_dict['inputs']
         self.output_ready = False
         self.file_path = ''
 
@@ -146,14 +150,14 @@ def create_nodes_table(db_url='postgresql://localhost/joerg', echo=False):
     return Database(Session, Node)
 
 
-def add_node_dict_to_db(db, data, name='', path='.', length=256):
+def add_node_dict_to_db(db, inputs, name='', path='.', length=256):
     """
     Adds a dictionary as a new Node to a database.
 
     Parameters:
     db (Database): The Database object, which includes the Session and Node classes.
     name (str): The name of the Node.
-    data (dict): The dictionary to convert into a hash and store as data.
+    inputs (dict): The dictionary to convert into a hash and store as data.
     path (str): The path where further data is stored.
     length (int): The desired length of the hash.
 
@@ -166,7 +170,7 @@ def add_node_dict_to_db(db, data, name='', path='.', length=256):
     session = db.Session()
 
     # Create new node, without providing node_id
-    new_node = db.Node(name=name, input_dict=data, path=path, length=length)
+    new_node = db.Node(name=name, input_dict=inputs, path=path, length=length)
 
     # Check if a node with this hash exists
     exists = session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar() is not None
@@ -187,7 +191,8 @@ def add_node_dict_to_db(db, data, name='', path='.', length=256):
     return exists
 
 
-def edit_node_dict_in_db(db, node_id, data=None, name=None, lib_path=None, output_ready=None, file_path=None):
+def edit_node_dict_in_db(db, node_id, inputs=None, outputs=None, name=None, lib_path=None, output_ready=None,
+                         file_path=None):
     """
     Edits the attributes of a Node in a database.
 
@@ -195,7 +200,7 @@ def edit_node_dict_in_db(db, node_id, data=None, name=None, lib_path=None, outpu
     db (Database): The Database object, which includes the Session and Node classes.
     node_id (int): The db id of the node to be updated.
     name (str): The new name of the Node.
-    data (dict): The new dictionary to convert into a hash and store as data.
+    inputs (dict): The new dictionary to convert into a hash and store as data.
     lib_path (str): The new path where further data is stored.
     output_ready (bool): Flag determines if the node's output is ready.
     file_path (str): path to node storage file ('' if no file has been stored)
@@ -214,8 +219,10 @@ def edit_node_dict_in_db(db, node_id, data=None, name=None, lib_path=None, outpu
     if node_to_update:
         if name is not None:
             node_to_update.name = name
-        if data is not None:
-            node_to_update.input_dict = data
+        if inputs is not None:
+            node_to_update.inputs = inputs
+        if outputs is not None:
+            node_to_update.outputs = outputs
         if lib_path is not None:
             node_to_update.lib_path = lib_path
         if output_ready is not None:
@@ -246,11 +253,11 @@ def remove_nodes_from_db(db, indices=None, verbose=False):
         Database: The original Database instance passed in.
     """
     # Extract Session and Node classes from Database instance
-    Session = db.Session
+    # Session = db.Session
     Node = db.Node
 
     # Start a new session
-    session = Session()
+    session = db.Session()
 
     ids_to_delete = []
 
@@ -266,7 +273,7 @@ def remove_nodes_from_db(db, indices=None, verbose=False):
                 if verbose:
                     print(f"Row with id {index} does not exist.")
             else:
-                print ('file path: ', node.file_path)
+                print('file path: ', node.file_path)
                 remove_directory_if_contains_file(node.file_path)
                 ids_to_delete.append(int(index))
 
@@ -356,13 +363,13 @@ def drop_table(db, table_name):
         base.metadata.drop_all(engine, [table], checkfirst=True)
 
 
-def db_query_dict(db, **kwargs):
+def db_query_dict(db, column='inputs', **kwargs):
     # Extract Session and Node classes from Database instance
-    Session = db.Session
+    # Session = db.Session
     # Node = db.Node
 
     # Start a new session
-    session = Session()
+    session = db.Session()
 
     # Convert kwargs values to strings
     kwargs = {k: str(v) for k, v in kwargs.items()}
@@ -372,7 +379,7 @@ def db_query_dict(db, **kwargs):
 
     # Add conditions for each key-value pair
     for key, value in kwargs.items():
-        query_text += f"data ->> '{key}' = '{value}' AND "
+        query_text += f"{column} ->> '{key}' = '{value}' AND "
 
     # Remove trailing "AND "
     query_text = query_text[:-4]
@@ -397,19 +404,19 @@ def db_query_dict(db, **kwargs):
 
 def transform_data_column(df):
     """
-    Transforms the 'data' column of the DataFrame into separate columns.
+    Transforms the 'inputs' column of the DataFrame into separate columns.
 
     Args:
         df (DataFrame): A pandas DataFrame containing the id and data columns.
 
     Returns:
-        DataFrame: A pandas DataFrame where each key in the 'data' column is a separate column.
+        DataFrame: A pandas DataFrame where each key in the 'inputs' column is a separate column.
     """
-    # Transform 'data' column into a DataFrame
-    data_df = pd.json_normalize(df['data'])
+    # Transform 'inputs' column into a DataFrame
+    data_df = pd.json_normalize(df['inputs'])
 
-    # Concatenate original DataFrame (minus 'data' column) with the new DataFrame
-    df = pd.concat([df.drop('data', axis=1), data_df], axis=1)
+    # Concatenate original DataFrame (minus 'inputs' column) with the new DataFrame
+    df = pd.concat([df.drop('inputs', axis=1), data_df], axis=1)
 
     return df
 
@@ -443,7 +450,7 @@ def list_column_names(db, table_name):
     return [column['name'] for column in columns]
 
 
-def extract_node_input(node):
+def extract_node_input(node, db):
     """
     This function extracts input from a pyiron_workflow node object as a dictionary.
 
@@ -453,9 +460,49 @@ def extract_node_input(node):
     Returns:
     A dictionary where each key-value pair is the name of a channel and its corresponding value.
     """
-    ic = node.to_dict()['inputs']['channels']
-    input_dict = {k: v['value'] for k, v in ic.items()}
+
+    inp_node_dict = get_all_connected_input_nodes(node)
+    # print(inp_node_dict.keys())
+
+    ic = node.inputs.to_dict()['channels']
+    input_dict = dict()
+    for k, v in ic.items():
+        # print(k)
+        if k in inp_node_dict:
+            inp_node = inp_node_dict[k]
+            input_dict[k] = 'hash_' + get_node_hash(inp_node, db)
+            save_node(inp_node, db, file_output=False)
+        else:
+            input_dict[k] = v['value']
     return input_dict
+
+
+def extract_node_output(node, as_string=True):
+    """
+    This function extracts input from a pyiron_workflow node object as a dictionary.
+
+    Arguments:
+    node -- the pyiron_workflow node object from which to extract the input
+
+    Returns:
+    A dictionary where each key-value pair is the name of a channel and its corresponding value.
+    """
+
+    # from pyiron_workflow.channels import NotData
+
+    output_dict = dict()
+    for k in node.outputs.channel_dict.keys():
+        val = node.outputs[k].value
+        if as_string:
+            val = str(val)
+        # if isinstance(val, NotData):
+        #     val = 'NotData'
+        if hasattr(val, 'keys') and not as_string:
+            # assumption: val object behaves like a dict
+            output_dict[k] = dict(val)
+        else:
+            output_dict[k] = val
+    return output_dict
 
 
 def extract_unique_identifier(node):
@@ -478,7 +525,7 @@ def get_node_storage_path(node):
     return node_storage_path
 
 
-def extract_node_dictionary(node):
+def extract_node_dictionary(node, db):
     """
     This function creates a dictionary from a given node. The dictionary combines the output of
     'extract_node_input' and 'create_unique_identifier'.
@@ -489,7 +536,7 @@ def extract_node_dictionary(node):
     Returns:
     A dictionary that contains node inputs and a unique identifier for the node.
     """
-    node_input = extract_node_input(node)
+    node_input = extract_node_input(node, db)
     node_id = extract_unique_identifier(node)
 
     return {"inputs": node_input, "node_identifier": node_id}
@@ -539,14 +586,14 @@ def add_node_to_db(node, db):
     """
 
     # extract input + node identifier dictionary from node
-    node_dic = extract_node_dictionary(node)
+    node_dic = extract_node_dictionary(node, db)
     # print('add: ', node_dic)
 
     # Convert node_identifier to a path format by replacing '.' with '/'
     path_format = node_dic['node_identifier'].replace('.', '/')
 
     # Add the node's metadata to the database
-    exists = add_node_dict_to_db(db, data=node_dic, path=path_format)
+    exists = add_node_dict_to_db(db, inputs=node_dic, path=path_format)
 
     # # if node instance is not yet in db save it as file (make sure that output exists)
     # if not exists:
@@ -557,7 +604,7 @@ def add_node_to_db(node, db):
     return exists
 
 
-def save_node(node, db):  # , node_id):
+def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000):  # , node_id):
     """
     This function stores a node by setting its storage_directory attribute to a certain path.
     An additional directory is added to this path, named with the given database ID.
@@ -566,6 +613,8 @@ def save_node(node, db):  # , node_id):
     node -- the node object to be stored
     db -- the database dataclass object
     db_id -- the ID of the database where the node data is stored
+    file_output -- if True save node in file
+    db_output -- if True save output in db.Node.outputs
 
     Returns:
        True if successful
@@ -577,29 +626,145 @@ def save_node(node, db):  # , node_id):
         add_node_to_db(node, db)
         node_id = get_node_db_id(node, db)
 
-    # print('save: node_id: ', node_id)
-    # Create a Path object and add the database id as a new directory
-    file_path = Path(path) / str(node_id)
+    if node_pull:
+        run = node.pull
+    else:
+        run = node.run
 
-    # Set the node's storage_directory path
-    node.storage_directory.path = file_path
-    # node.file_path = f'/{path}/{db_id}'
-    if not node.outputs.ready:
-        node.run()
+    json_size = get_json_size(extract_node_output(node))
+    if file_output is None:
+        if json_size > json_size_limit:
+            file_output = True
+            if db_output is None:
+                db_output = False
+        else:
+            file_output = False
+            if db_output is None:
+                db_output = True
 
-    edit_node_dict_in_db(db, node_id, output_ready=node.outputs.ready, file_path=file_path)
-    node.save()
+    if file_output:
+        # print('save: node_id: ', node_id)
+        # Create a Path object and add the database id as a new directory
+        file_path = Path(path) / str(node_id)
+
+        # Set the node's storage_directory path
+        node.storage_directory.path = file_path
+        if not node.outputs.ready:
+            run()
+
+        edit_node_dict_in_db(db, node_id, output_ready=node.outputs.ready, file_path=file_path)
+        node_to_json(node, file_path)
+        # node.save()
+    if db_output:
+        if not node.outputs.ready:
+            run()
+
+        # as_string=False would be preferred but returns objects that cannot be json-ified
+        edit_node_dict_in_db(db, node_id,
+                             output_ready=node.outputs.ready,
+                             outputs=extract_node_output(node, as_string=True))
+
     return node_id
 
 
-def get_node_hash(node, hash_length=256):
-    hash_value = compute_hash_value(extract_node_dictionary(node), length=hash_length)
+def get_json_size(obj):
+    """
+    Get the size of a Python object when stored as JSON.
+
+    Parameters:
+    obj (Python object): The Python object to be sized.
+
+    Returns:
+    int: The size of the object in bytes when stored as JSON.
+    """
+
+    # Convert the object to a JSON string
+    json_str = json.dumps(obj)
+
+    # Encode the JSON string to bytes
+    json_bytes = json_str.encode('utf-8')
+
+    # Return the number of bytes
+    return sys.getsizeof(json_bytes)
+
+
+def node_to_json(node, file_path, verbose=False):
+    """
+    Extracts input and output data from a node and writes it to a JSON file.
+
+    Parameters:
+    node (Node): The Node object to extract data from.
+    file_path (str): The path to the location where the JSON file should be written.
+
+    Returns:
+    None
+    """
+
+    # Create directories if they do not exist
+    os.makedirs(file_path, exist_ok=True)
+
+    # Extract input and output data from the node as dictionaries
+    data = {
+        "inputs": node.inputs.to_dict(),
+        "outputs": node.outputs.to_dict()
+    }
+
+    # Define the path to the project.json file
+    json_file_path = os.path.join(file_path, 'project.json')
+
+    # Write the data to the JSON file
+    with open(json_file_path, 'w') as json_file:
+        json.dump(data, json_file)
+
+    if verbose:
+        print(f"Data written to {json_file_path}")
+    return True
+
+
+def load_node_from_json(node, file_path, db, verbose=False):
+    """
+    Loads input and output data from a JSON file into a Node object.
+
+    Parameters:
+    node (Node): The Node object to load data into.
+    file_path (str): The path to the location of the JSON file.
+
+    Returns:
+    None
+    """
+
+    import numpy as np
+
+    # Define the path to the project.json file
+    json_file_path = os.path.join(file_path, 'project.json')
+
+    # Open the JSON file and load the data
+    with open(json_file_path, 'r') as json_file:
+        data = json.load(json_file)
+
+    # Load the inputs and outputs into the node
+    for key, value in data['inputs']['channels'].items():
+        node.inputs[key] = eval_db_value(value['value'], db)
+
+    for key, value in data['outputs']['channels'].items():
+        # val = value['value'].replace('array', 'np.array')
+        # node.outputs[key] = eval(val)
+        node.outputs[key] = eval_db_value(value['value'], db)
+
+    if verbose:
+        print(f"Data loaded into node from {json_file_path}")
+
+    return node
+
+
+def get_node_hash(node, db, hash_length=256):
+    hash_value = compute_hash_value(extract_node_dictionary(node, db), length=hash_length)
     return hash_value
 
 
 def get_node_db_id(node, db):
     session = db.Session()
-    hash_value = get_node_hash(node)
+    hash_value = get_node_hash(node, db)
 
     q = session.query(db.Node).filter(db.Node.hash_value == hash_value).all()
     # alternative solution (fster by about a factor 2 but less pythonic)
@@ -635,6 +800,52 @@ def process_query_result(q):
     return q_out
 
 
+def eval_db_value(value, db):
+    """
+    Evaluates a value from the database. If the value is a hash, retrieve the corresponding node.
+
+    Parameters:
+    value (str): The value to evaluate. If it's a hash, it should start with 'hash_'.
+    db (Database): The Database object, which includes the necessary functions to retrieve nodes.
+
+    Returns:
+    Node or Python object: The Node object if the value is a hash, otherwise the evaluated value.
+    """
+
+    # Check if the value is a hash
+    if value.startswith('hash_'):
+        # Extract the hash value by removing the prefix
+        hash_value = value[5:]
+
+        # Get a dictionary using the hash value
+        node_dict = get_node_by_hash(db, hash_value)
+
+        # Extract the node_id
+        node_id = node_dict['node_id']
+
+        # Retrieve the Node using the node_id
+        new_node = get_node_from_db_id(node_id, db)
+
+        val = new_node
+    elif value.startswith('array'):
+        import numpy as np
+
+        val = value.replace('array', 'np.array')
+    else:
+        # If the value is not a hash, simply evaluate it
+        val = eval(value)
+
+    return val
+
+
+def get_dict_from_db_id(node_id, db):
+    session = db.Session()
+
+    # Check if a node with this node_id exists
+    q = session.query(db.Node).filter_by(node_id=node_id).scalar()
+    return q
+
+
 def get_node_from_db_id(node_id, db):
     session = db.Session()
 
@@ -645,20 +856,29 @@ def get_node_from_db_id(node_id, db):
     if q is not None:
         # print('query: ', q.node_id, q.hash_value)
         lib_path = q.lib_path
-        node_lib_path = '.'.join(lib_path.split('/')[1:])
+
         # print('path: ', node_lib_path)
+        if not lib_path.startswith('None'):
+            # node class defined in library
+            node_lib_path = '.'.join(lib_path.split('/')[1:])
+            node = create_node(node_lib_path)
 
-        node = create_node(node_lib_path)
+            if q.file_path != '':
+                file_path = Path(q.file_path)
 
-        if q.file_path != '':
-            file_path = Path(q.file_path)
-
-            # Set the node's storage_directory path
-            node.storage_directory.path = file_path
-            node.load()
+                # Set the node's storage_directory path
+                # node.storage_directory.path = file_path
+                # node.load()
+                node = load_node_from_json(node, file_path, db)
+            else:
+                # load input from database
+                node = set_node_input(node, q, db)
+                if q.outputs is not None:
+                    node = set_node_output(node, q, db)
         else:
-            # load input from database
-            node = set_node_input(node, q)
+            # Node class definition exists only locally
+            print(f'NodeTable(id={node_id}): Save your node class in a node_library and/or register it!')
+            node = None
 
     return node
 
@@ -696,10 +916,18 @@ def remove_directory_if_contains_file(dir_path, filename='project.h5'):
         print(f"The directory {dir_path} does not contain the file {filename}.")
 
 
-def set_node_input(node, q):
-    data = q.data
+def set_node_input(node, q, db):
+    data = q.inputs
     for key, value in data.items():
-        node.inputs[key] = eval(value)
+        node.inputs[key] = eval_db_value(value, db)
+
+    return node
+
+
+def set_node_output(node, q, db):
+    data = q.outputs
+    for key, value in data.items():
+        node.outputs[key] = eval_db_value(value, db)
 
     return node
 
@@ -714,6 +942,45 @@ def run_node(node, db, verbose=False):
     else:
         new_node = get_node_from_db_id(node_id, db)
         if verbose:
-            print (f'node with id={node_id} is loaded rather than recomputed')
+            print(f'node with id={node_id} is loaded rather than recomputed')
 
     return new_node
+
+
+def get_all_connected_input_nodes(node):
+    """
+    Returns a dictionary with the Node objects that are connected to all input channels of a given node.
+
+    Parameters:
+    node (Node): The Node object to inspect.
+
+    Returns:
+    dict: A dictionary where the key is the name of the input channel, and the value is the Node object connected to it.
+    """
+
+    from pyiron_workflow.topology import get_nodes_in_data_tree
+
+    # Get channel_dict dictionary containing all input channels
+    channel_dict = node.inputs.channel_dict
+
+    # Get the nodes in the data tree of the given node
+    nodes_in_data_tree = get_nodes_in_data_tree(node)
+
+    connected_nodes = {}
+
+    # Iterate over each input channel
+    for channel_name, input_channel in channel_dict.items():
+        connections, connected = input_channel.to_dict()['connections'], input_channel.to_dict()['connected']
+
+        # Check if the input channel is connected
+        if connected:
+            # Iterate over the connections and the nodes in the data tree
+            for connection in connections:
+                for node_in_data_tree in nodes_in_data_tree:
+                    # Compare function names of nodes in the data tree with connection
+                    # print (node_in_data_tree.__class__.__name__)
+                    # print (connection.split('.')[0])
+                    if node_in_data_tree.__class__.__name__ == connection.split('.')[0]:
+                        connected_nodes[channel_name] = node_in_data_tree
+
+    return connected_nodes
