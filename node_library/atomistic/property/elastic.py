@@ -1,6 +1,6 @@
 import numpy as np
 
-from pyiron_workflow import as_function_node
+from pyiron_workflow import Workflow, as_function_node
 from node_library.dev_tools import wf_data_class
 from dataclasses import field
 
@@ -22,6 +22,7 @@ class OutputElasticSymmetryAnalysis:
     epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
+#@Workflow.wrap.as_dataclass_node
 @wf_data_class()
 class InputElasticTensor:
     num_of_point: int = 5
@@ -41,7 +42,7 @@ class DataStructureContainer:
 
 @as_function_node()
 def elastic_constants(structure, calculator=None, engine=None, parameters=InputElasticTensor()):
-    structure_table = generate_structures(structure, parameters=parameters).run()
+    structure_table = generate_structures(structure, parameters=parameters).pull()
 
     if engine is None:
         from node_library.atomistic.engine.ase import M3GNet
@@ -94,7 +95,8 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
 
 @as_function_node("structures")
 def generate_structures(
-        structure, parameters: InputElasticTensor = InputElasticTensor()
+        # structure, parameters: InputElasticTensor = InputElasticTensor()
+        structure, parameters = InputElasticTensor()
 ):
     # the following construct is not nice but works
     # it may be helpful to have another way of backconverting a node_class object into the original functions
@@ -163,20 +165,20 @@ def generate_structures(
 
 @wf_data_class()
 class OutputElasticAnalysis:
-    BV: float = 0
-    GV: float = 0
-    EV: float = 0
-    nuV: float = 0
-    S: float = 0
-    BR: float = 0
-    GR: float = 0
-    ER: float = 0
-    nuR: float = 0
-    BH: float = 0
-    GH: float = 0
-    EH: float = 0
-    nuH: float = 0
-    AVR: float = 0
+    BV: int | float = 0
+    GV: int | float = 0
+    EV: int | float = 0
+    nuV: int | float = 0
+    S: int | float = 0
+    BR: int | float = 0
+    GR: int | float = 0
+    ER: int | float = 0
+    nuR: int | float = 0
+    BH: int | float = 0
+    GH: int | float = 0
+    EH: int | float = 0
+    nuH: int | float = 0
+    AVR: int | float = 0
     energy_0: float = 0
     strain_energy: list = field(default_factory=lambda: [])
     C: np.ndarray = field(default_factory=lambda: np.zeros(0))

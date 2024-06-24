@@ -653,7 +653,7 @@ def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_s
             run()
 
         edit_node_dict_in_db(db, node_id, output_ready=node.outputs.ready, file_path=file_path)
-        node_to_json(node, file_path)
+        node_to_json(node, file_path, db)
         # node.save()
     if db_output:
         if not node.outputs.ready:
@@ -688,7 +688,7 @@ def get_json_size(obj):
     return sys.getsizeof(json_bytes)
 
 
-def node_to_json(node, file_path, verbose=False):
+def node_to_json(node, file_path, db, verbose=False):
     """
     Extracts input and output data from a node and writes it to a JSON file.
 
@@ -705,7 +705,7 @@ def node_to_json(node, file_path, verbose=False):
 
     # Extract input and output data from the node as dictionaries
     data = {
-        "inputs": node.inputs.to_dict(),
+        "inputs": extract_node_input(node, db),  # node.inputs.to_dict(),
         "outputs": node.outputs.to_dict()
     }
 
@@ -721,6 +721,29 @@ def node_to_json(node, file_path, verbose=False):
     return True
 
 
+def load_data_from_json(node, file_path, db, verbose=False):
+    """
+    Loads input and output data from a JSON file into a Node object.
+
+    Parameters:
+    node (Node): The Node object to load data into.
+    file_path (str): The path to the location of the JSON file.
+
+    Returns:
+    json data
+    """
+
+    # import numpy as np
+
+    # Define the path to the project.json file
+    json_file_path = os.path.join(file_path, 'project.json')
+
+    # Open the JSON file and load the data
+    with open(json_file_path, 'r') as json_file:
+        data = json.load(json_file)
+
+    return data
+
 def load_node_from_json(node, file_path, db, verbose=False):
     """
     Loads input and output data from a JSON file into a Node object.
@@ -733,7 +756,7 @@ def load_node_from_json(node, file_path, db, verbose=False):
     None
     """
 
-    import numpy as np
+    # import numpy as np
 
     # Define the path to the project.json file
     json_file_path = os.path.join(file_path, 'project.json')
@@ -743,8 +766,9 @@ def load_node_from_json(node, file_path, db, verbose=False):
         data = json.load(json_file)
 
     # Load the inputs and outputs into the node
-    for key, value in data['inputs']['channels'].items():
-        node.inputs[key] = eval_db_value(value['value'], db)
+#     for key, value in data['inputs']['channels'].items():
+#         node.inputs[key] = eval_db_value(value['value'], db)
+    set_node_input(node, data['inputs'], db)
 
     for key, value in data['outputs']['channels'].items():
         # val = value['value'].replace('array', 'np.array')
@@ -846,7 +870,7 @@ def get_dict_from_db_id(node_id, db):
     return q
 
 
-def get_node_from_db_id(node_id, db):
+def get_node_from_db_id(node_id, db, data_only=False):
     session = db.Session()
 
     # Check if a node with this node_id exists
@@ -869,10 +893,15 @@ def get_node_from_db_id(node_id, db):
                 # Set the node's storage_directory path
                 # node.storage_directory.path = file_path
                 # node.load()
-                node = load_node_from_json(node, file_path, db)
+                if data_only:
+                    # mainly for debugging to analyze the json data
+                    node = load_data_from_json(node, file_path,db)
+                else:
+                    node = load_node_from_json(node, file_path, db)
             else:
                 # load input from database
-                node = set_node_input(node, q, db)
+                print ('q: ', q)
+                node = set_node_input(node, q.inputs, db)
                 if q.outputs is not None:
                     node = set_node_output(node, q, db)
         else:
@@ -917,7 +946,7 @@ def remove_directory_if_contains_file(dir_path, filename='project.h5'):
 
 
 def set_node_input(node, q, db):
-    data = q.inputs
+    data = q
     for key, value in data.items():
         node.inputs[key] = eval_db_value(value, db)
 
@@ -984,3 +1013,105 @@ def get_all_connected_input_nodes(node):
                         connected_nodes[channel_name] = node_in_data_tree
 
     return connected_nodes
+
+
+# function to convert stringified DataClass into nested dictionary
+# pragmatic solution to serialize objects too complex for json etc.
+# should work for conventional DataClass objects that have no extra built in functionality
+
+def _bracketed_split(string, delimiter, strip_brackets=False):
+    """ Split a string by the delimiter unless it is inside brackets.
+    e.g.
+        list(bracketed_split('abc,(def,ghi),jkl', delimiter=',')) == ['abc', '(def,ghi)', 'jkl']
+    """
+
+    openers = '[{(<'
+    closers = ']})>'
+    opener_to_closer = dict(zip(openers, closers))
+    opening_bracket = dict()
+    current_string = ''
+    depth = 0
+    for c in string:
+        if c in openers:
+            depth += 1
+            opening_bracket[depth] = c
+            if strip_brackets and depth == 1:
+                continue
+        elif c in closers:
+            assert depth > 0, f"You exited more brackets that we have entered in string {string}"
+            assert c == opener_to_closer[opening_bracket[
+                depth]], f"Closing bracket {c} did not match opening bracket {opening_bracket[depth]} in string {string}"
+            depth -= 1
+            if strip_brackets and depth == 0:
+                continue
+        if depth == 0 and c == delimiter:
+            yield current_string
+            current_string = ''
+        else:
+            current_string += c
+    assert depth == 0, f'You did not close all brackets in string {string}'
+    yield current_string
+
+
+def _split_func_and_args(input_string):
+    func_name = ''
+    args = ''
+    bracket_counter = 0
+
+    for i, char in enumerate(input_string):
+        if char == '(':
+            if bracket_counter == 0:
+                func_name = input_string[:i].strip()
+            bracket_counter += 1
+
+        if char == ')':
+            bracket_counter -= 1
+
+        if bracket_counter > 0 or (bracket_counter == 0 and char == ')'):
+            args += char
+
+    args = args[1:-1]  # remove first '(' and last ‘)‘
+    if 'array' in func_name:
+        # print ('func_array: ', func_name)
+        return None
+    if '[' in func_name:
+        # print('func_array: ', func_name)
+        return None
+
+        # print ('func: ', func_name)
+
+    return args
+
+
+def _strip_args(input_string):
+    inp_str = _split_func_and_args(input_string)
+    if inp_str is None:
+        return None
+    return [s for s in _bracketed_split(inp_str, delimiter=',')]
+
+
+def str_to_dict(input_string):
+    """
+    Convert stringified DataClass instances into nested python dictionary
+
+    Example:
+        input_string2 = 'my_obj(k1=1, k2=my_obj2(k11=1, k22=2), k3=my_obj3(k21=1, k22=array([[1,2], [2,3]])), k4=array([[(1,2)], [2,3]]), k5=[[(1, 2), (1, 2)]])'
+        str_to_dict(input_string2)
+    """
+    arg_dict = dict()
+    if _strip_args(input_string) is None:
+        # print ('input_str: ', input_string)
+        return input_string
+
+    for arg in _strip_args(input_string):
+        if '=' not in arg:
+            # print(arg)
+            return None
+        key, val = arg.split('=', 1)
+        key = key.strip()
+        if '(' in arg:
+            arg_dict[key] = str_to_dict(val)
+        else:
+            arg_dict[key] = eval(val)
+
+    return arg_dict

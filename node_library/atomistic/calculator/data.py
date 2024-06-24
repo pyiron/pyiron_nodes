@@ -104,13 +104,13 @@ class InputCalcMD:
     rotation_matrix (numpy.ndarray) – The rotation matrix from the pyiron to Lammps coordinate frame.
     """
 
-    temperature: float = 300
+    temperature: int | float = 300
     n_ionic_steps: int = 1_000
     n_print: int = 100
     pressure = None
-    time_step: float = 1.0
-    temperature_damping_timescale: float = 100.0
-    pressure_damping_timescale: float = 1000.0
+    time_step: int | float = 1.0
+    temperature_damping_timescale: int | float = 100.0
+    pressure_damping_timescale: int | float = 1000.0
     seed = None
     tloop = None
     initial_temperature = None
