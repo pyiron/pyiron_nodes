@@ -13,6 +13,6 @@ cloudpickle~=3.0.0
 h5io~=0.2.2
 graphviz~=9.0.0
 matplotlib~=3.8.2
-pympipool~=0.7.13
+pympipool~=0.8.5
 toposort~=1.10
 typeguard~=4.2.1
