@@ -22,7 +22,7 @@ class OutputElasticSymmetryAnalysis:
     epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
-#@Workflow.wrap.as_dataclass_node
+# @Workflow.wrap.as_dataclass_node
 @wf_data_class()
 class InputElasticTensor:
     num_of_point: int = 5
@@ -96,7 +96,7 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
 @as_function_node("structures")
 def generate_structures(
         # structure, parameters: InputElasticTensor = InputElasticTensor()
-        structure, parameters = InputElasticTensor()
+        structure, parameters=InputElasticTensor()
 ):
     # the following construct is not nice but works
     # it may be helpful to have another way of backconverting a node_class object into the original functions
@@ -165,6 +165,8 @@ def generate_structures(
 
 @wf_data_class()
 class OutputElasticAnalysis:
+    from node_library.development.hash_based_storage import str_to_dict
+
     BV: int | float = 0
     GV: int | float = 0
     EV: int | float = 0
@@ -184,6 +186,7 @@ class OutputElasticAnalysis:
     C: np.ndarray = field(default_factory=lambda: np.zeros(0))
     A2: list = field(default_factory=lambda: [])
     C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    _serialize: callable = str_to_dict  # provide optional function for serialization
 
 
 @as_function_node("structures")

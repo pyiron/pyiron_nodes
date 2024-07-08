@@ -46,6 +46,8 @@ class OutputCalcMinimize:
     final: Optional[OutputCalcStatic] = field(
         default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
     )
+    is_converged: bool = False
+    iter_steps: int = 0
 
 
 @wf_data_class()

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import sqlalchemy
 import hashlib
 import json
+import pickle
 import pandas as pd
 import os
 import sys
@@ -74,6 +75,7 @@ class Node(Base):
     hash_value = Column(String)
     lib_path = Column(String)
     creation_date = Column(DateTime, default=datetime.utcnow)
+    # creation_date = Column(DateTime, default=datetime.now(datetime.UTC))
     # data = Column(JSON)
     inputs = Column(JSON)
     outputs = Column(JSON)
@@ -493,15 +495,20 @@ def extract_node_output(node, as_string=True):
     output_dict = dict()
     for k in node.outputs.channel_dict.keys():
         val = node.outputs[k].value
-        if as_string:
+        if hasattr(val, '_serialize'):
+            # convert dataclass objects into nested dictionaries that can be jsonified
+            # TODO: dataclasses should be serializable and node-like, so that they can be imported
+            # print ('extract_output_serialize: ')
+            val = val._serialize(str(val))
+        elif as_string:
             val = str(val)
         # if isinstance(val, NotData):
         #     val = 'NotData'
-        if hasattr(val, 'keys') and not as_string:
+        elif hasattr(val, 'keys'):
             # assumption: val object behaves like a dict
-            output_dict[k] = dict(val)
-        else:
-            output_dict[k] = val
+            val = dict(val)
+
+        output_dict[k] = val
     return output_dict
 
 
@@ -599,7 +606,7 @@ def add_node_to_db(node, db):
     # if not exists:
     #     # check if node output is available/ready
     #     if not node.outputs.ready:
-    #         node.run()
+    #         node.pull()
 
     return exists
 
@@ -653,7 +660,7 @@ def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_s
             run()
 
         edit_node_dict_in_db(db, node_id, output_ready=node.outputs.ready, file_path=file_path)
-        node_to_json(node, file_path, db)
+        node_to_pickle(node, file_path, db)
         # node.save()
     if db_output:
         if not node.outputs.ready:
@@ -686,6 +693,60 @@ def get_json_size(obj):
 
     # Return the number of bytes
     return sys.getsizeof(json_bytes)
+
+
+def node_to_pickle(node, file_path, verbose=False):
+    """
+    Serialize node to pickle.
+
+    Parameters:
+    node (Node): The Node object to extract data from.
+    file_path (str): The path to the location where the pickle file should be written.
+
+    Returns:
+    None
+    """
+
+    # Create directories if they do not exist
+    os.makedirs(file_path, exist_ok=True)
+
+    # Define the path to the project.json file
+    file_path = os.path.join(file_path, 'project.pkl')
+
+    # Write the data to the JSON file
+    with open(file_path, 'wb') as file:
+        pickle.dump(node, file)
+
+    if verbose:
+        print(f"Node written to {file_path}")
+    return True
+
+
+def load_node_from_pickle(node, file_path, db=None, verbose=False):
+    """
+    Loads input and output data from a JSON file into a Node object.
+
+    Parameters:
+    node (Node): The Node object to load data into.
+    file_path (str): The path to the location of the JSON file.
+
+    Returns:
+    None
+    """
+
+    # import numpy as np
+
+    # Define the path to the project.json file
+    file_path = os.path.join(file_path, 'project.pkl')
+
+    # Open the JSON file and load the data
+    with open(file_path, 'rb') as file:
+        node = pickle.load(file)
+
+    if verbose:
+        print(f"Data loaded into node from {file_path}")
+
+    return node
 
 
 def node_to_json(node, file_path, db, verbose=False):
@@ -744,6 +805,7 @@ def load_data_from_json(node, file_path, db, verbose=False):
 
     return data
 
+
 def load_node_from_json(node, file_path, db, verbose=False):
     """
     Loads input and output data from a JSON file into a Node object.
@@ -766,14 +828,15 @@ def load_node_from_json(node, file_path, db, verbose=False):
         data = json.load(json_file)
 
     # Load the inputs and outputs into the node
-#     for key, value in data['inputs']['channels'].items():
-#         node.inputs[key] = eval_db_value(value['value'], db)
+    #     for key, value in data['inputs']['channels'].items():
+    #         node.inputs[key] = eval_db_value(value['value'], db)
     set_node_input(node, data['inputs'], db)
 
     for key, value in data['outputs']['channels'].items():
         # val = value['value'].replace('array', 'np.array')
         # node.outputs[key] = eval(val)
-        node.outputs[key] = eval_db_value(value['value'], db)
+        val = eval_db_value(value['value'], db)
+        node.outputs[key] = val
 
     if verbose:
         print(f"Data loaded into node from {json_file_path}")
@@ -857,8 +920,12 @@ def eval_db_value(value, db):
         val = value.replace('array', 'np.array')
     else:
         # If the value is not a hash, simply evaluate it
-        val = eval(value)
-
+        try:
+            from node_library.atomistic.property.elastic import DataStructureContainer
+            val = eval(value)
+        except Exception as e:
+            print('eval exception: ', e, value)
+            val = None
     return val
 
 
@@ -893,14 +960,14 @@ def get_node_from_db_id(node_id, db, data_only=False):
                 # Set the node's storage_directory path
                 # node.storage_directory.path = file_path
                 # node.load()
-                if data_only:
-                    # mainly for debugging to analyze the json data
-                    node = load_data_from_json(node, file_path,db)
-                else:
-                    node = load_node_from_json(node, file_path, db)
+                # if data_only:
+                #     # mainly for debugging to analyze the json data
+                #     node = load_data_from_json(node, file_path, db)
+                # else:
+                node = load_node_from_pickle(node, file_path)
             else:
                 # load input from database
-                print ('q: ', q)
+                # print('q: ', q)
                 node = set_node_input(node, q.inputs, db)
                 if q.outputs is not None:
                     node = set_node_output(node, q, db)
@@ -1109,9 +1176,30 @@ def str_to_dict(input_string):
             return None
         key, val = arg.split('=', 1)
         key = key.strip()
-        if '(' in arg:
-            arg_dict[key] = str_to_dict(val)
-        else:
-            arg_dict[key] = eval(val)
+        if not key.startswith('_'):
+            if '(' in arg:
+                arg_dict[key] = str_to_dict(val)
+            else:
+                arg_dict[key] = eval(val)
 
     return arg_dict
+
+
+def clone_node_with_inputs(node):
+    """
+    Clone a node, keeping the same inputs but resetting the outputs.
+
+    This function creates a new node with the same inputs as the given node but resets the outputs.
+
+    Parameters:
+    node: The node to clone. It should have 'package_identifier', 'label', and 'inputs' attributes.
+
+    Returns:
+    A new node with the same inputs as the given node, but with outputs reset.
+    """
+    lib_path = '.'.join(node.package_identifier.split('.')[1:])
+    node_lib_path = '.'.join([lib_path, node.label])
+    new_node = create_node(node_lib_path)
+    for k, v in node.inputs.to_dict()['channels'].items():
+        new_node.inputs[k] = node.inputs[k].value
+    return new_node

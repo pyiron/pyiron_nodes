@@ -11,3 +11,4 @@ class OutputEngine:
     parameters: Optional[wf_data_class] = field(
         default=None, metadata=wfMetaData(log_level=10)
     )
+    _do_not_serialize: bool = True

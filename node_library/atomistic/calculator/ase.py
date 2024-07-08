@@ -39,7 +39,7 @@ def static(structure=None, engine=None, keys_to_store=None, job_name=None):  # ,
 
 
     else:
-        print('error (not implemented): ',type(structure))
+        print('error (not implemented): ', type(structure))
 
     # if _internal is not None:
     #     out["iter_index"] = _internal[
@@ -52,6 +52,7 @@ def static(structure=None, engine=None, keys_to_store=None, job_name=None):  # ,
 @as_function_node("out")
 def minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
     from ase.optimize import BFGS
+    from ase.io.trajectory import Trajectory
     from node_library.atomistic.calculator.data import OutputCalcMinimize
 
     # import numpy as np
@@ -62,28 +63,30 @@ def minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
 
         engine = OutputEngine(calculator=EMT())
 
-    structure.calc = engine.calculator
+    out = OutputCalcMinimize()
+
+    initial_structure = structure.copy()
+    initial_structure.calc = engine.calculator
+    out.initial.energy = float(initial_structure.get_potential_energy())
+    out.initial.forces = initial_structure.get_forces()
 
     if log_file is None:  # write to standard io
         log_file = "-"
 
-    dyn = BFGS(structure, logfile=log_file)
-    dyn.run(fmax=fmax)
+    dyn = BFGS(initial_structure, logfile=log_file, trajectory='minimize.traj')
+    out_dyn = dyn.run(fmax=fmax)
 
-    # it appears that r0 is the structure of the second to last step (check)
-    atoms_relaxed = structure.copy()
-    atoms_relaxed.calc = structure.calc
-    if dyn.r0 is not None:
-        atoms_relaxed.positions = dyn.r0.reshape(-1, 3)
+    traj = Trajectory('minimize.traj')
+    atoms_relaxed = traj[-1]
+    atoms_relaxed.calc = engine.calculator
 
-    out = OutputCalcMinimize()
-    out.final.structure = atoms_relaxed
-    # out["forces"] = dyn.f0.reshape(-1, 3)
     out.final.forces = atoms_relaxed.get_forces()
     out.final.energy = float(atoms_relaxed.get_potential_energy())
-    out.initial.energy = float(structure.get_potential_energy())
-    # print("energy: ", out.final.energy, out.initial.energy)
-    # print("energy: ", out["energy"], "max_force: ", np.min(np.abs(out["forces"])))
+    atoms_relaxed.calc = None # ase calculator is not pickable!!
+    out.final.structure = atoms_relaxed
+
+    out.is_converged = dyn.converged()
+    out.iter_steps = dyn.nsteps
 
     return out
 
