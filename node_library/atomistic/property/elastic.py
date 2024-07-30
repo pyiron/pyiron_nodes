@@ -186,7 +186,9 @@ class OutputElasticAnalysis:
     C: np.ndarray = field(default_factory=lambda: np.zeros(0))
     A2: list = field(default_factory=lambda: [])
     C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
     _serialize: callable = str_to_dict  # provide optional function for serialization
+    _skip_default_values = False
 
 
 @as_function_node("structures")
@@ -272,8 +274,9 @@ def calculate_modulus(out: OutputElasticAnalysis):
     except np.linalg.LinAlgError as e:
         print("LinAlgError:", e)
 
-    eigval = np.linalg.eig(C)
+    eigval, eigvec = np.linalg.eig(C)
     out.C_eigval = eigval
+    out.C_eigvec = eigvec
 
     return out
 
