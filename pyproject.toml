@@ -1,6 +1,18 @@
 [build-system]
 requires = [
-    "pyiron_base",
+	"ase",
+	"matgl",
+	"matplotlib",
+	"numpy",
+	"pandas",
+	"phonopy",
+	"pyiron_atomistics",
+	"pyiron_base",
+	"pyiron_contrib",
+	"pymatgen",
+	"scipy",
+	"sqlalchemy",
+	"structuretoolkit",
     "setuptools",
     "versioneer[toml]==0.29",
 ]
@@ -24,7 +36,19 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pyiron_base==0.8.3"
+    "ase==3.23.0",
+	"matgl==1.1.2",
+	"matplotlib==3.9.1",
+	"numpy==1.26.4",
+	"pandas==2.2.2",
+	"phonopy==2.26.6",
+	"pyiron_atomistics==0.6.9",
+	"pyiron_base==0.9.10",
+	"pyiron_contrib==0.1.17",
+	"pymatgen==2024.7.18",
+	"scipy==1.14.0",
+	"sqlalchemy==2.0.31",
+	"structuretoolkit==0.0.27",
 ]
 dynamic = [ "version",]
 authors = [
