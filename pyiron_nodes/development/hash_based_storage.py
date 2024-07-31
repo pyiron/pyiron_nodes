@@ -921,7 +921,7 @@ def eval_db_value(value, db):
     else:
         # If the value is not a hash, simply evaluate it
         try:
-            from node_library.atomistic.property.elastic import DataStructureContainer
+            from pyiron_nodes.atomistic.property.elastic import DataStructureContainer
             val = eval(value)
         except Exception as e:
             print('eval exception: ', e, value)
@@ -973,7 +973,7 @@ def get_node_from_db_id(node_id, db, data_only=False):
                     node = set_node_output(node, q, db)
         else:
             # Node class definition exists only locally
-            print(f'NodeTable(id={node_id}): Save your node class in a node_library and/or register it!')
+            print(f'NodeTable(id={node_id}): Save your node class in a pyiron_nodes and/or register it!')
             node = None
 
     return node

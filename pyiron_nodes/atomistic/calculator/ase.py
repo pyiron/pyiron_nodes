@@ -4,18 +4,18 @@ from pyiron_workflow import as_function_node
 @as_function_node()
 def static(structure=None, engine=None, keys_to_store=None, job_name=None):  # , _internal=None
     import numpy as np
-    from node_library.atomistic.calculator.data import OutputCalcStatic, OutputCalcStaticList
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic, OutputCalcStaticList
 
     if engine is None:
         from ase.calculators.emt import EMT
-        from node_library.atomistic.engine.generic import OutputEngine
+        from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
         engine = OutputEngine(calculator=EMT())
 
     # print ('engine: ', engine)
     # print ('engine (calculator): ', engine.calculator)
     import ase
-    import node_library.atomistic.property.elastic as elastic
+    import pyiron_nodes.atomistic.property.elastic as elastic
     if isinstance(structure, ase.atoms.Atoms):
         structure.calc = engine.calculator
 
@@ -53,13 +53,13 @@ def static(structure=None, engine=None, keys_to_store=None, job_name=None):  # ,
 def minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
     from ase.optimize import BFGS
     from ase.io.trajectory import Trajectory
-    from node_library.atomistic.calculator.data import OutputCalcMinimize
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize
 
     # import numpy as np
 
     if engine is None:
         from ase.calculators.emt import EMT
-        from node_library.atomistic.engine.generic import OutputEngine
+        from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
         engine = OutputEngine(calculator=EMT())
 

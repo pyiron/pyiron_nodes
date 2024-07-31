@@ -1,5 +1,5 @@
 from pyiron_workflow import as_function_node
-from node_library.atomistic.engine.generic import OutputEngine
+from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
 
 @as_function_node("engine")

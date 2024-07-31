@@ -7,7 +7,7 @@ from pyiron_atomistics.atomistics.structure.atoms import Atoms
 from pyiron_workflow.function import single_value_node, function_node
 from pyiron_workflow.workflow import Workflow
 
-from pyiron_workflow.node_library.dev_tools import VarType, FileObject
+from pyiron_workflow.pyiron_nodes.dev_tools import VarType, FileObject
 
 
 @single_value_node("calculator")

@@ -78,7 +78,7 @@ def set_replacer(node, node_dict):
     return replacer
 
 
-def register_libraries(libraries, library_path="pyiron_workflow.node_library"):
+def register_libraries(libraries, library_path="pyiron_workflow.pyiron_nodes"):
     import importlib
     from pyiron_workflow.workflow import Workflow
 
