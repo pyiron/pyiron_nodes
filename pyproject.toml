@@ -20,7 +20,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyiron_nodes"
-description = "pyiron_nodes - Your pyiron-like module."
+description = "pyiron_nodes - Nodes for `pyiron_workflows` with a focus on atomistic workflows."
 readme = "docs/README.md"
 keywords = [ "pyiron",]
 requires-python = ">=3.9, <3.13"
@@ -52,7 +52,8 @@ dependencies = [
 ]
 dynamic = [ "version",]
 authors = [
-    { name = "Lorem Ipsum", email = "lorem@ipsum.com" },
+    { name = "Joerg Neugebauer"},
+    { name = "Liam Huber", email = "liamhuber@greyhavensolutions.com" },
 ]
 
 [project.license]
