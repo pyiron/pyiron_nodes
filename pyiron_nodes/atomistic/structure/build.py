@@ -34,7 +34,7 @@ def bulk(
 def cubic_bulk_cell(
         wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
 ):
-    from node_library.atomistic.structure.transform import (
+    from pyiron_nodes.atomistic.structure.transform import (
         create_vacancy,
         repeat,
     )

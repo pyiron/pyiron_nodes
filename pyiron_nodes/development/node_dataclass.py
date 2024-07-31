@@ -1,5 +1,5 @@
 # introduce node dataclass object to serialize and deserialize nodes
-import node_library.development.hash_based_storage as hs
+import pyiron_nodes.development.hash_based_storage as hs
 
 from dataclasses import dataclass, field, fields
 import dataclasses
