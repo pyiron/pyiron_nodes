@@ -8,6 +8,5 @@ on:
 
 jobs:
   debugging:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    uses: pyiron/actions/.github/workflows/debug-assist.yml@debug_assist
+    secrets: inherit
