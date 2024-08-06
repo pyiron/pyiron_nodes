@@ -19,6 +19,7 @@ POTCAR_specification_data = str(
 )
 
 
+
 @dataclass
 class VaspInput:
     structure: Structure
