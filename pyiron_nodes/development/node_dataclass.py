@@ -66,18 +66,18 @@ class ObjectAsData:
 
 class DataCustomEncoder(json.JSONEncoder):
     def default(self, obj):
-        print ('json encoder: ', type(obj), dataclasses.is_dataclass(obj))
+        print("json encoder: ", type(obj), dataclasses.is_dataclass(obj))
         if dataclasses.is_dataclass(obj):
             result = dataclasses.asdict(obj)
-            if 'input_dict' in result:
-                for k, v in result['input_dict'].items():
-                    print ('input dict k: ', k, is_dataclass(v), is_pyiron_node(v))
+            if "input_dict" in result:
+                for k, v in result["input_dict"].items():
+                    print("input dict k: ", k, is_dataclass(v), is_pyiron_node(v))
             path_lib = get_import_path(obj)
-            print ('path_lib ', path_lib, len(result['output_dict'].keys()))
+            print("path_lib ", path_lib, len(result["output_dict"].keys()))
             if path_lib is not None:
                 result["__dataclass_name__"] = get_import_path(obj)
-            if len(result['output_dict'].keys()) == 0:
-                del result['output_dict']
+            if len(result["output_dict"].keys()) == 0:
+                del result["output_dict"]
             return result
         return super().default(obj)
 
