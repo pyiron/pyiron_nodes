@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "License :: OSI Approved :: BSD License",
     "Intended Audience :: Science/Research",
-    "Operating System :: OS Independent",
+    "Operating System :: Unix",  # Because of Lammps dependency -- can change in the future
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
