@@ -1,5 +1,6 @@
 import os
 import warnings
+from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional, List, Dict, Tuple
@@ -13,7 +14,9 @@ from pymatgen.io.vasp.outputs import Vasprun
 from ase import Atoms
 
 POTCAR_library_path = "/cmmc/u/hmai/vasp_potentials_54/"
-POTCAR_specification_data = "vasp_pseudopotential_PBE_data.csv"
+POTCAR_specification_data = str(
+    Path(__file__).parent.joinpath("vasp_pseudopotential_PBE_data.csv")
+)
 
 
 @dataclass
