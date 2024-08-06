@@ -1,11 +1,13 @@
 from pyiron_workflow import as_function_node
 from typing import Optional, Union
 
-from node_library.atomistic.calculator.data import OutputCalcMinimize, OutputCalcStatic
+from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize, OutputCalcStatic
 
 
 @as_function_node("energy_last")
-def get_energy_last(calculator: Optional[OutputCalcMinimize | OutputCalcStatic] = None) -> float:
+def get_energy_last(
+    calculator: Optional[OutputCalcMinimize | OutputCalcStatic] = None,
+) -> float:
     if isinstance(calculator, OutputCalcMinimize):
         energy_last = calculator.final.energy
     elif isinstance(calculator, OutputCalcStatic):
