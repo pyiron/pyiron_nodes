@@ -1,5 +1,6 @@
 import unittest
 import os
+from pathlib import Path
 import shutil
 from pyiron_nodes.atomistic.engine.vasp import (vasp_job, run_job, create_WorkingDirectory, VaspInput, parse_VaspOutput, 
                            get_default_POTCAR_paths, write_POTCAR, is_line_in_file, write_POSCAR, 
@@ -24,11 +25,12 @@ class TestVaspJob(unittest.TestCase):
         self.workdir = os.path.join(os.getcwd(), "unittest_case")
         os.makedirs(self.workdir, exist_ok=True)
         self.incar = Incar.from_dict(self.incar_dict)
-        self.POTCAR_library_path = os.path.join("..", "resources", "vasp", "POTCAR_lib")
+        resources = Path(__file__).parent.parent.joinpath("resources", "vasp")
+        self.POTCAR_library_path = str(resources.joinpath("POTCAR_lib").resolve())
         self.vasp_input = VaspInput(self.structure, self.incar, pseudopot_lib_path=self.POTCAR_library_path)
-        self.example_converged_path = os.path.join("..", "resources", "vasp", "example1")
-        self.example_failed_path = os.path.join("..", "resources", "vasp", "example2")
-        self.POTCAR_specification_data = os.path.join("..", "resources", "vasp", "POTCAR_lib", "pseudopotential_PBE_data.csv")
+        self.example_converged_path = str(resources.joinpath("example1").resolve())
+        self.example_failed_path = str(resources.joinpath("example2").resolve())
+        self.POTCAR_specification_data = str(resources.joinpath("POTCAR_lib", "pseudopotential_PBE_data.csv").resolve())
 
     def tearDown(self):
         if os.path.exists("./POTCAR"):
