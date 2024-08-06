@@ -1,0 +1,6 @@
+100 : In is converged
+2022-12-01 11:13:26,065 - pyiron_log - INFO - job: In id: 18411879, status: collect, output: 100 : In is converged
+
+2022-12-01 11:13:26,081 - pyiron_log - INFO - run job: In id: 18411879, status: collect
+2022-12-01 11:13:38,725 - pyiron_log - INFO - collect_warnings() is not yet implemented for VASP
+2022-12-01 11:13:38,875 - pyiron_log - INFO - update master: None 18411879 queue
