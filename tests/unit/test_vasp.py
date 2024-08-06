@@ -82,7 +82,7 @@ class TestVaspJob(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "POTCAR")))
 
-    def test_run_job(self, mock_subprocess_run):
+    def test_run_job(self):
         output = run_job(f"cp -r {self.example_converged_path}", self.workdir)()
         self.assertEqual(output.stdout, "stdout")
         self.assertEqual(output.stderr, "stderr")
