@@ -84,8 +84,8 @@ class TestVaspJob(unittest.TestCase):
 
     def test_run_job(self):
         output = run_job(f"cp -r {self.example_converged_path} .", self.workdir)()
-        self.assertEqual(output.stdout, "stdout")
-        self.assertEqual(output.stderr, "stderr")
+        self.assertEqual(output.stdout, "")
+        self.assertEqual(output.stderr, "")
         self.assertEqual(output.return_code, 0)
 
     def test_parse_VaspOutput(self):
