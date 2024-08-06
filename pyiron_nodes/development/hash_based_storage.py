@@ -56,7 +56,7 @@ def compute_hash_value(input_dict, length=256):
         raise ValueError("Length must be either 128, 256, or 512.")
 
     # Update the hash object with the bytes of the JSON object
-    hasher.update(jsonified_dict.encode('utf-8'))
+    hasher.update(jsonified_dict.encode("utf-8"))
 
     # Return the hexadecimal representation of the hash
     hash_value = hasher.hexdigest()
@@ -68,7 +68,7 @@ Base = declarative_base()
 
 
 class Node(Base):
-    __tablename__ = 'node'
+    __tablename__ = "node"
 
     node_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
@@ -103,9 +103,9 @@ class Node(Base):
         # print('Node_init: ', input_dict)
         self.lib_path = path  # str(Path(path).resolve())
         # self.data = input_dict['inputs']
-        self.inputs = input_dict['inputs']
+        self.inputs = input_dict["inputs"]
         self.output_ready = False
-        self.file_path = ''
+        self.file_path = ""
 
 
 @dataclass
@@ -117,11 +117,12 @@ class Database:
     Session (sqlalchemy.orm.sessionmaker): The sessionmaker object that creates session.
     Node (Base): The SQLAlchemy Base object that represents a node.
     """
+
     Session: any
     Node: any
 
 
-def create_nodes_table(db_url='postgresql://localhost/joerg', echo=False):
+def create_nodes_table(db_url="postgresql://localhost/joerg", echo=False):
     """
     Creates a nodess table in the database.
 
@@ -152,7 +153,7 @@ def create_nodes_table(db_url='postgresql://localhost/joerg', echo=False):
     return Database(Session, Node)
 
 
-def add_node_dict_to_db(db, inputs, name='', path='.', length=256):
+def add_node_dict_to_db(db, inputs, name="", path=".", length=256):
     """
     Adds a dictionary as a new Node to a database.
 
@@ -175,7 +176,10 @@ def add_node_dict_to_db(db, inputs, name='', path='.', length=256):
     new_node = db.Node(name=name, input_dict=inputs, path=path, length=length)
 
     # Check if a node with this hash exists
-    exists = session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar() is not None
+    exists = (
+        session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar()
+        is not None
+    )
 
     # If the node does not exist, add it to the session
     if not exists:
@@ -193,8 +197,16 @@ def add_node_dict_to_db(db, inputs, name='', path='.', length=256):
     return exists
 
 
-def edit_node_dict_in_db(db, node_id, inputs=None, outputs=None, name=None, lib_path=None, output_ready=None,
-                         file_path=None):
+def edit_node_dict_in_db(
+    db,
+    node_id,
+    inputs=None,
+    outputs=None,
+    name=None,
+    lib_path=None,
+    output_ready=None,
+    file_path=None,
+):
     """
     Edits the attributes of a Node in a database.
 
@@ -270,18 +282,22 @@ def remove_nodes_from_db(db, indices=None, verbose=False):
     else:
         # Check if provided indices exist in the database
         for index in indices:
-            node = session.get(Node, int(index))  # using session.get instead of query.get
+            node = session.get(
+                Node, int(index)
+            )  # using session.get instead of query.get
             if node is None:
                 if verbose:
                     print(f"Row with id {index} does not exist.")
             else:
-                print('file path: ', node.file_path)
+                print("file path: ", node.file_path)
                 remove_directory_if_contains_file(node.file_path)
                 ids_to_delete.append(int(index))
 
         # Delete only the existing rows with the provided indices
         for index in ids_to_delete:
-            session.query(Node).filter(Node.node_id == int(index)).delete(synchronize_session='fetch')
+            session.query(Node).filter(Node.node_id == int(index)).delete(
+                synchronize_session="fetch"
+            )
             session.expire_all()  # synchronize the session
         message = f"Rows with ids {ids_to_delete} deleted."
 
@@ -321,7 +337,10 @@ def get_node_by_hash(db, hash_value):
 
     # If the node is found, convert it into a dictionary
     if node:
-        result = {c.key: getattr(node, c.key) for c in sqlalchemy.inspect(node).mapper.column_attrs}
+        result = {
+            c.key: getattr(node, c.key)
+            for c in sqlalchemy.inspect(node).mapper.column_attrs
+        }
 
     return result
 
@@ -365,7 +384,7 @@ def drop_table(db, table_name):
         base.metadata.drop_all(engine, [table], checkfirst=True)
 
 
-def db_query_dict(db, column='inputs', **kwargs):
+def db_query_dict(db, column="inputs", **kwargs):
     # Extract Session and Node classes from Database instance
     # Session = db.Session
     # Node = db.Node
@@ -415,10 +434,10 @@ def transform_data_column(df):
         DataFrame: A pandas DataFrame where each key in the 'inputs' column is a separate column.
     """
     # Transform 'inputs' column into a DataFrame
-    data_df = pd.json_normalize(df['inputs'])
+    data_df = pd.json_normalize(df["inputs"])
 
     # Concatenate original DataFrame (minus 'inputs' column) with the new DataFrame
-    df = pd.concat([df.drop('inputs', axis=1), data_df], axis=1)
+    df = pd.concat([df.drop("inputs", axis=1), data_df], axis=1)
 
     return df
 
@@ -449,7 +468,7 @@ def list_column_names(db, table_name):
     session.close()
 
     # return list of column names
-    return [column['name'] for column in columns]
+    return [column["name"] for column in columns]
 
 
 def extract_node_input(node, db):
@@ -466,16 +485,16 @@ def extract_node_input(node, db):
     inp_node_dict = get_all_connected_input_nodes(node)
     # print(inp_node_dict.keys())
 
-    ic = node.inputs.to_dict()['channels']
+    ic = node.inputs.to_dict()["channels"]
     input_dict = dict()
     for k, v in ic.items():
         # print(k)
         if k in inp_node_dict:
             inp_node = inp_node_dict[k]
-            input_dict[k] = 'hash_' + get_node_hash(inp_node, db)
+            input_dict[k] = "hash_" + get_node_hash(inp_node, db)
             save_node(inp_node, db, file_output=False)
         else:
-            input_dict[k] = v['value']
+            input_dict[k] = v["value"]
     return input_dict
 
 
@@ -495,7 +514,7 @@ def extract_node_output(node, as_string=True):
     output_dict = dict()
     for k in node.outputs.channel_dict.keys():
         val = node.outputs[k].value
-        if hasattr(val, '_serialize'):
+        if hasattr(val, "_serialize"):
             # convert dataclass objects into nested dictionaries that can be jsonified
             # TODO: dataclasses should be serializable and node-like, so that they can be imported
             # print ('extract_output_serialize: ')
@@ -504,7 +523,7 @@ def extract_node_output(node, as_string=True):
             val = str(val)
         # if isinstance(val, NotData):
         #     val = 'NotData'
-        elif hasattr(val, 'keys'):
+        elif hasattr(val, "keys"):
             # assumption: val object behaves like a dict
             val = dict(val)
 
@@ -528,7 +547,7 @@ def extract_unique_identifier(node):
 
 
 def get_node_storage_path(node):
-    node_storage_path = extract_unique_identifier(node).replace('.', '/')
+    node_storage_path = extract_unique_identifier(node).replace(".", "/")
     return node_storage_path
 
 
@@ -567,7 +586,7 @@ def create_node(node_lib_path):
     obj = Workflow.create
 
     # Split the string into individual attributes
-    attrs = node_lib_path.split('.')
+    attrs = node_lib_path.split(".")
 
     # Access the nested attributes
     for attr in attrs:
@@ -597,7 +616,7 @@ def add_node_to_db(node, db):
     # print('add: ', node_dic)
 
     # Convert node_identifier to a path format by replacing '.' with '/'
-    path_format = node_dic['node_identifier'].replace('.', '/')
+    path_format = node_dic["node_identifier"].replace(".", "/")
 
     # Add the node's metadata to the database
     exists = add_node_dict_to_db(db, inputs=node_dic, path=path_format)
@@ -611,7 +630,9 @@ def add_node_to_db(node, db):
     return exists
 
 
-def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000):  # , node_id):
+def save_node(
+    node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000
+):  # , node_id):
     """
     This function stores a node by setting its storage_directory attribute to a certain path.
     An additional directory is added to this path, named with the given database ID.
@@ -659,7 +680,9 @@ def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_s
         if not node.outputs.ready:
             run()
 
-        edit_node_dict_in_db(db, node_id, output_ready=node.outputs.ready, file_path=file_path)
+        edit_node_dict_in_db(
+            db, node_id, output_ready=node.outputs.ready, file_path=file_path
+        )
         node_to_pickle(node, file_path, db)
         # node.save()
     if db_output:
@@ -667,9 +690,12 @@ def save_node(node, db, file_output=None, db_output=None, node_pull=True, json_s
             run()
 
         # as_string=False would be preferred but returns objects that cannot be json-ified
-        edit_node_dict_in_db(db, node_id,
-                             output_ready=node.outputs.ready,
-                             outputs=extract_node_output(node, as_string=True))
+        edit_node_dict_in_db(
+            db,
+            node_id,
+            output_ready=node.outputs.ready,
+            outputs=extract_node_output(node, as_string=True),
+        )
 
     return node_id
 
@@ -689,7 +715,7 @@ def get_json_size(obj):
     json_str = json.dumps(obj)
 
     # Encode the JSON string to bytes
-    json_bytes = json_str.encode('utf-8')
+    json_bytes = json_str.encode("utf-8")
 
     # Return the number of bytes
     return sys.getsizeof(json_bytes)
@@ -711,10 +737,10 @@ def node_to_pickle(node, file_path, verbose=False):
     os.makedirs(file_path, exist_ok=True)
 
     # Define the path to the project.json file
-    file_path = os.path.join(file_path, 'project.pkl')
+    file_path = os.path.join(file_path, "project.pkl")
 
     # Write the data to the JSON file
-    with open(file_path, 'wb') as file:
+    with open(file_path, "wb") as file:
         pickle.dump(node, file)
 
     if verbose:
@@ -737,10 +763,10 @@ def load_node_from_pickle(node, file_path, db=None, verbose=False):
     # import numpy as np
 
     # Define the path to the project.json file
-    file_path = os.path.join(file_path, 'project.pkl')
+    file_path = os.path.join(file_path, "project.pkl")
 
     # Open the JSON file and load the data
-    with open(file_path, 'rb') as file:
+    with open(file_path, "rb") as file:
         node = pickle.load(file)
 
     if verbose:
@@ -767,14 +793,14 @@ def node_to_json(node, file_path, db, verbose=False):
     # Extract input and output data from the node as dictionaries
     data = {
         "inputs": extract_node_input(node, db),  # node.inputs.to_dict(),
-        "outputs": node.outputs.to_dict()
+        "outputs": node.outputs.to_dict(),
     }
 
     # Define the path to the project.json file
-    json_file_path = os.path.join(file_path, 'project.json')
+    json_file_path = os.path.join(file_path, "project.json")
 
     # Write the data to the JSON file
-    with open(json_file_path, 'w') as json_file:
+    with open(json_file_path, "w") as json_file:
         json.dump(data, json_file)
 
     if verbose:
@@ -797,10 +823,10 @@ def load_data_from_json(node, file_path, db, verbose=False):
     # import numpy as np
 
     # Define the path to the project.json file
-    json_file_path = os.path.join(file_path, 'project.json')
+    json_file_path = os.path.join(file_path, "project.json")
 
     # Open the JSON file and load the data
-    with open(json_file_path, 'r') as json_file:
+    with open(json_file_path, "r") as json_file:
         data = json.load(json_file)
 
     return data
@@ -821,21 +847,21 @@ def load_node_from_json(node, file_path, db, verbose=False):
     # import numpy as np
 
     # Define the path to the project.json file
-    json_file_path = os.path.join(file_path, 'project.json')
+    json_file_path = os.path.join(file_path, "project.json")
 
     # Open the JSON file and load the data
-    with open(json_file_path, 'r') as json_file:
+    with open(json_file_path, "r") as json_file:
         data = json.load(json_file)
 
     # Load the inputs and outputs into the node
     #     for key, value in data['inputs']['channels'].items():
     #         node.inputs[key] = eval_db_value(value['value'], db)
-    set_node_input(node, data['inputs'], db)
+    set_node_input(node, data["inputs"], db)
 
-    for key, value in data['outputs']['channels'].items():
+    for key, value in data["outputs"]["channels"].items():
         # val = value['value'].replace('array', 'np.array')
         # node.outputs[key] = eval(val)
-        val = eval_db_value(value['value'], db)
+        val = eval_db_value(value["value"], db)
         node.outputs[key] = val
 
     if verbose:
@@ -845,7 +871,9 @@ def load_node_from_json(node, file_path, db, verbose=False):
 
 
 def get_node_hash(node, db, hash_length=256):
-    hash_value = compute_hash_value(extract_node_dictionary(node, db), length=hash_length)
+    hash_value = compute_hash_value(
+        extract_node_dictionary(node, db), length=hash_length
+    )
     return hash_value
 
 
@@ -864,7 +892,7 @@ def get_node_db_id(node, db):
     elif len(q) == 1:
         node_id = q[0].node_id
     else:
-        raise ValueError(f'Error: Multiple nodes with identical hash: {len(q)}')
+        raise ValueError(f"Error: Multiple nodes with identical hash: {len(q)}")
     return node_id
 
 
@@ -900,7 +928,7 @@ def eval_db_value(value, db):
     """
 
     # Check if the value is a hash
-    if value.startswith('hash_'):
+    if value.startswith("hash_"):
         # Extract the hash value by removing the prefix
         hash_value = value[5:]
 
@@ -908,23 +936,24 @@ def eval_db_value(value, db):
         node_dict = get_node_by_hash(db, hash_value)
 
         # Extract the node_id
-        node_id = node_dict['node_id']
+        node_id = node_dict["node_id"]
 
         # Retrieve the Node using the node_id
         new_node = get_node_from_db_id(node_id, db)
 
         val = new_node
-    elif value.startswith('array'):
+    elif value.startswith("array"):
         import numpy as np
 
-        val = value.replace('array', 'np.array')
+        val = value.replace("array", "np.array")
     else:
         # If the value is not a hash, simply evaluate it
         try:
             from pyiron_nodes.atomistic.property.elastic import DataStructureContainer
+
             val = eval(value)
         except Exception as e:
-            print('eval exception: ', e, value)
+            print("eval exception: ", e, value)
             val = None
     return val
 
@@ -949,12 +978,12 @@ def get_node_from_db_id(node_id, db, data_only=False):
         lib_path = q.lib_path
 
         # print('path: ', node_lib_path)
-        if not lib_path.startswith('None'):
+        if not lib_path.startswith("None"):
             # node class defined in library
-            node_lib_path = '.'.join(lib_path.split('/')[1:])
+            node_lib_path = ".".join(lib_path.split("/")[1:])
             node = create_node(node_lib_path)
 
-            if q.file_path != '':
+            if q.file_path != "":
                 file_path = Path(q.file_path)
 
                 # Set the node's storage_directory path
@@ -973,13 +1002,15 @@ def get_node_from_db_id(node_id, db, data_only=False):
                     node = set_node_output(node, q, db)
         else:
             # Node class definition exists only locally
-            print(f'NodeTable(id={node_id}): Save your node class in a pyiron_nodes and/or register it!')
+            print(
+                f"NodeTable(id={node_id}): Save your node class in a pyiron_nodes and/or register it!"
+            )
             node = None
 
     return node
 
 
-def remove_directory_if_contains_file(dir_path, filename='project.h5'):
+def remove_directory_if_contains_file(dir_path, filename="project.h5"):
     """
     Removes a directory if it contains a specific file and no other files or directories.
 
@@ -1038,7 +1069,7 @@ def run_node(node, db, verbose=False):
     else:
         new_node = get_node_from_db_id(node_id, db)
         if verbose:
-            print(f'node with id={node_id} is loaded rather than recomputed')
+            print(f"node with id={node_id} is loaded rather than recomputed")
 
     return new_node
 
@@ -1066,7 +1097,10 @@ def get_all_connected_input_nodes(node):
 
     # Iterate over each input channel
     for channel_name, input_channel in channel_dict.items():
-        connections, connected = input_channel.to_dict()['connections'], input_channel.to_dict()['connected']
+        connections, connected = (
+            input_channel.to_dict()["connections"],
+            input_channel.to_dict()["connected"],
+        )
 
         # Check if the input channel is connected
         if connected:
@@ -1076,7 +1110,7 @@ def get_all_connected_input_nodes(node):
                     # Compare function names of nodes in the data tree with connection
                     # print (node_in_data_tree.__class__.__name__)
                     # print (connection.split('.')[0])
-                    if node_in_data_tree.__class__.__name__ == connection.split('.')[0]:
+                    if node_in_data_tree.__class__.__name__ == connection.split(".")[0]:
                         connected_nodes[channel_name] = node_in_data_tree
 
     return connected_nodes
@@ -1086,17 +1120,18 @@ def get_all_connected_input_nodes(node):
 # pragmatic solution to serialize objects too complex for json etc.
 # should work for conventional DataClass objects that have no extra built in functionality
 
+
 def _bracketed_split(string, delimiter, strip_brackets=False):
-    """ Split a string by the delimiter unless it is inside brackets.
+    """Split a string by the delimiter unless it is inside brackets.
     e.g.
         list(bracketed_split('abc,(def,ghi),jkl', delimiter=',')) == ['abc', '(def,ghi)', 'jkl']
     """
 
-    openers = '[{(<'
-    closers = ']})>'
+    openers = "[{(<"
+    closers = "]})>"
     opener_to_closer = dict(zip(openers, closers))
     opening_bracket = dict()
-    current_string = ''
+    current_string = ""
     depth = 0
     for c in string:
         if c in openers:
@@ -1105,43 +1140,46 @@ def _bracketed_split(string, delimiter, strip_brackets=False):
             if strip_brackets and depth == 1:
                 continue
         elif c in closers:
-            assert depth > 0, f"You exited more brackets that we have entered in string {string}"
-            assert c == opener_to_closer[opening_bracket[
-                depth]], f"Closing bracket {c} did not match opening bracket {opening_bracket[depth]} in string {string}"
+            assert (
+                depth > 0
+            ), f"You exited more brackets that we have entered in string {string}"
+            assert (
+                c == opener_to_closer[opening_bracket[depth]]
+            ), f"Closing bracket {c} did not match opening bracket {opening_bracket[depth]} in string {string}"
             depth -= 1
             if strip_brackets and depth == 0:
                 continue
         if depth == 0 and c == delimiter:
             yield current_string
-            current_string = ''
+            current_string = ""
         else:
             current_string += c
-    assert depth == 0, f'You did not close all brackets in string {string}'
+    assert depth == 0, f"You did not close all brackets in string {string}"
     yield current_string
 
 
 def _split_func_and_args(input_string):
-    func_name = ''
-    args = ''
+    func_name = ""
+    args = ""
     bracket_counter = 0
 
     for i, char in enumerate(input_string):
-        if char == '(':
+        if char == "(":
             if bracket_counter == 0:
                 func_name = input_string[:i].strip()
             bracket_counter += 1
 
-        if char == ')':
+        if char == ")":
             bracket_counter -= 1
 
-        if bracket_counter > 0 or (bracket_counter == 0 and char == ')'):
+        if bracket_counter > 0 or (bracket_counter == 0 and char == ")"):
             args += char
 
     args = args[1:-1]  # remove first '(' and last ‘)‘
-    if 'array' in func_name:
+    if "array" in func_name:
         # print ('func_array: ', func_name)
         return None
-    if '[' in func_name:
+    if "[" in func_name:
         # print('func_array: ', func_name)
         return None
 
@@ -1154,7 +1192,7 @@ def _strip_args(input_string):
     inp_str = _split_func_and_args(input_string)
     if inp_str is None:
         return None
-    return [s for s in _bracketed_split(inp_str, delimiter=',')]
+    return [s for s in _bracketed_split(inp_str, delimiter=",")]
 
 
 def str_to_dict(input_string):
@@ -1171,13 +1209,13 @@ def str_to_dict(input_string):
         return input_string
 
     for arg in _strip_args(input_string):
-        if '=' not in arg:
+        if "=" not in arg:
             # print(arg)
             return None
-        key, val = arg.split('=', 1)
+        key, val = arg.split("=", 1)
         key = key.strip()
-        if not key.startswith('_'):
-            if '(' in arg:
+        if not key.startswith("_"):
+            if "(" in arg:
                 arg_dict[key] = str_to_dict(val)
             else:
                 arg_dict[key] = eval(val)
@@ -1197,9 +1235,9 @@ def clone_node_with_inputs(node):
     Returns:
     A new node with the same inputs as the given node, but with outputs reset.
     """
-    lib_path = '.'.join(node.package_identifier.split('.')[1:])
-    node_lib_path = '.'.join([lib_path, node.label])
+    lib_path = ".".join(node.package_identifier.split(".")[1:])
+    node_lib_path = ".".join([lib_path, node.label])
     new_node = create_node(node_lib_path)
-    for k, v in node.inputs.to_dict()['channels'].items():
+    for k, v in node.inputs.to_dict()["channels"].items():
         new_node.inputs[k] = node.inputs[k].value
     return new_node

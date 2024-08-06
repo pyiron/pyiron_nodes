@@ -16,7 +16,9 @@ def M3GNet():
     import matgl
     from matgl.ext.ase import M3GNetCalculator
 
-    out = OutputEngine(calculator=M3GNetCalculator(matgl.load_model("M3GNet-MP-2021.2.8-PES")))
+    out = OutputEngine(
+        calculator=M3GNetCalculator(matgl.load_model("M3GNet-MP-2021.2.8-PES"))
+    )
     return out
 
 

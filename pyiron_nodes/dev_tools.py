@@ -7,13 +7,13 @@ from pathlib import Path
 
 class VarType:
     def __init__(
-            self,
-            value=None,
-            dat_type=None,
-            label: str = None,
-            store: int = 0,
-            generic: bool = None,
-            doc: str = None,
+        self,
+        value=None,
+        dat_type=None,
+        label: str = None,
+        store: int = 0,
+        generic: bool = None,
+        doc: str = None,
     ):
         self.value = value
         self.type = dat_type

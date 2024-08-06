@@ -7,14 +7,14 @@ from pyiron_workflow import as_macro_node
 
 @as_function_node("structure")
 def bulk(
-        name,
-        crystalstructure=None,
-        a=None,
-        c=None,
-        covera=None,
-        u=None,
-        orthorhombic=False,
-        cubic=False,
+    name,
+    crystalstructure=None,
+    a=None,
+    c=None,
+    covera=None,
+    u=None,
+    orthorhombic=False,
+    cubic=False,
 ):
     from pyiron_atomistics import _StructureFactory
 
@@ -32,7 +32,7 @@ def bulk(
 
 @as_macro_node("structure")
 def cubic_bulk_cell(
-        wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
+    wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
 ):
     from pyiron_nodes.atomistic.structure.transform import (
         create_vacancy,
