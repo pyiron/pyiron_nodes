@@ -42,7 +42,9 @@ def Arctan(x: Optional[list | np.ndarray] = None):
 
 
 @as_function_node("arctan2")
-def Arctan2(x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None):
+def Arctan2(
+    x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None
+):
     return np.arctan2(y, x)
 
 

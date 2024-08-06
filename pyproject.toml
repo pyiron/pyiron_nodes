@@ -1,34 +1,59 @@
 [build-system]
 requires = [
-    "pyiron_base",
+	"ase",
+	"matgl",
+	"matplotlib",
+	"numpy",
+	"pandas",
+	"phonopy",
+	"pyiron_atomistics",
+	"pyiron_base",
+	"pyiron_contrib",
+	"pymatgen",
+	"scipy",
+	"sqlalchemy",
+	"structuretoolkit",
     "setuptools",
     "versioneer[toml]==0.29",
 ]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyiron_module_template"
-description = "pyiron_module_template - Your pyiron-like module."
+name = "pyiron_nodes"
+description = "pyiron_nodes - Nodes for `pyiron_workflows` with a focus on atomistic workflows."
 readme = "docs/README.md"
 keywords = [ "pyiron",]
-requires-python = ">=3.9, <3.13"
+requires-python = ">=3.10, <3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering",
     "License :: OSI Approved :: BSD License",
     "Intended Audience :: Science/Research",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.9",
+    "Operating System :: Unix",  # Because of Lammps dependency -- can change in the future
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pyiron_base==0.8.3"
+    "ase==3.23.0",
+	"matgl==1.1.2",
+	"matplotlib==3.9.1",
+	"nglview==3.1.2",
+	"numpy==1.26.4",
+	"pandas==2.2.2",
+	"phonopy==2.26.6",
+	"pyiron_atomistics==0.6.9",
+	"pyiron_base==0.9.10",
+	"pyiron_contrib==0.1.17",
+  	"pyiron_workflow==0.9.4",
+	"pymatgen==2024.7.18",
+	"scipy==1.14.0",
+	"sqlalchemy==2.0.31",
+	"structuretoolkit==0.0.27",
 ]
 dynamic = [ "version",]
 authors = [
-    { name = "Lorem Ipsum", email = "lorem@ipsum.com" },
+    { name = "Joerg Neugebauer"},
+    { name = "Liam Huber", email = "liamhuber@greyhavensolutions.com" },
 ]
 
 [project.license]
@@ -36,18 +61,18 @@ file = "LICENSE"
 
 [project.urls]
 Homepage = "https://pyiron.org/"
-Documentation = "https://pyiron_module_template.readthedocs.io"
-Repository = "https://github.com/pyiron/pyiron_module_template"
+Documentation = "https://pyiron_nodes.readthedocs.io"
+Repository = "https://github.com/pyiron/pyiron_nodes"
 
 [tool.versioneer]
 VCS = "git"
 style = "pep440-pre"
-versionfile_source = "pyiron_module_template/_version.py"
-parentdir_prefix = "pyiron_module_template"
-tag_prefix = "pyiron_module_template-"
+versionfile_source = "pyiron_nodes/_version.py"
+parentdir_prefix = "pyiron_nodes"
+tag_prefix = "pyiron_nodes-"
 
 [tool.setuptools.packages.find]
-include = [ "pyiron_module_template*",]
+include = [ "pyiron_nodes*",]
 
 [tool.setuptools.dynamic.version]
-attr = "pyiron_module_template.__version__"
+attr = "pyiron_nodes.__version__"

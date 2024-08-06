@@ -11,5 +11,5 @@ apidoc/
 test_times.dat
 core.*
 /notebooks/example_obsolete.ipynb
-/notebooks/node_library/
+/notebooks/pyiron_nodes/
 /notebooks/Sin/
