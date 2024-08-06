@@ -11,4 +11,4 @@ jobs:
     uses: pyiron/actions/.github/workflows/tests-and-coverage.yml@actions-3.2.1
     secrets: inherit
     with:
-      python-version: '3.11'  # Instead of default 3.12
+      python-version: '3.11'  # Instead of default 3.12 due to matgl

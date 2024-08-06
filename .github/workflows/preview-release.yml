@@ -16,4 +16,4 @@ jobs:
     with:
       semantic-upper-bound: 'minor'
       publish-to-pypi: false
-      python-version: '3.11'  # Instead of default 3.12
+      python-version: '3.11'  # Instead of default 3.12 due to matgl
