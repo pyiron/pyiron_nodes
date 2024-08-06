@@ -1,0 +1,17 @@
+<net charge>
+0.0 <-- specifies the net charge of the unit cell (defaults to 0.0 if nothing specified)
+</net charge>
+<periodicity along A, B, and C vectors>
+.true. <--- specifies whether the first direction is periodic
+.true. <--- specifies whether the second direction is periodic
+.true. <--- specifies whether the third direction is periodic
+</periodicity along A, B, and C vectors>
+<atomic densities directory complete path>
+/cmmc/u/hmai/chargemol_09_26_2017/atomic_densities/
+</atomic densities directory complete path>
+<charge type>
+DDEC6 <-- specifies the charge type (DDEC3 or DDEC6)
+</charge type>
+<compute BOs>
+.true. <-- specifies whether to compute bond orders or not
+</compute BOs>
