@@ -1,0 +1,7 @@
+PAW_PBE Fe 06Sep2000                   
+   8.00000000000000     
+parameters from PSCTR are:
+   VRHFIN =Fe:  d7 s1
+   LEXCH  = PE
+   EATOM  =   500 eV
+   ENMAX  =  267.882; ENMIN  =  200.911 eV

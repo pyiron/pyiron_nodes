@@ -1,0 +1,5 @@
+EDIFF = 1e-05
+LAECHG = True
+LCHARGE = True
+NELM = 240
+NSW = 0
