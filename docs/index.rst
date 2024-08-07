@@ -1,4 +1,4 @@
-.. pyiron_module_template documentation master file
+.. pyiron_nodes documentation master file
 
 .. _index:
 

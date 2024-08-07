@@ -1,7 +1,7 @@
 import numpy as np
 
 from pyiron_workflow import Workflow, as_function_node
-from node_library.dev_tools import wf_data_class
+from pyiron_nodes.dev_tools import wf_data_class
 from dataclasses import field
 
 from atomistics.workflows.elastic.symmetry import (
@@ -41,18 +41,20 @@ class DataStructureContainer:
 
 
 @as_function_node()
-def elastic_constants(structure, calculator=None, engine=None, parameters=InputElasticTensor()):
+def elastic_constants(
+    structure, calculator=None, engine=None, parameters=InputElasticTensor()
+):
     structure_table = generate_structures(structure, parameters=parameters).pull()
 
     if engine is None:
-        from node_library.atomistic.engine.ase import M3GNet
-        from node_library.atomistic.engine.generic import OutputEngine
+        from pyiron_nodes.atomistic.engine.ase import M3GNet
+        from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
         engine = OutputEngine(calculator=M3GNet())
         # engine = M3GNet()
 
     if calculator is None:
-        from node_library.atomistic.calculator.ase import static as calculator
+        from pyiron_nodes.atomistic.calculator.ase import static as calculator
 
     # print ('engine (elastic): ', engine)
     # gs = calculator()  # (engine=engine.calculator)
@@ -60,7 +62,7 @@ def elastic_constants(structure, calculator=None, engine=None, parameters=InputE
 
     # df_new = gs.iter(engine=[engine.calculator], structure=structure_table.structure)  # , executor=None)
     df_new = gs.iter(structure=structure_table.structure)  # , executor=None)
-    df_new = extract_df(df_new, key='energy').run()
+    df_new = extract_df(df_new, key="energy").run()
     # print (df_new)
     structure_table["energy"] = df_new.energy
 
@@ -69,8 +71,8 @@ def elastic_constants(structure, calculator=None, engine=None, parameters=InputE
     return elastic
 
 
-@as_function_node('df')
-def extract_df(df, key='energy', col='out'):
+@as_function_node("df")
+def extract_df(df, key="energy", col="out"):
     val = [i[key][-1] for i in df.out.values]
     df[key] = val
     del df[col]
@@ -95,8 +97,9 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
 
 @as_function_node("structures")
 def generate_structures(
-        # structure, parameters: InputElasticTensor = InputElasticTensor()
-        structure, parameters=InputElasticTensor()
+    # structure, parameters: InputElasticTensor = InputElasticTensor()
+    structure,
+    parameters=InputElasticTensor(),
 ):
     # the following construct is not nice but works
     # it may be helpful to have another way of backconverting a node_class object into the original functions
@@ -165,7 +168,7 @@ def generate_structures(
 
 @wf_data_class()
 class OutputElasticAnalysis:
-    from node_library.development.hash_based_storage import str_to_dict
+    from pyiron_nodes.development.hash_based_storage import str_to_dict
 
     BV: int | float = 0
     GV: int | float = 0
@@ -193,8 +196,8 @@ class OutputElasticAnalysis:
 
 @as_function_node("structures")
 def analyse_structures(
-        data_df: DataStructureContainer,
-        parameters: InputElasticTensor = InputElasticTensor(),
+    data_df: DataStructureContainer,
+    parameters: InputElasticTensor = InputElasticTensor(),
 ):
     zero_strain_job_name = "s_e_0"
     structure = data_df.structure[0]  # [data_df.job_name == zero_strain_job_name]
@@ -229,10 +232,10 @@ def calculate_modulus(out: OutputElasticAnalysis):
 
     BV = (C[0, 0] + C[1, 1] + C[2, 2] + 2 * (C[0, 1] + C[0, 2] + C[1, 2])) / 9
     GV = (
-                 (C[0, 0] + C[1, 1] + C[2, 2])
-                 - (C[0, 1] + C[0, 2] + C[1, 2])
-                 + 3 * (C[3, 3] + C[4, 4] + C[5, 5])
-         ) / 15
+        (C[0, 0] + C[1, 1] + C[2, 2])
+        - (C[0, 1] + C[0, 2] + C[1, 2])
+        + 3 * (C[3, 3] + C[4, 4] + C[5, 5])
+    ) / 15
     EV = (9 * BV * GV) / (3 * BV + GV)
     nuV = (1.5 * BV - GV) / (3 * BV + GV)
     out.BV = BV
@@ -245,9 +248,9 @@ def calculate_modulus(out: OutputElasticAnalysis):
 
         BR = 1 / (S[0, 0] + S[1, 1] + S[2, 2] + 2 * (S[0, 1] + S[0, 2] + S[1, 2]))
         GR = 15 / (
-                4 * (S[0, 0] + S[1, 1] + S[2, 2])
-                - 4 * (S[0, 1] + S[0, 2] + S[1, 2])
-                + 3 * (S[3, 3] + S[4, 4] + S[5, 5])
+            4 * (S[0, 0] + S[1, 1] + S[2, 2])
+            - 4 * (S[0, 1] + S[0, 2] + S[1, 2])
+            + 3 * (S[3, 3] + S[4, 4] + S[5, 5])
         )
         ER = (9 * BR * GR) / (3 * BR + GR)
         nuR = (1.5 * BR - GR) / (3 * BR + GR)
@@ -299,7 +302,7 @@ def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
             C[j, i] = C[i, j]
 
     CONV = (
-            1e21 / scipy.constants.physical_constants["joule-electron volt relationship"][0]
+        1e21 / scipy.constants.physical_constants["joule-electron volt relationship"][0]
     )  # From eV/Ang^3 to GPa
 
     C *= CONV

@@ -1,7 +1,7 @@
 from typing import Optional
 from dataclasses import field
 
-from node_library.dev_tools import wf_data_class, wfMetaData
+from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
 
 
 @wf_data_class()
@@ -29,12 +29,16 @@ class OutputCalcStaticList:
     # from ase import Atoms
     import numpy as np
 
-    energies: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
+    energies: Optional[np.ndarray] = field(
+        default=None, metadata=wfMetaData(log_level=0)
+    )
     forces: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
     stresses: Optional[np.ndarray] = field(
         default=None, metadata=wfMetaData(log_level=10)
     )
-    structures: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=10))
+    structures: Optional[np.ndarray] = field(
+        default=None, metadata=wfMetaData(log_level=10)
+    )
 
 
 @wf_data_class()

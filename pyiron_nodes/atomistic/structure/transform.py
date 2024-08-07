@@ -13,7 +13,7 @@ def repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
 
 @as_function_node("structure")
 def apply_strain(
-        structure: Optional[Atoms] = None, strain: Union[float, int] = 0
+    structure: Optional[Atoms] = None, strain: Union[float, int] = 0
 ) -> Optional[Atoms]:
     # print("apply strain: ", strain)
     struct = structure.copy()
@@ -33,11 +33,11 @@ def create_vacancy(structure, index: int | None = 0):
 
 @as_function_node("structure")
 def rotate_axis_angle(
-        structure: Atoms,
-        angle: float | int = 0,
-        axis: list = [0, 0, 1],
-        center=(0, 0, 0),
-        rotate_cell: bool = False,
+    structure: Atoms,
+    angle: float | int = 0,
+    axis: list = [0, 0, 1],
+    center=(0, 0, 0),
+    rotate_cell: bool = False,
 ):
     """
     Rotate atoms based on a vector and an angle, or two vectors.

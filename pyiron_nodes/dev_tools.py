@@ -7,13 +7,13 @@ from pathlib import Path
 
 class VarType:
     def __init__(
-            self,
-            value=None,
-            dat_type=None,
-            label: str = None,
-            store: int = 0,
-            generic: bool = None,
-            doc: str = None,
+        self,
+        value=None,
+        dat_type=None,
+        label: str = None,
+        store: int = 0,
+        generic: bool = None,
+        doc: str = None,
     ):
         self.value = value
         self.type = dat_type
@@ -78,7 +78,7 @@ def set_replacer(node, node_dict):
     return replacer
 
 
-def register_libraries(libraries, library_path="pyiron_workflow.node_library"):
+def register_libraries(libraries, library_path="pyiron_workflow.pyiron_nodes"):
     import importlib
     from pyiron_workflow.workflow import Workflow
 
