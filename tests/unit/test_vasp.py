@@ -2,14 +2,28 @@ import unittest
 import os
 from pathlib import Path
 import shutil
-from pyiron_nodes.atomistic.engine.vasp import (vasp_job, run_job, create_WorkingDirectory, VaspInput, parse_VaspOutput, 
-                           get_default_POTCAR_paths, write_POTCAR, is_line_in_file, write_POSCAR, 
-                           write_INCAR, write_KPOINTS, write_VaspInputSet, check_convergence, stack_element_string)
+from pyiron_nodes.atomistic.engine.vasp import (
+    vasp_job,
+    run_job,
+    create_WorkingDirectory,
+    VaspInput,
+    parse_VaspOutput,
+    get_default_POTCAR_paths,
+    write_POTCAR,
+    is_line_in_file,
+    write_POSCAR,
+    write_INCAR,
+    write_KPOINTS,
+    write_VaspInputSet,
+    check_convergence,
+    stack_element_string,
+)
 from pymatgen.io.vasp.inputs import Incar, Kpoints
 from ase.build import bulk
 from pymatgen.io.ase import AseAtomsAdaptor
 from typing import List, Tuple
 import pandas as pd
+
 
 class TestVaspJob(unittest.TestCase):
     def setUp(self):
@@ -27,10 +41,14 @@ class TestVaspJob(unittest.TestCase):
         self.incar = Incar.from_dict(self.incar_dict)
         resources = Path(__file__).parent.parent.joinpath("resources", "vasp")
         self.POTCAR_library_path = str(resources.joinpath("POTCAR_lib").resolve())
-        self.vasp_input = VaspInput(self.structure, self.incar, pseudopot_lib_path=self.POTCAR_library_path)
+        self.vasp_input = VaspInput(
+            self.structure, self.incar, pseudopot_lib_path=self.POTCAR_library_path
+        )
         self.example_converged_path = str(resources.joinpath("example1").resolve())
         self.example_failed_path = str(resources.joinpath("example2").resolve())
-        self.POTCAR_specification_data = str(resources.joinpath("POTCAR_lib", "pseudopotential_PBE_data.csv").resolve())
+        self.POTCAR_specification_data = str(
+            resources.joinpath("POTCAR_lib", "pseudopotential_PBE_data.csv").resolve()
+        )
 
     def tearDown(self):
         if os.path.exists("./POTCAR"):
@@ -54,11 +72,11 @@ class TestVaspJob(unittest.TestCase):
         self.assertTrue(is_line_in_file(test_file, "This is a test line."))
         self.assertFalse(is_line_in_file(test_file, "This is not in the file."))
         os.remove(test_file)
-        
+
     def test_create_WorkingDirectory(self):
         create_WorkingDirectory(self.workdir)()
         self.assertTrue(os.path.exists(self.workdir))
-        
+
     def test_write_POSCAR(self):
         poscar_path = write_POSCAR(self.workdir, self.structure)
         self.assertTrue(os.path.exists(poscar_path))
@@ -95,18 +113,29 @@ class TestVaspJob(unittest.TestCase):
         # Further checks can be added here depending on the actual structure of the output
 
     def test_check_convergence(self):
-        converged = check_convergence(self.example_converged_path, filename_vasprun="vasprun.xml")()
+        converged = check_convergence(
+            self.example_converged_path, filename_vasprun="vasprun.xml"
+        )()
         self.assertTrue(converged)
 
-        converged = check_convergence(self.example_failed_path, filename_vasprun="vasprun.xml")()
+        converged = check_convergence(
+            self.example_failed_path, filename_vasprun="vasprun.xml"
+        )()
         self.assertFalse(converged)
-        
+
     def test_get_default_POTCAR_paths(self):
-        paths = get_default_POTCAR_paths(self.structure, pseudopot_lib_path=self.POTCAR_library_path, potcar_df=pd.read_csv(self.POTCAR_specification_data))
-        expected_paths = [os.path.join(self.POTCAR_library_path, "Fe", "POTCAR"),
-                          os.path.join(self.POTCAR_library_path, "Mn_pv", "POTCAR"),
-                          os.path.join(self.POTCAR_library_path, "Fe", "POTCAR")]
+        paths = get_default_POTCAR_paths(
+            self.structure,
+            pseudopot_lib_path=self.POTCAR_library_path,
+            potcar_df=pd.read_csv(self.POTCAR_specification_data),
+        )
+        expected_paths = [
+            os.path.join(self.POTCAR_library_path, "Fe", "POTCAR"),
+            os.path.join(self.POTCAR_library_path, "Mn_pv", "POTCAR"),
+            os.path.join(self.POTCAR_library_path, "Fe", "POTCAR"),
+        ]
         self.assertEqual(paths, expected_paths)
 
+
 if __name__ == "__main__":
-    unittest.main(argv=[''], verbosity=2, exit=False)
+    unittest.main(argv=[""], verbosity=2, exit=False)
