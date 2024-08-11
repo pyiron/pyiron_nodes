@@ -76,10 +76,7 @@ def create_phonopy(
     )
 
     from pyiron_nodes.atomistic.calculator.ase import static as calculator
-<<<<<<< HEAD
 
-=======
->>>>>>> 65614e7 (Rename "node_library" to "pyiron_nodes" throughout)
     gs = calculator(engine=engine)
     df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)
     # print ('df: ', df_new)
