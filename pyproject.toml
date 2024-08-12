@@ -37,7 +37,7 @@ dependencies = [
     "ase==3.23.0",
 	"atomistics==0.1.31",
 	"matgl==1.1.2",
-	"matplotlib==3.9.1",
+	"matplotlib==3.9.1.post1",
 	"nglview==3.1.2",
 	"numpy==1.26.4",
 	"pandas==2.2.2",
