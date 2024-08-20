@@ -61,18 +61,20 @@ def create_phonopy(
         engine=None,
         executor=None,
         max_workers=1,
-        parameters: Optional[InputPhonopyGenerateSupercells | dict] = None,
+        parameters: Optional[InputPhonopyGenerateSupercells | dict] = InputPhonopyGenerateSupercells(),
 ):
     from phonopy import Phonopy
     from structuretoolkit.common import atoms_to_phonopy
     import pyiron_workflow
+    import warnings
+    warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
     phonopy = Phonopy(unitcell=atoms_to_phonopy(structure))
 
     cells = generate_supercells(
         phonopy,
         parameters=parameters,
-        #parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
+        # parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
     )
 
     from node_library.atomistic.calculator.ase import static as calculator

@@ -7,7 +7,7 @@ from pyiron_workflow import as_macro_node
 
 @as_function_node("structure")
 def bulk(
-        name,
+        name='Al',
         crystalstructure=None,
         a=None,
         c=None,
@@ -32,7 +32,7 @@ def bulk(
 
 @as_macro_node("structure")
 def cubic_bulk_cell(
-        wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
+        wf, element: str = 'Al', cell_size: int = 3, vacancy_index: int | None = None
 ):
     from node_library.atomistic.structure.transform import (
         create_vacancy,

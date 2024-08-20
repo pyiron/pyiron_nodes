@@ -18,7 +18,24 @@ def Scatter(
 ):
     from matplotlib import pyplot as plt
 
-    return plt.scatter(x, y)
+    plt.scatter(x, y)
+    return plt.show()
+
+
+@as_function_node("fig")
+def ShowArray(mat: Optional[np.ndarray]):
+    from matplotlib import pyplot as plt
+
+    plt.imshow(mat)
+    return plt.show()
+
+
+@as_function_node("fig")
+def Histogram(x: Optional[list | np.ndarray], bins: int = 50):
+    from matplotlib import pyplot as plt
+
+    plt.hist(x, bins=bins)
+    return plt.show()
 
 
 @as_function_node("axis")
@@ -90,6 +107,8 @@ def Title(
 nodes = [
     Scatter,
     Plot,
+    Histogram,
+    ShowArray,
     Linspace,
     Mean,
     Subplot,
