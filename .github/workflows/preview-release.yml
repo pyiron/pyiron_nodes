@@ -11,8 +11,9 @@ on:
 
 jobs:
   pyiron:
-    uses: pyiron/actions/.github/workflows/pyproject-release.yml@actions-3.1.0
+    uses: pyiron/actions/.github/workflows/pyproject-release.yml@actions-3.2.1
     secrets: inherit
     with:
       semantic-upper-bound: 'minor'
       publish-to-pypi: false
+      python-version: '3.11'  # Instead of default 3.12 due to matgl

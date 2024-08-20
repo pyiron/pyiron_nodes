@@ -31,15 +31,15 @@ def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
 
 @as_function_node("parameters")
 def PhonopyParameters(
-        distance: float = 0.01,
-        is_plusminus: Union[str, bool] = "auto",
-        is_diagonal: bool = True,
-        is_trigonal: bool = False,
-        number_of_snapshots: Optional[int] = None,
-        random_seed: Optional[int] = None,
-        temperature: Optional[float] = None,
-        cutoff_frequency: Optional[float] = None,
-        max_distance: Optional[float] = None,
+    distance: float = 0.01,
+    is_plusminus: Union[str, bool] = "auto",
+    is_diagonal: bool = True,
+    is_trigonal: bool = False,
+    number_of_snapshots: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    temperature: Optional[float] = None,
+    cutoff_frequency: Optional[float] = None,
+    max_distance: Optional[float] = None,
 ) -> dict:
     return {
         "distance": distance,
@@ -83,8 +83,8 @@ def create_phonopy(
     # print ('df: ', df_new)
     # print ('dataframe: ', df_new.out.keys())
     # return df_new
-    df_new = extract_df(df_new, key='energy')
-    df_new = extract_df(df_new, key='forces', col='out')
+    df_new = extract_df(df_new, key="energy")
+    df_new = extract_df(df_new, key="forces", col="out")
     phonopy.forces = df_new.forces
 
     # could be automatized (out = collect(gs, log_level))
@@ -96,7 +96,7 @@ def create_phonopy(
     return phonopy, out
 
 
-def extract_df(df, key='energy', col=None):
+def extract_df(df, key="energy", col=None):
     val = [i[key][-1] for i in df.out.values]
     df[key] = val
     if col is not None:
