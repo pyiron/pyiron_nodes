@@ -1,7 +1,7 @@
 from typing import Optional, Union
 
 from pyiron_workflow import as_function_node
-from node_library.dev_tools import wf_data_class, parse_input_kwargs
+from pyiron_nodes.dev_tools import wf_data_class, parse_input_kwargs
 
 from phonopy.api_phonopy import Phonopy
 
@@ -31,15 +31,15 @@ def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
 
 @as_function_node("parameters")
 def PhonopyParameters(
-    distance: float = 0.01,
-    is_plusminus: Union[str, bool] = "auto",
-    is_diagonal: bool = True,
-    is_trigonal: bool = False,
-    number_of_snapshots: Optional[int] = None,
-    random_seed: Optional[int] = None,
-    temperature: Optional[float] = None,
-    cutoff_frequency: Optional[float] = None,
-    max_distance: Optional[float] = None,
+        distance: float = 0.01,
+        is_plusminus: Union[str, bool] = "auto",
+        is_diagonal: bool = True,
+        is_trigonal: bool = False,
+        number_of_snapshots: Optional[int] = None,
+        random_seed: Optional[int] = None,
+        temperature: Optional[float] = None,
+        cutoff_frequency: Optional[float] = None,
+        max_distance: Optional[float] = None,
 ) -> dict:
     return {
         "distance": distance,
@@ -77,7 +77,7 @@ def create_phonopy(
         # parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
     )
 
-    from node_library.atomistic.calculator.ase import static as calculator
+    from pyiron_nodes.atomistic.calculator.ase import static as calculator
     gs = calculator(engine=engine)
     df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)
     # print ('df: ', df_new)
