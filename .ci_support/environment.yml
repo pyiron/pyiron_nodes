@@ -16,7 +16,7 @@ dependencies:
 - pyiron_contrib =0.1.17
 - pyiron-data =0.0.30
 - pyiron_workflow =0.9.4
-- pymatgen =2024.7.18
+- pymatgen =2024.8.9
 - scipy =1.14.0
 - sqlalchemy =2.0.31
 - structuretoolkit =0.0.27
