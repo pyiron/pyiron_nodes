@@ -7,7 +7,7 @@ from ase import Atoms
 
 
 @as_function_node("structure")
-def repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
+def repeat(structure: Optional[Atoms], repeat_scalar: int = 1) -> Atoms:
     return structure.repeat(repeat_scalar)
 
 
@@ -23,7 +23,7 @@ def apply_strain(
 
 
 @as_function_node()
-def create_vacancy(structure, index: int | None = 0):
+def create_vacancy(structure, index: Optional[int] = 0):
     structure = structure.copy()
     if index is not None:
         del structure[index]
