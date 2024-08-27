@@ -14,6 +14,3 @@ def static(structure=None, engine=None):  # , keys_to_store=None):
         calculator=InputCalcStatic(),  # keys_to_store=keys_to_store)
     )
     return output.generic
-
-
-nodes = [static]

@@ -1,8 +1,9 @@
-from pyiron_workflow import function_node
-from typing import Optional
+from __future__ import annotations
+
+from pyiron_workflow import as_function_node
 
 
-@function_node("dataframe")
+@as_function_node("dataframe")
 def de_jong(max_index: int | None = None, filename="ec.json"):
     """
     Expects the file to be the "ec.json" database referenced by:
@@ -34,8 +35,3 @@ def de_jong(max_index: int | None = None, filename="ec.json"):
     df["atoms"] = structures
 
     return df
-
-
-nodes = [
-    de_jong,
-]

@@ -40,7 +40,7 @@ class DataStructureContainer:
     stress: list = field(default_factory=lambda: [])
 
 
-@as_function_node()
+@as_function_node
 def elastic_constants(
     structure, calculator=None, engine=None, parameters=InputElasticTensor()
 ):
@@ -79,7 +79,7 @@ def extract_df(df, key="energy", col="out"):
     return df
 
 
-@as_function_node()
+@as_function_node
 def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTensor()):
     out = OutputElasticSymmetryAnalysis(structure)
 

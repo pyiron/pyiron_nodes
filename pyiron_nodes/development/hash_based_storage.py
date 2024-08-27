@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # Define functions needed to construct and utilize a hash based database for node storage
 # Could/should be later moved to pyiron_workflows
 
