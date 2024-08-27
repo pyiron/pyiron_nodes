@@ -1,14 +1,17 @@
 [build-system]
 requires = [
 	"ase",
+	"atomistics",
 	"matgl",
 	"matplotlib",
+	"nglview",
 	"numpy",
 	"pandas",
 	"phonopy",
 	"pyiron_atomistics",
 	"pyiron_base",
 	"pyiron_contrib",
+	"pyiron_workflow",
 	"pymatgen",
 	"scipy",
 	"sqlalchemy",
