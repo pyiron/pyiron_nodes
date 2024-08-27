@@ -14,7 +14,6 @@ from pyiron_nodes.dev_tools import FileObject, parse_input_kwargs
 from pyiron_nodes.dev_tools import wf_data_class
 
 
-
 @as_function_node("calculator")
 def Calc(parameters):
     from pyiron_atomistics.lammps.control import LammpsControl
