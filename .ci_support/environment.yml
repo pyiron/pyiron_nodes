@@ -20,4 +20,3 @@ dependencies:
 - scipy =1.14.1
 - sqlalchemy =2.0.32
 - structuretoolkit =0.0.28
-- numexpr >=2.10.0 # https://github.com/pyiron/pyiron_nodes/pull/59#issuecomment-2313082758
