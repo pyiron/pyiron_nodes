@@ -16,3 +16,4 @@ jobs:
       python-version-alt1: 'exclude'  # Is just 3.11
       python-version-alt3: 'exclude'  # No python 3.9
       runner-alt1: 'exclude'  # No windows tests due to Lammps
+      python-version-alt2: 'exclude'  # Temporary test https://github.com/pyiron/pyiron_nodes/pull/59#issuecomment-2313314481
