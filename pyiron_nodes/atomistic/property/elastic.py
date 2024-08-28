@@ -91,13 +91,6 @@ def ElasticConstants(
 def ExtractFinalEnergy(df):
     return [getattr(e, "energy")[-1] for e in df["out"].tolist()]
 
-@as_function_node("df")
-def ExtractDf(df, key="energy", col="out"):
-    val = [i[key][-1] for i in df.out.values]
-    df[key] = val
-    del df[col]
-    return df
-
 
 @as_function_node
 def SymmetryAnalysis(
