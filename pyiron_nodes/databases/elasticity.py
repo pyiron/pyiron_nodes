@@ -1,5 +1,6 @@
-from pyiron_workflow import as_function_node
+from __future__ import annotations
 
+from pyiron_workflow import as_function_node
 
 @as_function_node("dataframe")
 def de_jong(max_index: int | None = None, file_name="ec.json"):
@@ -38,8 +39,3 @@ def de_jong(max_index: int | None = None, file_name="ec.json"):
     df["atoms"] = structures
 
     return df
-
-
-nodes = [
-    de_jong,
-]

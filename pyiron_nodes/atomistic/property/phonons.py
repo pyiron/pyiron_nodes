@@ -1,15 +1,17 @@
-from typing import Optional, Union
+from __future__ import annotations
 
-from pyiron_workflow import as_function_node
-from pyiron_nodes.dev_tools import wf_data_class, parse_input_kwargs
+from typing import Optional
 
 from phonopy.api_phonopy import Phonopy
+from pyiron_workflow import as_function_node
+
+from pyiron_nodes.dev_tools import wf_data_class, parse_input_kwargs
 
 
 @wf_data_class(doc_func=Phonopy.generate_displacements)
 class InputPhonopyGenerateSupercells:
     distance: float = 0.01
-    is_plusminus: Union[str, bool] = "auto"
+    is_plusminus: str | bool = "auto"
     is_diagonal: bool = True
     is_trigonal: bool = False
     number_of_snapshots: Optional[int] = None
@@ -19,7 +21,7 @@ class InputPhonopyGenerateSupercells:
     max_distance: Optional[float] = None
 
 
-# @function_node()
+# @as_function_node
 def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
     from structuretoolkit.common import phonopy_to_atoms
 
@@ -32,7 +34,7 @@ def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
 @as_function_node("parameters")
 def PhonopyParameters(
         distance: float = 0.01,
-        is_plusminus: Union[str, bool] = "auto",
+        is_plusminus: str | bool = "auto",
         is_diagonal: bool = True,
         is_trigonal: bool = False,
         number_of_snapshots: Optional[int] = None,
@@ -55,13 +57,13 @@ def PhonopyParameters(
 
 
 # The following function should be defined as a workflow macro (presently not possible)
-@as_function_node()
+@as_function_node
 def create_phonopy(
-        structure,
-        engine=None,
-        executor=None,
-        max_workers=1,
-        parameters: Optional[InputPhonopyGenerateSupercells | dict] = InputPhonopyGenerateSupercells(),
+    structure,
+    engine=None,
+    executor=None,
+    max_workers=1,
+    parameters: Optional[InputPhonopyGenerateSupercells | dict] = InputPhonopyGenerateSupercells(),
 ):
     from phonopy import Phonopy
     from structuretoolkit.common import atoms_to_phonopy
@@ -78,6 +80,7 @@ def create_phonopy(
     )
 
     from pyiron_nodes.atomistic.calculator.ase import static as calculator
+
     gs = calculator(engine=engine)
     df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)
     # print ('df: ', df_new)
@@ -104,7 +107,7 @@ def extract_df(df, key="energy", col=None):
     return df
 
 
-@as_function_node()
+@as_function_node
 def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
     import numpy as np
 
@@ -116,7 +119,7 @@ def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
     return dynamical_matrix
 
 
-@as_function_node()
+@as_function_node
 def get_eigenvalues(matrix):
     import numpy as np
 
@@ -124,7 +127,7 @@ def get_eigenvalues(matrix):
     return ew
 
 
-@as_function_node()
+@as_function_node
 def check_consistency(phonopy, tolerance: float = 1e-10):
     dyn_matrix = get_dynamical_matrix(phonopy).run()
     ew = get_eigenvalues(dyn_matrix).run()
@@ -138,7 +141,7 @@ def check_consistency(phonopy, tolerance: float = 1e-10):
     return has_imaginary_modes
 
 
-@as_function_node()
+@as_function_node
 def get_total_dos(phonopy, mesh=3 * [10]):
     from pandas import DataFrame
 
@@ -147,14 +150,3 @@ def get_total_dos(phonopy, mesh=3 * [10]):
     phonopy.run_total_dos()
     total_dos = DataFrame(phonopy.get_total_dos_dict())
     return total_dos
-
-
-nodes = [
-    #    generate_supercells,
-    create_phonopy,
-    PhonopyParameters,
-    get_dynamical_matrix,
-    get_eigenvalues,
-    check_consistency,
-    get_total_dos,
-]

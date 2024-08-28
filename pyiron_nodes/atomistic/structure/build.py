@@ -1,6 +1,6 @@
-from pyiron_workflow import as_function_node
-from pyiron_workflow import as_macro_node
+from __future__ import annotations
 
+from pyiron_workflow import as_function_node, as_macro_node
 from typing import Optional
 
 
@@ -47,6 +47,3 @@ def cubic_bulk_cell(
 
     wf.structure = create_vacancy(structure=wf.cell, index=vacancy_index)
     return wf.structure  # .outputs.structure
-
-
-nodes = [bulk, cubic_bulk_cell]

@@ -1,9 +1,6 @@
-# from pyiron_workflow.function import as_function_node
-from pyiron_workflow import as_macro_node
-from pyiron_workflow import Workflow
+from __future__ import annotations
 
-
-# Workflow.register("pyiron_nodes.atomistic", "atomistic")
+from pyiron_workflow import as_macro_node, Workflow
 
 
 @as_macro_node("chemical_potential")
@@ -15,9 +12,7 @@ def get_chemical_potential(
 
     import pyiron_nodes.atomistic as atomistic
 
-    wf.bulk = Workflow.create.atomistic.structure.build.bulk(
-        name=element
-    )  # con: no autocompletion
+    wf.bulk = atomistic.structure.build.bulk(name=element)  # con: no autocompletion
     wf.minimize = atomistic.calculator.ase.minimize(
         structure=wf.bulk, engine=engine
     )  # pressure = 0
@@ -25,6 +20,3 @@ def get_chemical_potential(
     wf.energy = atomistic.calculator.output.get_energy_last(calculator=wf.minimize)
 
     return wf.energy / wf.n_atoms
-
-
-nodes = [get_chemical_potential]

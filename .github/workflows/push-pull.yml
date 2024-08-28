@@ -9,10 +9,11 @@ on:
 
 jobs:
   pyiron:
-    uses: pyiron/actions/.github/workflows/push-pull.yml@actions-3.2.1
+    uses: pyiron/actions/.github/workflows/push-pull.yml@actions-3.3.0
     secrets: inherit
     with:
-      python-version: '3.11'  # Instead of default 3.12 due to matgl
-      python-version-alt1: 'exclude'  # Is just 3.11
-      python-version-alt3: 'exclude'  # No python 3.9
+      python-version: '3.12'
+      python-version-alt1: '3.11'
+      python-version-alt2: 'exclude'
+      python-version-alt3: 'exclude'
       runner-alt1: 'exclude'  # No windows tests due to Lammps
