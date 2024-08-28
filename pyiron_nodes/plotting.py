@@ -13,9 +13,7 @@ from pyiron_workflow import as_function_node
 
 
 @as_function_node("fig")
-def PlotDataFrame(
-        df: pandas.DataFrame, x: Optional[list | np.ndarray] = None
-):
+def PlotDataFrame(df: pandas.DataFrame, x: Optional[list | np.ndarray] = None):
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()

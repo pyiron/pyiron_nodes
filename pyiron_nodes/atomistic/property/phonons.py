@@ -33,15 +33,15 @@ def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
 
 @as_function_node("parameters")
 def PhonopyParameters(
-        distance: float = 0.01,
-        is_plusminus: str | bool = "auto",
-        is_diagonal: bool = True,
-        is_trigonal: bool = False,
-        number_of_snapshots: Optional[int] = None,
-        random_seed: Optional[int] = None,
-        temperature: Optional[float] = None,
-        cutoff_frequency: Optional[float] = None,
-        max_distance: Optional[float] = None,
+    distance: float = 0.01,
+    is_plusminus: str | bool = "auto",
+    is_diagonal: bool = True,
+    is_trigonal: bool = False,
+    number_of_snapshots: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    temperature: Optional[float] = None,
+    cutoff_frequency: Optional[float] = None,
+    max_distance: Optional[float] = None,
 ) -> dict:
     return {
         "distance": distance,
@@ -63,13 +63,16 @@ def create_phonopy(
     engine=None,
     executor=None,
     max_workers=1,
-    parameters: Optional[InputPhonopyGenerateSupercells | dict] = InputPhonopyGenerateSupercells(),
+    parameters: Optional[
+        InputPhonopyGenerateSupercells | dict
+    ] = InputPhonopyGenerateSupercells(),
 ):
     from phonopy import Phonopy
     from structuretoolkit.common import atoms_to_phonopy
     import pyiron_workflow
     import warnings
-    warnings.simplefilter(action='ignore', category=DeprecationWarning)
+
+    warnings.simplefilter(action="ignore", category=DeprecationWarning)
 
     phonopy = Phonopy(unitcell=atoms_to_phonopy(structure))
 
