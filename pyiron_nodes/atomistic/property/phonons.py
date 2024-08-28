@@ -86,9 +86,10 @@ def ExtractFinalForces(df):
 
 
 @as_function_node
-def GetDynamicalMatrix(phonopy, q=[0, 0, 0]):
+def GetDynamicalMatrix(phonopy, q=None):
     import numpy as np
 
+    q = [0, 0, 0] if q is None else q
     if phonopy.dynamical_matrix is None:
         phonopy.produce_force_constants()
         phonopy.dynamical_matrix.run(q=q)
@@ -120,8 +121,10 @@ def check_consistency(phonopy, tolerance: float = 1e-10):
 
 
 @as_function_node
-def GetTotalDos(phonopy, mesh=3 * [10]):
+def GetTotalDos(phonopy, mesh=None):
     from pandas import DataFrame
+
+    mesh = 3 * [10] if mesh is None else mesh
 
     phonopy.produce_force_constants()
     phonopy.run_mesh(mesh=mesh)
