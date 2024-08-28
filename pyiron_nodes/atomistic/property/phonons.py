@@ -58,7 +58,7 @@ def PhonopyParameters(
 
 # The following function should be defined as a workflow macro (presently not possible)
 @as_function_node
-def create_phonopy(
+def CreatePhonopy(
     structure,
     engine=None,
     executor=None,
@@ -111,7 +111,7 @@ def extract_df(df, key="energy", col=None):
 
 
 @as_function_node
-def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
+def GetDynamicalMatrix(phonopy, q=[0, 0, 0]):
     import numpy as np
 
     if phonopy.dynamical_matrix is None:
@@ -123,7 +123,7 @@ def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
 
 
 @as_function_node
-def get_eigenvalues(matrix):
+def GetEigenvalues(matrix):
     import numpy as np
 
     ew = np.linalg.eigvalsh(matrix)
@@ -132,8 +132,8 @@ def get_eigenvalues(matrix):
 
 @as_function_node
 def check_consistency(phonopy, tolerance: float = 1e-10):
-    dyn_matrix = get_dynamical_matrix(phonopy).run()
-    ew = get_eigenvalues(dyn_matrix).run()
+    dyn_matrix = GetDynamicalMatrix(phonopy).run()
+    ew = GetEigenvalues(dyn_matrix).run()
 
     ew_lt_zero = ew[ew < -tolerance]
     if len(ew_lt_zero) > 0:
@@ -145,7 +145,7 @@ def check_consistency(phonopy, tolerance: float = 1e-10):
 
 
 @as_function_node
-def get_total_dos(phonopy, mesh=3 * [10]):
+def GetTotalDos(phonopy, mesh=3 * [10]):
     from pandas import DataFrame
 
     phonopy.produce_force_constants()
