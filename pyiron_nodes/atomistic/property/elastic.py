@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from dataclasses import field
 
-from atomistics.workflows.elastic.symmetry import (
-    find_symmetry_group_number,
-    get_C_from_A2,
-    get_LAG_Strain_List,
-    get_symmetry_family_from_SGN,
-    Ls_Dic,
-)
+import atomistics.workflows.elastic.symmetry as sym
 import numpy as np
 from pyiron_workflow import as_function_node
 
@@ -93,10 +87,10 @@ def SymmetryAnalysis(
     parameters = InputElasticTensor() if parameters is None else parameters
     out = OutputElasticSymmetryAnalysis(structure)
 
-    out.SGN = find_symmetry_group_number(structure)
+    out.SGN = sym.find_symmetry_group_number(structure)
     out.v0 = structure.get_volume()
-    out.LC = get_symmetry_family_from_SGN(out.SGN)
-    out.Lag_strain_list = get_LAG_Strain_List(out.LC)
+    out.LC = sym.get_symmetry_family_from_SGN(out.SGN)
+    out.Lag_strain_list = sym.get_LAG_Strain_List(out.LC)
 
     out.epss = np.linspace(
         -parameters.eps_range, parameters.eps_range, parameters.num_of_point
@@ -119,7 +113,7 @@ def GenerateStructures(
         structure_dict[zero_strain_job_name] = structure.copy()
 
     for lag_strain in analysis.Lag_strain_list:
-        Ls_list = Ls_Dic[lag_strain]
+        Ls_list = sym.Ls_Dic[lag_strain]
         for eps in analysis.epss:
             if eps == 0.0:
                 continue
@@ -303,7 +297,7 @@ def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
         A2.append(coeffs[fit_order - 2])
 
     A2 = np.array(A2)
-    C = get_C_from_A2(A2, LC)
+    C = sym.get_C_from_A2(A2, LC)
 
     for i in range(5):
         for j in range(i + 1, 6):
