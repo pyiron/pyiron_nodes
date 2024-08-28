@@ -69,9 +69,15 @@ def ElasticConstants(
     )  # This is not functional and idempotent!
     # With phonopy we had little choice, but here we can change our own architecture
 
-    self.elastic = AnalyseStructures(
-        data_df=self.liam_doesnt_like_this,  # Just the mutated copy of structure_table
+    self.symmetry_analysis = SymmetryAnalysis(
+        self.liam_doesnt_like_this.structure[0],  # Uses node injection to drill down
         parameters=parameters
+    )
+
+    self.elastic = AnalyseStructures(
+        data_df=self.liam_doesnt_like_this,  # Merely a mutated copy of structure_table
+        analysis=self.symmetry_analysis,
+        parameters=parameters,
     )
 
     return self.elastic
@@ -93,7 +99,7 @@ def ExtractDf(df, key="energy", col="out"):
 def SymmetryAnalysis(
     structure,
     parameters: InputElasticTensor | None
-):
+) -> OutputElasticSymmetryAnalysis:
 
     parameters = InputElasticTensor() if parameters is None else parameters
     out = OutputElasticSymmetryAnalysis(structure)
@@ -210,11 +216,10 @@ class OutputElasticAnalysis:
 @as_function_node("structures")
 def AnalyseStructures(
     data_df: DataStructureContainer,
+    analysis: OutputElasticSymmetryAnalysis,
     parameters: InputElasticTensor | None = None,
-):
+) -> OutputElasticAnalysis:
     zero_strain_job_name = "s_e_0"
-    structure = data_df.structure[0]  # [data_df.job_name == zero_strain_job_name]
-    analysis = SymmetryAnalysis(structure, parameters).run()
 
     epss = analysis.epss
     Lag_strain_list = analysis.Lag_strain_list
