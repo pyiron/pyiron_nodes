@@ -23,7 +23,7 @@ def Static(
     out.energy = np.array(
         [float(structure.get_potential_energy())]
     )  # TODO: originally of type np.float32 -> why??
-    out.forces = np.array([structure.get_forces()])
+    out.force = np.array([structure.get_forces()])
 
     return out
 
