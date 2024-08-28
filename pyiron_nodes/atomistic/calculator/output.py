@@ -1,5 +1,8 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from pyiron_workflow import as_function_node
-from typing import Optional, Union
 
 from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize, OutputCalcStatic
 
@@ -15,6 +18,3 @@ def get_energy_last(
     return energy_last
     # print ('energy_last:', calculator.energy[-1], type(calculator.energy[-1]))
     # return calculator.energy[-1]
-
-
-nodes = [get_energy_last]

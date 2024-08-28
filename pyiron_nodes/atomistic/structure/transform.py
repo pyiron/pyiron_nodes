@@ -1,9 +1,8 @@
+from __future__ import annotations
+
+from ase import Atoms
 from pyiron_workflow import as_function_node
 from typing import Optional, Union
-
-# Huge savings when replacing pyiron_atomistics atoms class with ase one!! (> 5s vs 40 ms)
-# from pyiron_atomistics.atomistics.structure.atoms import Atoms
-from ase import Atoms
 
 
 @as_function_node("structure")
@@ -22,7 +21,7 @@ def apply_strain(
     return struct
 
 
-@as_function_node()
+@as_function_node
 def create_vacancy(structure, index: int | None = 0):
     structure = structure.copy()
     if index is not None:
@@ -58,11 +57,3 @@ def rotate_axis_angle(
     structure_rotated = structure.copy()
     structure_rotated.rotate(a=angle, v=axis, center=center, rotate_cell=rotate_cell)
     return structure_rotated
-
-
-nodes = [
-    repeat,
-    apply_strain,
-    create_vacancy,
-    rotate_axis_angle,
-]

@@ -10,15 +10,14 @@ from pyiron_atomistics import Project, _StructureFactory
 from pyiron_atomistics.atomistics.job.atomistic import AtomisticGenericJob
 from pyiron_atomistics.atomistics.structure.atoms import Atoms
 from pyiron_atomistics.lammps.lammps import Lammps as LammpsJob
-
-from pyiron_workflow.function import function_node
+from pyiron_workflow import function_node, as_function_node
 
 
 Bulk = function_node("structure")(_StructureFactory().bulk)
 Bulk.__name__ = "Bulk"
 
 
-@function_node("job")
+@as_function_node("job")
 def Lammps(structure: Optional[Atoms] = None) -> LammpsJob:
     pr = Project(".")
     job = pr.atomistics.job.Lammps("NOTAREALNAME")
@@ -84,7 +83,7 @@ def _run_and_remove_job(job, modifier: Optional[callable] = None, **modifier_kwa
     )
 
 
-@function_node(
+@as_function_node(
     "cells",
     "displacements",
     "energy_pot",
@@ -106,7 +105,7 @@ def CalcStatic(
     return _run_and_remove_job(job=job)
 
 
-@function_node(
+@as_function_node(
     "cells",
     "displacements",
     "energy_pot",
@@ -153,7 +152,7 @@ def CalcMd(
     )
 
 
-@function_node(
+@as_function_node(
     "cells",
     "displacements",
     "energy_pot",
@@ -194,12 +193,3 @@ def CalcMin(
         n_print=n_print,
         pressure=pressure,
     )
-
-
-nodes = [
-    Bulk,
-    CalcMd,
-    CalcMin,
-    CalcStatic,
-    Lammps,
-]

@@ -1,7 +1,7 @@
 from pyiron_workflow import as_function_node
 
 
-@as_function_node()
+@as_function_node
 def static(
     structure=None, engine=None, keys_to_store=None, job_name=None
 ):  # , _internal=None
@@ -96,9 +96,3 @@ def minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
     out.iter_steps = dyn.nsteps
 
     return out
-
-
-nodes = [
-    static,
-    minimize,
-]

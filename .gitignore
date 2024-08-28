@@ -13,3 +13,4 @@ core.*
 /notebooks/example_obsolete.ipynb
 /notebooks/pyiron_nodes/
 /notebooks/Sin/
+/tests/integration/test_notebooks.py
