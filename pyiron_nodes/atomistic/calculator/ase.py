@@ -1,15 +1,14 @@
+from ase import Atoms
 from pyiron_workflow import as_function_node
 
 
 @as_function_node
 def Static(
-    structure=None, engine=None, keys_to_store=None, job_name=None
-):  # , _internal=None
+    structure: Atoms,
+    engine=None,
+):
     import numpy as np
-    from pyiron_nodes.atomistic.calculator.data import (
-        OutputCalcStatic,
-        OutputCalcStaticList,
-    )
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
 
     if engine is None:
         from ase.calculators.emt import EMT
@@ -17,43 +16,16 @@ def Static(
 
         engine = OutputEngine(calculator=EMT())
 
-    # print ('engine: ', engine)
-    # print ('engine (calculator): ', engine.calculator)
-    import ase
-    import pyiron_nodes.atomistic.property.elastic as elastic
 
-    if isinstance(structure, ase.atoms.Atoms):
-        structure.calc = engine.calculator
+    structure.calc = engine.calculator
 
-        out = OutputCalcStatic()
-        # out['structure'] = atoms # not needed since identical to input
-        out.energy = np.array(
-            [float(structure.get_potential_energy())]
-        )  # TODO: originally of type np.float32 -> why??
-        out.forces = np.array([structure.get_forces()])
+    out = OutputCalcStatic()
+    out.energy = np.array(
+        [float(structure.get_potential_energy())]
+    )  # TODO: originally of type np.float32 -> why??
+    out.forces = np.array([structure.get_forces()])
 
-        # print("energy: ", out.energy)
-    elif isinstance(structure, np.ndarray):
-        print("Implement list")
-    elif isinstance(structure, elastic.DataStructureContainer):
-        print("structures from DataContainer")
-        structures = structure["structure"]
-        out = OutputCalcStaticList()
-        out.energies = []
-        for structure in structures:
-            structure.calc = engine.calculator
-
-            out.energies.append(np.array([float(structure.get_potential_energy())]))
-
-    else:
-        print("error (not implemented): ", type(structure))
-
-    # if _internal is not None:
-    #     out["iter_index"] = _internal[
-    #         "iter_index"
-    #     ]  # TODO: move _internal argument to decorator class
-
-    return out  # .select(keys_to_store)
+    return out
 
 
 @as_function_node("out")
