@@ -2,7 +2,7 @@ from pyiron_workflow import as_function_node
 
 
 @as_function_node
-def static(
+def Static(
     structure=None, engine=None, keys_to_store=None, job_name=None
 ):  # , _internal=None
     import numpy as np
@@ -57,7 +57,7 @@ def static(
 
 
 @as_function_node("out")
-def minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
+def Minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
     from ase.optimize import BFGS
     from ase.io.trajectory import Trajectory
     from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize

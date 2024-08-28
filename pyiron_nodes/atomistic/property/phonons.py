@@ -82,7 +82,7 @@ def CreatePhonopy(
         # parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
     )
 
-    from pyiron_nodes.atomistic.calculator.ase import static as calculator
+    from pyiron_nodes.atomistic.calculator.ase import Static as calculator
 
     gs = calculator(engine=engine)
     df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)

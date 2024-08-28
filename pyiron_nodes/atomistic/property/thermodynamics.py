@@ -13,7 +13,7 @@ def GetChemicalPotential(
     import pyiron_nodes.atomistic as atomistic
 
     wf.bulk = atomistic.structure.build.Bulk(name=element)
-    wf.minimize = atomistic.calculator.ase.minimize(
+    wf.minimize = atomistic.calculator.ase.Minimize(
         structure=wf.bulk, engine=engine
     )  # pressure = 0
     wf.n_atoms = atomistic.structure.calc.NumberOfAtoms(structure=wf.bulk)

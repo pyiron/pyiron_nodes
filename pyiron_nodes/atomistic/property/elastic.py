@@ -54,7 +54,7 @@ def ElasticConstants(
         # engine = M3GNet()
 
     if calculator is None:
-        from pyiron_nodes.atomistic.calculator.ase import static as calculator
+        from pyiron_nodes.atomistic.calculator.ase import Static as calculator
 
     # print ('engine (elastic): ', engine)
     # gs = calculator()  # (engine=engine.calculator)
