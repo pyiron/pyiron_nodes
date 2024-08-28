@@ -106,18 +106,12 @@ def GetEigenvalues(matrix):
     return ew
 
 
-@as_function_node
-def check_consistency(phonopy, tolerance: float = 1e-10):
-    dyn_matrix = GetDynamicalMatrix(phonopy).run()
-    ew = GetEigenvalues(dyn_matrix).run()
-
-    ew_lt_zero = ew[ew < -tolerance]
-    if len(ew_lt_zero) > 0:
-        print(f"WARNING: {len(ew_lt_zero)} imaginary modes exist")
-        has_imaginary_modes = True
-    else:
-        has_imaginary_modes = False
-    return has_imaginary_modes
+@as_macro_node
+def CheckConsistency(self, phonopy: Phonopy, tolerance: float = 1e-10):
+    self.dyn_matrix = GetDynamicalMatrix(phonopy).run()
+    self.ew = GetEigenvalues(self.dyn_matrix)
+    self.has_imaginary_modes = HasImaginaryModes(self.ew, tolerance)
+    return self.has_imaginary_modes
 
 
 @as_function_node
@@ -131,3 +125,14 @@ def GetTotalDos(phonopy, mesh=None):
     phonopy.run_total_dos()
     total_dos = DataFrame(phonopy.get_total_dos_dict())
     return total_dos
+
+
+@as_function_node
+def HasImaginaryModes(eigenvalues, tolerance: float = 1e-10) -> bool:
+    ew_lt_zero = eigenvalues[eigenvalues < -tolerance]
+    if len(ew_lt_zero) > 0:
+        print(f"WARNING: {len(ew_lt_zero)} imaginary modes exist")
+        has_imaginary_modes = True
+    else:
+        has_imaginary_modes = False
+    return has_imaginary_modes
