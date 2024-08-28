@@ -89,6 +89,7 @@ def ElasticConstants(
 
 @as_function_node("forces")
 def ExtractFinalEnergy(df):
+    # Looks an awful lot like phonons.ExtractFinalForce -- room for abstraction here
     return [getattr(e, "energy")[-1] for e in df["out"].tolist()]
 
 
