@@ -82,7 +82,7 @@ def Linspace(
 
 
 @as_function_node("mean")
-def Mean(numbers: Optional[list | np.ndarray] = None):
+def Mean(numbers: list | np.ndarray | float | int):
     return np.mean(numbers)
 
 
