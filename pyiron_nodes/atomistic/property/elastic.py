@@ -47,7 +47,7 @@ def ElasticConstants(
     structure,
     calculator=None,
     engine=None,
-    parameters=InputElasticTensor()
+    parameters: InputElasticTensor | None = None,
 ):
     structure_table = GenerateStructures(structure, parameters=parameters).pull()
 
@@ -85,7 +85,12 @@ def ExtractDf(df, key="energy", col="out"):
 
 
 @as_function_node
-def SymmetryAnalysis(structure, parameters: InputElasticTensor = InputElasticTensor()):
+def SymmetryAnalysis(
+    structure,
+    parameters: InputElasticTensor | None
+):
+
+    parameters = InputElasticTensor() if parameters is None else parameters
     out = OutputElasticSymmetryAnalysis(structure)
 
     out.SGN = find_symmetry_group_number(structure)
@@ -93,7 +98,6 @@ def SymmetryAnalysis(structure, parameters: InputElasticTensor = InputElasticTen
     out.LC = get_symmetry_family_from_SGN(out.SGN)
     out.Lag_strain_list = get_LAG_Strain_List(out.LC)
 
-    # print('eps_range: ', parameters, parameters.eps_range, parameters.num_of_point)
     out.epss = np.linspace(
         -parameters.eps_range, parameters.eps_range, parameters.num_of_point
     )
@@ -102,9 +106,8 @@ def SymmetryAnalysis(structure, parameters: InputElasticTensor = InputElasticTen
 
 @as_function_node("structures")
 def GenerateStructures(
-    # structure, parameters: InputElasticTensor = InputElasticTensor()
     structure,
-    parameters=InputElasticTensor(),
+    parameters: InputElasticTensor | None = None,
 ):
     # the following construct is not nice but works
     # it may be helpful to have another way of backconverting a node_class object into the original functions
@@ -202,7 +205,7 @@ class OutputElasticAnalysis:
 @as_function_node("structures")
 def AnalyseStructures(
     data_df: DataStructureContainer,
-    parameters: InputElasticTensor = InputElasticTensor(),
+    parameters: InputElasticTensor | None = None,
 ):
     zero_strain_job_name = "s_e_0"
     structure = data_df.structure[0]  # [data_df.job_name == zero_strain_job_name]
