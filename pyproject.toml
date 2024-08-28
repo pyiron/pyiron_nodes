@@ -26,15 +26,15 @@ name = "pyiron_nodes"
 description = "pyiron_nodes - Nodes for `pyiron_workflows` with a focus on atomistic workflows."
 readme = "docs/README.md"
 keywords = [ "pyiron",]
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11, <3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering",
     "License :: OSI Approved :: BSD License",
     "Intended Audience :: Science/Research",
     "Operating System :: Unix",  # Because of Lammps dependency -- can change in the future
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "ase==3.23.0",
