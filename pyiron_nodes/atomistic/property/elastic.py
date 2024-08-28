@@ -53,6 +53,11 @@ def ElasticConstants(
     # some of the "generic" stuff doesn't work
     parameters: InputElasticTensor | None = None,
 ):
+    self.symmetry_analysis = SymmetryAnalysis(
+        structure,
+        parameters=parameters
+    )
+
     self.structure_table = GenerateStructures(structure, parameters=parameters)
     self.gs = for_node(
         body_node_class=Static,
@@ -68,11 +73,6 @@ def ElasticConstants(
         self.gs_energy
     )  # This is not functional and idempotent!
     # With phonopy we had little choice, but here we can change our own architecture
-
-    self.symmetry_analysis = SymmetryAnalysis(
-        self.liam_doesnt_like_this.structure[0],  # Uses node injection to drill down
-        parameters=parameters
-    )
 
     self.elastic = AnalyseStructures(
         data_df=self.liam_doesnt_like_this,  # Merely a mutated copy of structure_table
