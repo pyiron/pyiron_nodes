@@ -37,12 +37,12 @@ def CubicBulkCell(
     wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
 ):
     from pyiron_nodes.atomistic.structure.transform import (
-        create_vacancy,
-        repeat,
+        CreateVacancy,
+        Repeat,
     )
 
     wf.bulk = Bulk(name=element, cubic=True)
-    wf.cell = repeat(structure=wf.bulk, repeat_scalar=cell_size)
+    wf.cell = Repeat(structure=wf.bulk, repeat_scalar=cell_size)
 
-    wf.structure = create_vacancy(structure=wf.cell, index=vacancy_index)
+    wf.structure = CreateVacancy(structure=wf.cell, index=vacancy_index)
     return wf.structure
