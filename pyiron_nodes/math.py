@@ -46,6 +46,3 @@ def Arctan2(
     x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None
 ):
     return np.arctan2(y, x)
-
-
-nodes = [Sin, Cos, Tan, Arcsin, Arccos, Arctan, Arctan2]
