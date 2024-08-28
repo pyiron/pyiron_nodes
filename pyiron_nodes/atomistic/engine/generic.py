@@ -1,5 +1,7 @@
-from typing import Optional
+from __future__ import annotations
+
 from dataclasses import field
+from typing import Optional
 
 from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
 

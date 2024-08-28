@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # introduce node dataclass object to serialize and deserialize nodes
 import pyiron_nodes.development.hash_based_storage as hs
 
