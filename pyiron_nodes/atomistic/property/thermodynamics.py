@@ -16,7 +16,7 @@ def get_chemical_potential(
     wf.minimize = atomistic.calculator.ase.minimize(
         structure=wf.bulk, engine=engine
     )  # pressure = 0
-    wf.n_atoms = atomistic.structure.calc.number_of_atoms(structure=wf.bulk)
+    wf.n_atoms = atomistic.structure.calc.NumberOfAtoms(structure=wf.bulk)
     wf.energy = atomistic.calculator.output.get_energy_last(calculator=wf.minimize)
 
     return wf.energy / wf.n_atoms
