@@ -4,8 +4,15 @@ from dataclasses import field
 
 import atomistics.workflows.elastic.symmetry as sym
 import numpy as np
-from pyiron_workflow import as_function_node
+from pyiron_workflow import (
+    as_function_node,
+    as_macro_node,
+    for_node,
+    standard_nodes as standard,
+)
 
+from pyiron_nodes.atomistic.calculator.ase import Static
+from pyiron_nodes.atomistic.engine.generic import OutputEngine
 from pyiron_nodes.dev_tools import wf_data_class
 
 
@@ -36,39 +43,43 @@ class DataStructureContainer:
     stress: list = field(default_factory=lambda: [])
 
 
-@as_function_node
+@as_macro_node
 def ElasticConstants(
+    self,
     structure,
-    calculator=None,
-    engine=None,
+    engine: OutputEngine | None = None,
+    # But OutputEngine had better be holding a ase.calculators.calculator.BaseCalculator
+    # There is too much misdirection for me to track everything right now, but I think
+    # some of the "generic" stuff doesn't work
     parameters: InputElasticTensor | None = None,
 ):
-    structure_table = GenerateStructures(structure, parameters=parameters).pull()
+    self.structure_table = GenerateStructures(structure, parameters=parameters)
+    self.gs = for_node(
+        body_node_class=Static,
+        iter_on=("structure",),
+        engine=engine,
+        structure=self.structure_table.structure,
+    )
+    self.gs_energy = ExtractFinalEnergy(self.gs)
 
-    if engine is None:
-        from pyiron_nodes.atomistic.engine.ase import M3GNet
-        from pyiron_nodes.atomistic.engine.generic import OutputEngine
+    self.liam_doesnt_like_this = standard.SetAttr(
+        self.structure_table,
+        "energy",
+        self.gs_energy
+    )  # This is not functional and idempotent!
+    # With phonopy we had little choice, but here we can change our own architecture
 
-        engine = OutputEngine(calculator=M3GNet())
-        # engine = M3GNet()
+    self.elastic = AnalyseStructures(
+        data_df=self.liam_doesnt_like_this,  # Just the mutated copy of structure_table
+        parameters=parameters
+    )
 
-    if calculator is None:
-        from pyiron_nodes.atomistic.calculator.ase import Static as calculator
+    return self.elastic
 
-    # print ('engine (elastic): ', engine)
-    # gs = calculator()  # (engine=engine.calculator)
-    gs = calculator(engine=engine)
 
-    # df_new = gs.iter(engine=[engine.calculator], structure=structure_table.structure)  # , executor=None)
-    df_new = gs.iter(structure=structure_table.structure)  # , executor=None)
-    df_new = ExtractDf(df_new, key="energy").run()
-    # print (df_new)
-    structure_table["energy"] = df_new.energy
-
-    elastic = AnalyseStructures(data_df=structure_table, parameters=parameters).run()
-
-    return elastic
-
+@as_function_node("forces")
+def ExtractFinalEnergy(df):
+    return [getattr(e, "energy")[-1] for e in df["out"].tolist()]
 
 @as_function_node("df")
 def ExtractDf(df, key="energy", col="out"):
