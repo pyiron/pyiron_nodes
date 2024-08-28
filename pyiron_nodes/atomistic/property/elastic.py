@@ -43,6 +43,34 @@ class DataStructureContainer:
     stress: list = field(default_factory=lambda: [])
 
 
+@wf_data_class()
+class OutputElasticAnalysis:
+    from pyiron_nodes.development.hash_based_storage import str_to_dict
+
+    BV: int | float = 0
+    GV: int | float = 0
+    EV: int | float = 0
+    nuV: int | float = 0
+    S: int | float = 0
+    BR: int | float = 0
+    GR: int | float = 0
+    ER: int | float = 0
+    nuR: int | float = 0
+    BH: int | float = 0
+    GH: int | float = 0
+    EH: int | float = 0
+    nuH: int | float = 0
+    AVR: int | float = 0
+    energy_0: float = 0
+    strain_energy: list = field(default_factory=lambda: [])
+    C: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    A2: list = field(default_factory=lambda: [])
+    C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    _serialize: callable = str_to_dict  # provide optional function for serialization
+    _skip_default_values = False
+
+
 @as_macro_node
 def ElasticConstants(
     self,
@@ -176,34 +204,6 @@ def GenerateStructures(
         structure=list(structure_dict.values()),
         job_name=list(structure_dict.keys())
     )
-
-
-@wf_data_class()
-class OutputElasticAnalysis:
-    from pyiron_nodes.development.hash_based_storage import str_to_dict
-
-    BV: int | float = 0
-    GV: int | float = 0
-    EV: int | float = 0
-    nuV: int | float = 0
-    S: int | float = 0
-    BR: int | float = 0
-    GR: int | float = 0
-    ER: int | float = 0
-    nuR: int | float = 0
-    BH: int | float = 0
-    GH: int | float = 0
-    EH: int | float = 0
-    nuH: int | float = 0
-    AVR: int | float = 0
-    energy_0: float = 0
-    strain_energy: list = field(default_factory=lambda: [])
-    C: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    A2: list = field(default_factory=lambda: [])
-    C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    _serialize: callable = str_to_dict  # provide optional function for serialization
-    _skip_default_values = False
 
 
 @as_function_node("structures")
