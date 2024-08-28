@@ -12,7 +12,7 @@ def get_chemical_potential(
 
     import pyiron_nodes.atomistic as atomistic
 
-    wf.bulk = atomistic.structure.build.bulk(name=element)  # con: no autocompletion
+    wf.bulk = atomistic.structure.build.Bulk(name=element)  # con: no autocompletion
     wf.minimize = atomistic.calculator.ase.minimize(
         structure=wf.bulk, engine=engine
     )  # pressure = 0
