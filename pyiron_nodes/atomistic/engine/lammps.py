@@ -299,18 +299,3 @@ def Code(
     )
 
     return wf.Collect
-
-
-nodes = [
-    Code,
-    InitLammps,
-    Potential,
-    ListPotentials,
-    Calc,
-    CalcMinimize,
-    CalcStatic,
-    ParseLogFile,
-    ParseDumpFile,
-    Collect,
-    Shell,
-]
