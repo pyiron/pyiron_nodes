@@ -58,7 +58,11 @@ def ElasticConstants(
         parameters=parameters
     )
 
-    self.structure_table = GenerateStructures(structure, parameters=parameters)
+    self.structure_table = GenerateStructures(
+        structure,
+        self.symmetry_analysis,
+        parameters=parameters
+    )
     self.gs = for_node(
         body_node_class=Static,
         iter_on=("structure",),
@@ -118,11 +122,9 @@ def SymmetryAnalysis(
 @as_function_node("structures")
 def GenerateStructures(
     structure,
+    analysis: OutputElasticSymmetryAnalysis,
     parameters: InputElasticTensor | None = None,
 ):
-    # the following construct is not nice but works
-    # it may be helpful to have another way of backconverting a node_class object into the original functions
-    analysis = SymmetryAnalysis(structure, parameters).run()
     structure_dict = {}
 
     zero_strain_job_name = "s_e_0"
@@ -165,7 +167,7 @@ def GenerateStructures(
                     norm = np.linalg.norm(x - eps_matrix)
                     eps_matrix = x
 
-            # --- Calculating the M_new matrix ---------------------------------------------------------
+            # --- Calculating the M_new matrix ---
             i_matrix = np.eye(3)
             def_matrix = i_matrix + eps_matrix
             scell = np.dot(structure.get_cell(), def_matrix)
@@ -176,12 +178,9 @@ def GenerateStructures(
 
             structure_dict[jobname] = struct
 
-        # df = pd.DataFrame(
-        #     dict(structure=structure_dict.values(), job_name=structure_dict.keys())
-        # )
-
     return DataStructureContainer(
-        structure=list(structure_dict.values()), job_name=list(structure_dict.keys())
+        structure=list(structure_dict.values()),
+        job_name=list(structure_dict.keys())
     )
 
 
