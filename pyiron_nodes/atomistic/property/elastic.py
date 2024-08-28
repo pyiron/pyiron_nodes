@@ -52,7 +52,7 @@ def ElasticConstants(
     # There is too much misdirection for me to track everything right now, but I think
     # some of the "generic" stuff doesn't work
     parameters: InputElasticTensor | None = None,
-):
+) -> OutputElasticAnalysis:
     self.symmetry_analysis = SymmetryAnalysis(
         structure,
         parameters=parameters
