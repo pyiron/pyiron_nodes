@@ -89,8 +89,8 @@ def CreatePhonopy(
     # print ('df: ', df_new)
     # print ('dataframe: ', df_new.out.keys())
     # return df_new
-    df_new = extract_df(df_new, key="energy")
-    df_new = extract_df(df_new, key="forces", col="out")
+    df_new = ExtractDf(df_new, key="energy")
+    df_new = ExtractDf(df_new, key="forces", col="out")
     phonopy.forces = df_new.forces
 
     # could be automatized (out = collect(gs, log_level))
@@ -102,7 +102,7 @@ def CreatePhonopy(
     return phonopy, out
 
 
-def extract_df(df, key="energy", col=None):
+def ExtractDf(df, key="energy", col=None):
     val = [i[key][-1] for i in df.out.values]
     df[key] = val
     if col is not None:

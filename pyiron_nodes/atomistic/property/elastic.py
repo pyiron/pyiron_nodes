@@ -1,6 +1,6 @@
 import numpy as np
 
-from pyiron_workflow import Workflow, as_function_node
+from pyiron_workflow import as_function_node
 from pyiron_nodes.dev_tools import wf_data_class
 from dataclasses import field
 
@@ -22,7 +22,7 @@ class OutputElasticSymmetryAnalysis:
     epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
-# @Workflow.wrap.as_dataclass_node
+# @as_dataclass_node
 @wf_data_class()
 class InputElasticTensor:
     num_of_point: int = 5
@@ -41,10 +41,10 @@ class DataStructureContainer:
 
 
 @as_function_node
-def elastic_constants(
+def ElasticConstants(
     structure, calculator=None, engine=None, parameters=InputElasticTensor()
 ):
-    structure_table = generate_structures(structure, parameters=parameters).pull()
+    structure_table = GenerateStructures(structure, parameters=parameters).pull()
 
     if engine is None:
         from pyiron_nodes.atomistic.engine.ase import M3GNet
@@ -62,17 +62,17 @@ def elastic_constants(
 
     # df_new = gs.iter(engine=[engine.calculator], structure=structure_table.structure)  # , executor=None)
     df_new = gs.iter(structure=structure_table.structure)  # , executor=None)
-    df_new = extract_df(df_new, key="energy").run()
+    df_new = ExtractDf(df_new, key="energy").run()
     # print (df_new)
     structure_table["energy"] = df_new.energy
 
-    elastic = analyse_structures(data_df=structure_table, parameters=parameters).run()
+    elastic = AnalyseStructures(data_df=structure_table, parameters=parameters).run()
 
     return elastic
 
 
 @as_function_node("df")
-def extract_df(df, key="energy", col="out"):
+def ExtractDf(df, key="energy", col="out"):
     val = [i[key][-1] for i in df.out.values]
     df[key] = val
     del df[col]
@@ -80,7 +80,7 @@ def extract_df(df, key="energy", col="out"):
 
 
 @as_function_node
-def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTensor()):
+def SymmetryAnalysis(structure, parameters: InputElasticTensor = InputElasticTensor()):
     out = OutputElasticSymmetryAnalysis(structure)
 
     out.SGN = find_symmetry_group_number(structure)
@@ -96,14 +96,14 @@ def symmetry_analysis(structure, parameters: InputElasticTensor = InputElasticTe
 
 
 @as_function_node("structures")
-def generate_structures(
+def GenerateStructures(
     # structure, parameters: InputElasticTensor = InputElasticTensor()
     structure,
     parameters=InputElasticTensor(),
 ):
     # the following construct is not nice but works
     # it may be helpful to have another way of backconverting a node_class object into the original functions
-    analysis = symmetry_analysis(structure, parameters).run()
+    analysis = SymmetryAnalysis(structure, parameters).run()
     structure_dict = {}
 
     zero_strain_job_name = "s_e_0"
@@ -195,13 +195,13 @@ class OutputElasticAnalysis:
 
 
 @as_function_node("structures")
-def analyse_structures(
+def AnalyseStructures(
     data_df: DataStructureContainer,
     parameters: InputElasticTensor = InputElasticTensor(),
 ):
     zero_strain_job_name = "s_e_0"
     structure = data_df.structure[0]  # [data_df.job_name == zero_strain_job_name]
-    analysis = symmetry_analysis(structure, parameters).run()
+    analysis = SymmetryAnalysis(structure, parameters).run()
 
     epss = analysis.epss
     Lag_strain_list = analysis.Lag_strain_list
@@ -315,11 +315,3 @@ def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
 
 def subjob_name(i, eps):
     return f"s_{i}_e{eps:.5f}".replace(".", "_").replace("-", "m")
-
-
-nodes = [
-    symmetry_analysis,
-    generate_structures,
-    analyse_structures,
-    elastic_constants,
-]
