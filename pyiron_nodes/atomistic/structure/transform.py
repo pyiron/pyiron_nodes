@@ -14,9 +14,7 @@ def Repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
 def ApplyStrain(
     structure: Optional[Atoms] = None, strain: Union[float, int] = 0
 ) -> Optional[Atoms]:
-    # print("apply strain: ", strain)
     struct = structure.copy()
-    # struct.cell *= strain
     struct.apply_strain(strain)
     return struct
 
