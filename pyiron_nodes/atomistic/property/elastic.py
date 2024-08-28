@@ -1,7 +1,5 @@
-import numpy as np
+from __future__ import annotations
 
-from pyiron_workflow import as_function_node
-from pyiron_nodes.dev_tools import wf_data_class
 from dataclasses import field
 
 from atomistics.workflows.elastic.symmetry import (
@@ -11,6 +9,10 @@ from atomistics.workflows.elastic.symmetry import (
     get_symmetry_family_from_SGN,
     Ls_Dic,
 )
+import numpy as np
+from pyiron_workflow import as_function_node
+
+from pyiron_nodes.dev_tools import wf_data_class
 
 
 @wf_data_class()
@@ -42,7 +44,10 @@ class DataStructureContainer:
 
 @as_function_node
 def ElasticConstants(
-    structure, calculator=None, engine=None, parameters=InputElasticTensor()
+    structure,
+    calculator=None,
+    engine=None,
+    parameters=InputElasticTensor()
 ):
     structure_table = GenerateStructures(structure, parameters=parameters).pull()
 
