@@ -1,12 +1,12 @@
-from pyiron_workflow.macro import macro_node
+from pyiron_workflow import as_macro_node
 from pyiron_nodes.atomistic.engine.lammps import get_calculators
 from pyiron_nodes.dev_tools import set_replacer
 
 from ase import Atoms
 
 
-@macro_node("generic")
-def Lammps(wf, structure=Atoms(), potential=None):
+@as_macro_node("generic")
+def Lammps(wf, structure: Atoms,  calculator, potential=None):
     from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
     wf.Potential = wf.create.atomistic.engine.lammps.Potential(
@@ -17,13 +17,14 @@ def Lammps(wf, structure=Atoms(), potential=None):
         structure=structure
     )
 
-    wf.calc = wf.create.atomistic.engine.lammps.CalcStatic()
-    wf.calc_select = set_replacer(wf.calc, get_calculators())
+    # wf.calc = wf.create.atomistic.engine.lammps.CalcStatic()
+    # wf.calc_select = set_replacer(wf.calc, get_calculators())
 
     wf.InitLammps = wf.create.atomistic.engine.lammps.InitLammps(
         structure=structure,
         potential=wf.Potential,
-        calculator=wf.calc.outputs.calculator,
+        # calculator=wf.calc.outputs.calculator,
+        calculator=calculator,
         # working_directory="test2",
     )
     wf.InitLammps.inputs.working_directory = (
@@ -43,7 +44,7 @@ def Lammps(wf, structure=Atoms(), potential=None):
     wf.Collect = wf.create.atomistic.engine.lammps.Collect(
         out_dump=wf.ParseDumpFile.outputs.dump,
         out_log=wf.ParseLogFile.outputs.log,
-        calc_mode=wf.calc.mode,  # SVN gives output -> inject attribute getter node
+        calc_mode=calculator # wf.calc.mode,  # SVN gives output -> inject attribute getter node
     )
 
     return wf.Collect

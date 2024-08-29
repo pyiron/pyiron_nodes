@@ -111,7 +111,7 @@ class InputCalcMD:
     """
 
     temperature: int | float = 300
-    n_ionic_steps: int = 1_000
+    n_ionic_steps: int = 10_000
     n_print: int = 100
     pressure = None
     time_step: int | float = 1.0
