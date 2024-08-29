@@ -10,7 +10,7 @@ from pyiron_workflow import (
     as_function_node,
     as_macro_node,
     for_node,
-    standard_nodes as standard
+    standard_nodes as standard,
 )
 from structuretoolkit.common import atoms_to_phonopy, phonopy_to_atoms
 
@@ -38,8 +38,7 @@ class PhonopyParameters:
 
 @as_function_node
 def GenerateSupercells(
-    phonopy: Phonopy,
-    parameters: PhonopyParameters.dataclass | None
+    phonopy: Phonopy, parameters: PhonopyParameters.dataclass | None
 ) -> list[Atoms]:
 
     parameters = PhonopyParameters.dataclass() if parameters is None else parameters
@@ -54,27 +53,22 @@ def CreatePhonopy(
     self,
     structure: Atoms,
     engine: OutputEngine | None = None,
-    parameters: PhonopyParameters.dataclass | None = None
+    parameters: PhonopyParameters.dataclass | None = None,
 ):
     import warnings
 
     warnings.simplefilter(action="ignore", category=(DeprecationWarning, UserWarning))
 
     self.phonopy = PhonopyObject(structure)
-    self.cells = GenerateSupercells(
-        self.phonopy,
-        parameters=parameters
-    )
+    self.cells = GenerateSupercells(self.phonopy, parameters=parameters)
     self.calculations = for_node(
         body_node_class=Static,
         iter_on=("structure",),
         engine=engine,
-        structure=self.cells
+        structure=self.cells,
     )
     self.forces = ExtractFinalForces(self.calculations)
-    self.phonopy_with_forces = standard.SetAttr(
-        self.phonopy, "forces", self.forces
-    )
+    self.phonopy_with_forces = standard.SetAttr(self.phonopy, "forces", self.forces)
 
     return self.phonopy_with_forces, self.calculations
 
@@ -82,7 +76,6 @@ def CreatePhonopy(
 @as_function_node("forces")
 def ExtractFinalForces(df):
     return [getattr(e, "force")[-1] for e in df["out"].tolist()]
-
 
 
 @as_function_node

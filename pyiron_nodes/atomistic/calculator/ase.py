@@ -16,7 +16,6 @@ def Static(
 
         engine = OutputEngine(calculator=EMT())
 
-
     structure.calc = engine.calculator
 
     out = OutputCalcStatic()

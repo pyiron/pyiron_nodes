@@ -81,15 +81,10 @@ def ElasticConstants(
     # some of the "generic" stuff doesn't work
     parameters: InputElasticTensor | None = None,
 ) -> OutputElasticAnalysis:
-    self.symmetry_analysis = SymmetryAnalysis(
-        structure,
-        parameters=parameters
-    )
+    self.symmetry_analysis = SymmetryAnalysis(structure, parameters=parameters)
 
     self.structure_table = GenerateStructures(
-        structure,
-        self.symmetry_analysis,
-        parameters=parameters
+        structure, self.symmetry_analysis, parameters=parameters
     )
     self.gs = for_node(
         body_node_class=Static,
@@ -100,9 +95,7 @@ def ElasticConstants(
     self.gs_energy = ExtractFinalEnergy(self.gs)
 
     self.liam_doesnt_like_this = standard.SetAttr(
-        self.structure_table,
-        "energy",
-        self.gs_energy
+        self.structure_table, "energy", self.gs_energy
     )  # This is not functional and idempotent!
     # With phonopy we had little choice, but here we can change our own architecture
 
@@ -123,8 +116,7 @@ def ExtractFinalEnergy(df):
 
 @as_function_node
 def SymmetryAnalysis(
-    structure,
-    parameters: InputElasticTensor | None
+    structure, parameters: InputElasticTensor | None
 ) -> OutputElasticSymmetryAnalysis:
 
     parameters = InputElasticTensor() if parameters is None else parameters
@@ -201,8 +193,7 @@ def GenerateStructures(
             structure_dict[jobname] = struct
 
     return DataStructureContainer(
-        structure=list(structure_dict.values()),
-        job_name=list(structure_dict.keys())
+        structure=list(structure_dict.values()), job_name=list(structure_dict.keys())
     )
 
 

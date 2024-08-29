@@ -41,7 +41,5 @@ def Arctan(x: list | np.ndarray | float | int):
 
 
 @as_function_node("arctan2")
-def Arctan2(
-    x: list | np.ndarray | float | int, y: list | np.ndarray | float | int
-):
+def Arctan2(x: list | np.ndarray | float | int, y: list | np.ndarray | float | int):
     return np.arctan2(y, x)
