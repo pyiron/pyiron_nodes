@@ -1,5 +1,7 @@
-from typing import Optional
+from __future__ import annotations
+
 from dataclasses import field
+from typing import Optional
 
 from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
 
@@ -159,6 +161,3 @@ class InputCalcStatic:
     # keys_to_store: Optional[list] = field(default_factory=list)
     pass  # LammpsControl.calc_static takes exactly zero arguments, and currently we
     # have the input objects matching their respective LammpsControl counterparts
-
-
-nodes = []

@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from pyiron_workflow import as_function_node
+
 from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
 
@@ -20,9 +23,3 @@ def M3GNet():
         calculator=M3GNetCalculator(matgl.load_model("M3GNet-MP-2021.2.8-PES"))
     )
     return out
-
-
-nodes = [
-    EMT,
-    M3GNet,
-]

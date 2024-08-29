@@ -109,16 +109,3 @@ def Title(axis: Optional[object] = None, title: Optional[str] = ""):
         axis = plt
 
     return axis.set_title(title)
-
-
-nodes = [
-    PlotDataFrame,
-    Scatter,
-    Plot,
-    Histogram,
-    ShowArray,
-    Linspace,
-    Mean,
-    Subplot,
-    Title
-]

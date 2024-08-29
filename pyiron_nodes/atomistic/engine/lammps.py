@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-# from pyiron_atomistics.atomistics.structure.atoms import Atoms
-
+from pyiron_atomistics.lammps.control import LammpsControl
 from pyiron_workflow import as_function_node
 
 from pyiron_nodes.atomistic.calculator.data import (
@@ -11,11 +10,8 @@ from pyiron_nodes.atomistic.calculator.data import (
     InputCalcMD,
     InputCalcStatic,
 )
-
 from pyiron_nodes.dev_tools import FileObject, parse_input_kwargs
 from pyiron_nodes.dev_tools import wf_data_class
-
-from pyiron_atomistics.lammps.control import LammpsControl
 
 
 @as_function_node("calculator")
@@ -164,7 +160,7 @@ class GenericOutput:
     forces = []
 
 
-@as_function_node()
+@as_function_node
 def Collect(
         out_dump,
         out_log,

@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Optional, Union
 from pyiron_atomistics.atomistics.structure.atoms import Atoms
 
-from pyiron_workflow import as_function_node
-from pyiron_workflow.workflow import Workflow
+from pyiron_workflow import as_function_node, Workflow
 
 from pyiron_nodes.dev_tools import VarType, FileObject
 
@@ -218,20 +217,3 @@ def get_calculators():
     calc_dict["md"] = Workflow.create.lammps.CalcMD
     calc_dict["static"] = Workflow.create.lammps.CalcStatic
     return calc_dict
-
-
-nodes = [
-    Structure,
-    InitLammps,
-    Potential,
-    ListPotentials,
-    ListEmpty,
-    CalcMD,
-    CalcStatic,
-    ParseLogFile,
-    ParseDumpFile,
-    Collect,
-    Shell,
-    Repeat,
-    ApplyStrain,
-]

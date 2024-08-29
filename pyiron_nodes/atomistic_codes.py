@@ -1,12 +1,12 @@
+from ase import Atoms
 from pyiron_workflow import as_macro_node
+
 from pyiron_nodes.atomistic.engine.lammps import get_calculators
 from pyiron_nodes.dev_tools import set_replacer
 
-from ase import Atoms
-
 
 @as_macro_node("generic")
-def Lammps(wf, structure: Atoms,  calculator, potential=None):
+def Lammps(wf, structure=Atoms(), potential=None):
     from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
     wf.Potential = wf.create.atomistic.engine.lammps.Potential(
@@ -48,6 +48,3 @@ def Lammps(wf, structure: Atoms,  calculator, potential=None):
     )
 
     return wf.Collect
-
-
-nodes = [Lammps]
