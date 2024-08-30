@@ -1,0 +1,3 @@
+This directory contains fully functional demo notebooks (*examples.ipynb*). Use these to see how pyiron_nodes can be used.
+
+The directory also contains notebooks that are experimental and reflect some experimental implementations. They are meant to provide an efficient exchange for developers, but are not maintained or guaranteed to work. Use them for inspiration, but not for production. Examples are (*getstate_experiments.ipynb* and *hash_based_db_node_storage.ipynb*). 

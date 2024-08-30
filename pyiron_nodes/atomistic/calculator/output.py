@@ -8,7 +8,7 @@ from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize, OutputCal
 
 
 @as_function_node("energy_last")
-def get_energy_last(
+def GetEnergyLast(
     calculator: Optional[OutputCalcMinimize | OutputCalcStatic] = None,
 ) -> float:
     if isinstance(calculator, OutputCalcMinimize):

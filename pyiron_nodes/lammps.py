@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from typing import Optional, Union
 from pyiron_atomistics.atomistics.structure.atoms import Atoms
 
@@ -11,9 +10,9 @@ from pyiron_nodes.dev_tools import VarType, FileObject
 
 @as_function_node("calculator")
 def CalcMD(
-    temperature: VarType(dat_type=float, store=10) = 300,
-    n_ionic_steps=1000,
-    n_print=100,
+    temperature: int | float = 300,
+    n_ionic_steps: int = 1000,
+    n_print: int = 100,
 ):
     from pyiron_atomistics.lammps.control import LammpsControl
 
