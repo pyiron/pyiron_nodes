@@ -4,7 +4,7 @@ from pyiron_workflow import as_function_node
 
 
 @as_function_node("dataframe")
-def de_jong(max_index: int | None = None, filename="ec.json"):
+def DeJong(max_index: int | None = None, file_name="ec.json"):
     """
     Expects the file to be the "ec.json" database referenced by:
     Ref. de Jong et al. https://www.nature.com/articles/sdata20159#MOESM77

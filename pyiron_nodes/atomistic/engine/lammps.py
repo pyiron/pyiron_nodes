@@ -119,8 +119,9 @@ def Shell(
         working_directory: str,
         command: str = 'lmp',
         environment: Optional[dict] = None,
-        arguments: Optional[list] = ['-in', 'control.inp'],
+        arguments: Optional[list] = None,
 ):
+    arguments = ['-in', 'control.inp'] if arguments is None else arguments
     # -> (ShellOutput, FileObject, FileObject):  TODO: fails -> why
     import os
     import subprocess
@@ -254,7 +255,7 @@ from ase import Atoms
 def Code(
         wf,
         structure: Atoms,
-        calculator=InputCalcStatic(),
+        calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
         potential: Optional[str] = None,
         working_dir: str = 'test2',
 ):
@@ -298,20 +299,3 @@ def Code(
     )
 
     return wf.Collect
-
-
-nodes = [
-    Code,
-    InitLammps,
-    Potential,
-    ListPotentials,
-    Calc,
-    CalcMD,
-    CalcMinimize,
-    CalcStatic,
-    ParseLogFile,
-    ParseDumpFile,
-    Collect,
-    Shell,
-    GetEnergyPot,
-]
