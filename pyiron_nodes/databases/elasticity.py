@@ -18,7 +18,7 @@ def DeJong(max_index: int | None = None, file_name="ec.json"):
 
     module_dir = os.path.dirname(os.path.realpath(__file__))
     file_path = os.path.join(module_dir, file_name)
-    print ('de jong database, path: ', module_dir, file_path)
+    print("de jong database, path: ", module_dir, file_path)
 
     df = pd.read_json(file_path)
 
