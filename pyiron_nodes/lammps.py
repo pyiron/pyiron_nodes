@@ -10,9 +10,9 @@ from pyiron_nodes.dev_tools import VarType, FileObject
 
 @as_function_node("calculator")
 def CalcMD(
-        temperature: int | float = 300,
-        n_ionic_steps: int = 1000,
-        n_print: int = 100,
+    temperature: int | float = 300,
+    n_ionic_steps: int = 1000,
+    n_print: int = 100,
 ):
     from pyiron_atomistics.lammps.control import LammpsControl
 
@@ -106,11 +106,11 @@ class ShellOutput(Storage):
 
 @as_function_node("output", "dump", "log")
 def Shell(
-        command: str,
-        environment: Optional[dict] = None,
-        arguments: Optional[list] = None,
-        working_directory: str = ".",
-        # allowed_return_code:list=[]
+    command: str,
+    environment: Optional[dict] = None,
+    arguments: Optional[list] = None,
+    working_directory: str = ".",
+    # allowed_return_code:list=[]
 ):
     # -> (ShellOutput, FileObject, FileObject):  TODO: fails -> why
     import os
@@ -196,14 +196,14 @@ def ListEmpty():
 
 @as_function_node("structure")
 def Repeat(
-        structure: Optional[Atoms] = None, repeat_scalar: int = 1
+    structure: Optional[Atoms] = None, repeat_scalar: int = 1
 ) -> Optional[Atoms]:
     return structure.repeat(repeat_scalar)
 
 
 @as_function_node("structure")
 def ApplyStrain(
-        structure: Optional[Atoms] = None, strain: Union[float, int] = 0
+    structure: Optional[Atoms] = None, strain: Union[float, int] = 0
 ) -> Optional[Atoms]:
     # print("apply strain: ", strain)
     struct = structure.copy()

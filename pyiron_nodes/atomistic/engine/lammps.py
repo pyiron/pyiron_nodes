@@ -70,7 +70,9 @@ def InitLammps(structure, potential: str, calculator, working_directory: str):
     import os
     from pyiron_atomistics.lammps.potential import LammpsPotential, LammpsPotentialFile
 
-    assert os.path.isdir(working_directory), f"working directory {working_directory} missing, create it!"
+    assert os.path.isdir(
+        working_directory
+    ), f"working directory {working_directory} missing, create it!"
 
     pot = LammpsPotential()
     pot.df = LammpsPotentialFile().find_by_name(potential)
@@ -116,11 +118,12 @@ class ShellOutput:
 
 @as_function_node("output", "dump", "log")
 def Shell(
-        working_directory: str,
-        command: str = 'lmp',
-        environment: Optional[dict] = None,
-        arguments: Optional[list] = ['-in', 'control.inp'],
+    working_directory: str,
+    command: str = "lmp",
+    environment: Optional[dict] = None,
+    arguments: Optional[list] = None,
 ):
+    arguments = ["-in", "control.inp"] if arguments is None else arguments
     # -> (ShellOutput, FileObject, FileObject):  TODO: fails -> why
     import os
     import subprocess
@@ -162,9 +165,9 @@ class GenericOutput:
 
 @as_function_node
 def Collect(
-        out_dump,
-        out_log,
-        calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
+    out_dump,
+    out_log,
+    calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
 ):
     import numpy as np
 
@@ -238,8 +241,8 @@ def get_calculators():
 
 @as_function_node("generic")
 def GetEnergyPot(generic, i_start: int = 0, i_end: int = -1):
-    print ('energies_pot: ', generic.energies_pot)
-    return generic.energies_pot[i_start: i_end]
+    print("energies_pot: ", generic.energies_pot)
+    return generic.energies_pot[i_start:i_end]
 
 
 from pyiron_workflow import as_macro_node
@@ -252,11 +255,11 @@ from ase import Atoms
 
 @as_macro_node("generic")
 def Code(
-        wf,
-        structure: Atoms,
-        calculator=InputCalcStatic(),
-        potential: Optional[str] = None,
-        working_dir: str = 'test2',
+    wf,
+    structure: Atoms,
+    calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
+    potential: Optional[str] = None,
+    working_dir: str = "test2",
 ):
     # from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
@@ -294,24 +297,7 @@ def Code(
     wf.Collect = wf.create.atomistic.engine.lammps.Collect(
         out_dump=wf.ParseDumpFile.outputs.dump,
         out_log=wf.ParseLogFile.outputs.log,
-        calc_mode='md',  # wf.calc,
+        calc_mode="md",  # wf.calc,
     )
 
     return wf.Collect
-
-
-nodes = [
-    Code,
-    InitLammps,
-    Potential,
-    ListPotentials,
-    Calc,
-    CalcMD,
-    CalcMinimize,
-    CalcStatic,
-    ParseLogFile,
-    ParseDumpFile,
-    Collect,
-    Shell,
-    GetEnergyPot,
-]

@@ -1,15 +1,30 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Optional
 
+from ase import Atoms
 from phonopy.api_phonopy import Phonopy
-from pyiron_workflow import as_function_node
+from pyiron_workflow import (
+    as_dataclass_node,
+    as_function_node,
+    as_macro_node,
+    for_node,
+    standard_nodes as standard,
+)
+from structuretoolkit.common import atoms_to_phonopy, phonopy_to_atoms
 
-from pyiron_nodes.dev_tools import wf_data_class, parse_input_kwargs
+from pyiron_nodes.atomistic.calculator.ase import Static
+from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
 
-@wf_data_class(doc_func=Phonopy.generate_displacements)
-class InputPhonopyGenerateSupercells:
+@as_function_node("phonopy")
+def PhonopyObject(structure):
+    return Phonopy(unitcell=atoms_to_phonopy(structure))
+
+
+@as_dataclass_node
+class PhonopyParameters:
     distance: float = 0.01
     is_plusminus: str | bool = "auto"
     is_diagonal: bool = True
@@ -21,96 +36,53 @@ class InputPhonopyGenerateSupercells:
     max_distance: Optional[float] = None
 
 
-# @as_function_node
-def generate_supercells(phonopy, parameters: InputPhonopyGenerateSupercells):
-    from structuretoolkit.common import phonopy_to_atoms
+@as_function_node
+def GenerateSupercells(
+    phonopy: Phonopy, parameters: PhonopyParameters.dataclass | None
+) -> list[Atoms]:
 
-    phonopy.generate_displacements(**parameters)
+    parameters = PhonopyParameters.dataclass() if parameters is None else parameters
+    phonopy.generate_displacements(**asdict(parameters))
 
     supercells = [phonopy_to_atoms(s) for s in phonopy.supercells_with_displacements]
     return supercells
 
 
-@as_function_node("parameters")
-def PhonopyParameters(
-    distance: float = 0.01,
-    is_plusminus: str | bool = "auto",
-    is_diagonal: bool = True,
-    is_trigonal: bool = False,
-    number_of_snapshots: Optional[int] = None,
-    random_seed: Optional[int] = None,
-    temperature: Optional[float] = None,
-    cutoff_frequency: Optional[float] = None,
-    max_distance: Optional[float] = None,
-) -> dict:
-    return {
-        "distance": distance,
-        "is_plusminus": is_plusminus,
-        "is_diagonal": is_diagonal,
-        "is_trigonal": is_trigonal,
-        "number_of_snapshots": number_of_snapshots,
-        "random_seed": random_seed,
-        "temperature": temperature,
-        "cutoff_frequency": cutoff_frequency,
-        "max_distance": max_distance,
-    }
-
-
-# The following function should be defined as a workflow macro (presently not possible)
-@as_function_node
-def create_phonopy(
-        structure,
-        engine=None,
-        executor=None,
-        max_workers=1,
-        parameters: Optional[InputPhonopyGenerateSupercells | dict] = InputPhonopyGenerateSupercells(),
+@as_macro_node("phonopy", "calculations")
+def CreatePhonopy(
+    self,
+    structure: Atoms,
+    engine: OutputEngine | None = None,
+    parameters: PhonopyParameters.dataclass | None = None,
 ):
-    from phonopy import Phonopy
-    from structuretoolkit.common import atoms_to_phonopy
-    import pyiron_workflow
     import warnings
-    warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
-    phonopy = Phonopy(unitcell=atoms_to_phonopy(structure))
+    warnings.simplefilter(action="ignore", category=(DeprecationWarning, UserWarning))
 
-    cells = generate_supercells(
-        phonopy,
-        parameters=parameters,
-        # parameters=parse_input_kwargs(parameters, InputPhonopyGenerateSupercells),
+    self.phonopy = PhonopyObject(structure)
+    self.cells = GenerateSupercells(self.phonopy, parameters=parameters)
+    self.calculations = for_node(
+        body_node_class=Static,
+        iter_on=("structure",),
+        engine=engine,
+        structure=self.cells,
     )
+    self.forces = ExtractFinalForces(self.calculations)
+    self.phonopy_with_forces = standard.SetAttr(self.phonopy, "forces", self.forces)
 
-    from pyiron_nodes.atomistic.calculator.ase import static as calculator
-
-    gs = calculator(engine=engine)
-    df_new = gs.iter(structure=cells)  # , executor=executor, max_workers=max_workers)
-    # print ('df: ', df_new)
-    # print ('dataframe: ', df_new.out.keys())
-    # return df_new
-    df_new = extract_df(df_new, key="energy")
-    df_new = extract_df(df_new, key="forces", col="out")
-    phonopy.forces = df_new.forces
-
-    # could be automatized (out = collect(gs, log_level))
-    out = {}
-    out["energies"] = df_new.energy
-    out["forces"] = df_new.forces
-    out["df"] = df_new
-
-    return phonopy, out
+    return self.phonopy_with_forces, self.calculations
 
 
-def extract_df(df, key="energy", col=None):
-    val = [i[key][-1] for i in df.out.values]
-    df[key] = val
-    if col is not None:
-        del df[col]
-    return df
+@as_function_node("forces")
+def ExtractFinalForces(df):
+    return [getattr(e, "force")[-1] for e in df["out"].tolist()]
 
 
 @as_function_node
-def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
+def GetDynamicalMatrix(phonopy, q=None):
     import numpy as np
 
+    q = [0, 0, 0] if q is None else q
     if phonopy.dynamical_matrix is None:
         phonopy.produce_force_constants()
         phonopy.dynamical_matrix.run(q=q)
@@ -120,33 +92,40 @@ def get_dynamical_matrix(phonopy, q=[0, 0, 0]):
 
 
 @as_function_node
-def get_eigenvalues(matrix):
+def GetEigenvalues(matrix):
     import numpy as np
 
     ew = np.linalg.eigvalsh(matrix)
     return ew
 
 
-@as_function_node
-def check_consistency(phonopy, tolerance: float = 1e-10):
-    dyn_matrix = get_dynamical_matrix(phonopy).run()
-    ew = get_eigenvalues(dyn_matrix).run()
-
-    ew_lt_zero = ew[ew < -tolerance]
-    if len(ew_lt_zero) > 0:
-        print(f"WARNING: {len(ew_lt_zero)} imaginary modes exist")
-        has_imaginary_modes = True
-    else:
-        has_imaginary_modes = False
-    return has_imaginary_modes
+@as_macro_node
+def CheckConsistency(self, phonopy: Phonopy, tolerance: float = 1e-10):
+    self.dyn_matrix = GetDynamicalMatrix(phonopy).run()
+    self.ew = GetEigenvalues(self.dyn_matrix)
+    self.has_imaginary_modes = HasImaginaryModes(self.ew, tolerance)
+    return self.has_imaginary_modes
 
 
 @as_function_node
-def get_total_dos(phonopy, mesh=3 * [10]):
+def GetTotalDos(phonopy, mesh=None):
     from pandas import DataFrame
+
+    mesh = 3 * [10] if mesh is None else mesh
 
     phonopy.produce_force_constants()
     phonopy.run_mesh(mesh=mesh)
     phonopy.run_total_dos()
     total_dos = DataFrame(phonopy.get_total_dos_dict())
     return total_dos
+
+
+@as_function_node
+def HasImaginaryModes(eigenvalues, tolerance: float = 1e-10) -> bool:
+    ew_lt_zero = eigenvalues[eigenvalues < -tolerance]
+    if len(ew_lt_zero) > 0:
+        print(f"WARNING: {len(ew_lt_zero)} imaginary modes exist")
+        has_imaginary_modes = True
+    else:
+        has_imaginary_modes = False
+    return has_imaginary_modes
