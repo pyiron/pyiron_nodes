@@ -54,7 +54,7 @@ def CreatePhonopy(
         structure: Atoms,
         engine: OutputEngine | None =None,
 
-        parameters: PhonopyParameters.dataclass | None = InputPhonopyGenerateSupercells(),
+        parameters: PhonopyParameters.dataclass | None = None,
 ):
     import warnings
 
