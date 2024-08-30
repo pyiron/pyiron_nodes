@@ -13,12 +13,38 @@ from pyiron_workflow import as_function_node
 
 
 @as_function_node("fig")
+def PlotDataFrame(df: pandas.DataFrame, x: Optional[list | np.ndarray] = None):
+    from matplotlib import pyplot as plt
+
+    fig, ax = plt.subplots()
+    plot = df.plot(x=x, ax=ax)
+    return plt.show()
+
+
+@as_function_node("fig")
 def Scatter(
     x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None
 ):
     from matplotlib import pyplot as plt
 
-    return plt.scatter(x, y)
+    plt.scatter(x, y)
+    return plt.show()
+
+
+@as_function_node("fig")
+def ShowArray(mat: Optional[np.ndarray]):
+    from matplotlib import pyplot as plt
+
+    plt.imshow(mat)
+    return plt.show()
+
+
+@as_function_node("fig")
+def Histogram(x: Optional[list | np.ndarray], bins: int = 50):
+    from matplotlib import pyplot as plt
+
+    plt.hist(x, bins=bins)
+    return plt.show()
 
 
 @as_function_node("axis")
@@ -56,7 +82,7 @@ def Linspace(
 
 
 @as_function_node("mean")
-def Mean(numbers: Optional[list | np.ndarray] = None):
+def Mean(numbers: list | np.ndarray | float | int):
     return np.mean(numbers)
 
 
