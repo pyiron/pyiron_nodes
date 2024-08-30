@@ -17,13 +17,14 @@ def Lammps(wf, structure=Atoms(), potential=None):
         structure=structure
     )
 
-    wf.calc = wf.create.atomistic.engine.lammps.CalcStatic()
-    wf.calc_select = set_replacer(wf.calc, get_calculators())
+    # wf.calc = wf.create.atomistic.engine.lammps.CalcStatic()
+    # wf.calc_select = set_replacer(wf.calc, get_calculators())
 
     wf.InitLammps = wf.create.atomistic.engine.lammps.InitLammps(
         structure=structure,
         potential=wf.Potential,
-        calculator=wf.calc.outputs.calculator,
+        # calculator=wf.calc.outputs.calculator,
+        calculator=calculator,
         # working_directory="test2",
     )
     wf.InitLammps.inputs.working_directory = (
@@ -43,7 +44,7 @@ def Lammps(wf, structure=Atoms(), potential=None):
     wf.Collect = wf.create.atomistic.engine.lammps.Collect(
         out_dump=wf.ParseDumpFile.outputs.dump,
         out_log=wf.ParseLogFile.outputs.log,
-        calc_mode=wf.calc.mode,  # SVN gives output -> inject attribute getter node
+        calc_mode=calculator,  # wf.calc.mode,  # SVN gives output -> inject attribute getter node
     )
 
     return wf.Collect
