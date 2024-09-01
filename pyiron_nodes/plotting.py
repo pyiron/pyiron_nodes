@@ -49,8 +49,8 @@ def Histogram(x: Optional[list | np.ndarray], bins: int = 50):
 
 @as_function_node("axis")
 def Plot(
+    y: Optional[list | np.ndarray | pandas.core.series.Series],
     x: Optional[list | np.ndarray | pandas.core.series.Series] = None,
-    y: Optional[list | np.ndarray | pandas.core.series.Series] = None,
     axis: Optional[object] = None,
     title: Optional[str] = "",
     color: Optional[str] = "b",
@@ -59,6 +59,9 @@ def Plot(
 ):
     from matplotlib import pyplot as plt
 
+    if x is None:
+        x = np.arange(len(y))
+
     if axis is None:
         axis = plt
         axis.title = title
@@ -66,7 +69,7 @@ def Plot(
         axis.set_title(title)  # Set the title of the plot
     axis.plot(x, y, color=color, marker=symbol, label=legend_label)
 
-    return axis
+    return axis.show()
 
 
 @as_function_node("linspace")

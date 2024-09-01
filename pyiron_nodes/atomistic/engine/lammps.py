@@ -241,7 +241,7 @@ def get_calculators():
 
 @as_function_node("generic")
 def GetEnergyPot(generic, i_start: int = 0, i_end: int = -1):
-    print("energies_pot: ", generic.energies_pot)
+    # print("energies_pot: ", generic.energies_pot)
     return generic.energies_pot[i_start:i_end]
 
 
