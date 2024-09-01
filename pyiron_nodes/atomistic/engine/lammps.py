@@ -118,10 +118,10 @@ class ShellOutput:
 
 @as_function_node("output", "dump", "log")
 def Shell(
-    working_directory: str,
-    command: str = "lmp",
-    environment: Optional[dict] = None,
-    arguments: Optional[list] = None,
+        working_directory: str,
+        command: str = "lmp",
+        environment: Optional[dict] = None,
+        arguments: Optional[list] = None,
 ):
     arguments = ["-in", "control.inp"] if arguments is None else arguments
     # -> (ShellOutput, FileObject, FileObject):  TODO: fails -> why
@@ -165,9 +165,9 @@ class GenericOutput:
 
 @as_function_node
 def Collect(
-    out_dump,
-    out_log,
-    calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
+        out_dump,
+        out_log,
+        calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
 ):
     import numpy as np
 
@@ -255,46 +255,44 @@ from ase import Atoms
 
 @as_macro_node("generic")
 def Code(
-    wf,
-    structure: Atoms,
-    calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
-    potential: Optional[str] = None,
-    working_dir: str = "test2",
+        wf,
+        structure: Atoms,
+        calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
+        potential: Optional[str] = None,
+        working_dir: str = "test2",
 ):
     # from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
     print("Lammps: ", structure)
-    wf.Potential = wf.create.atomistic.engine.lammps.Potential(
+    wf.Potential = Potential(
         structure=structure, name=potential
     )
 
-    wf.ListPotentials = wf.create.atomistic.engine.lammps.ListPotentials(
+    wf.ListPotentials = ListPotentials(
         structure=structure
     )
 
-    wf.calc = wf.create.atomistic.engine.lammps.Calc(calculator)
+    wf.calc = Calc(calculator)
 
-    wf.InitLammps = wf.create.atomistic.engine.lammps.InitLammps(
+    wf.InitLammps = InitLammps(
         structure=structure,
         potential=wf.Potential,
         calculator=wf.calc,
         working_directory=working_dir,
     )
-    wf.InitLammps.inputs.working_directory = (
-        wf.InitLammps.working_directory.path.__str__()
-    )
-    wf.Shell = wf.create.atomistic.engine.lammps.Shell(
+
+    wf.Shell = Shell(
         # command=ExecutablePathResolver(module="lammps", code="lammps").path(),
         working_directory=wf.InitLammps,
     )
 
-    wf.ParseLogFile = wf.create.atomistic.engine.lammps.ParseLogFile(
+    wf.ParseLogFile = ParseLogFile(
         log_file=wf.Shell.outputs.log
     )
-    wf.ParseDumpFile = wf.create.atomistic.engine.lammps.ParseDumpFile(
+    wf.ParseDumpFile = ParseDumpFile(
         dump_file=wf.Shell.outputs.dump
     )
-    wf.Collect = wf.create.atomistic.engine.lammps.Collect(
+    wf.Collect = Collect(
         out_dump=wf.ParseDumpFile.outputs.dump,
         out_log=wf.ParseLogFile.outputs.log,
         calc_mode="md",  # wf.calc,
