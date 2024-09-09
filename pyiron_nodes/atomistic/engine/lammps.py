@@ -12,6 +12,7 @@ from pyiron_nodes.atomistic.calculator.data import (
 )
 from pyiron_nodes.dev_tools import FileObject, parse_input_kwargs
 from pyiron_nodes.dev_tools import wf_data_class
+from dataclasses import asdict
 
 
 @as_function_node("calculator")
@@ -20,8 +21,8 @@ def Calc(parameters):
 
     calculator = LammpsControl()
 
-    if isinstance(parameters, InputCalcMD):
-        calculator.calc_md(**parameters)
+    if isinstance(parameters, InputCalcMD.dataclass):
+        calculator.calc_md(**asdict(parameters))
         calculator.mode = "md"
     elif isinstance(parameters, InputCalcMinimize):
         calculator.calc_minimize(**parameters)
@@ -55,9 +56,35 @@ def CalcMinimize(calculator_input: Optional[InputCalcMinimize | dict] = None):
     return calculator
 
 
+@as_function_node
+def SetInputCalcMD(
+        temperature: Optional[int | float] = 300,
+        n_ionic_steps: int = 10_000,
+        n_print: int = 100,
+        pressure: Optional[int | float] = None,
+        time_step: Optional[int | float] = 1.0,
+        temperature_damping_timescale: Optional[int | float] = 100.0,
+        pressure_damping_timescale: Optional[int | float] = 1000.0,
+        seed: Optional[int] = None,
+        tloop: Optional[float] = None,
+        initial_temperature: Optional[float] = None,
+        langevin: bool = False,
+        delta_temp: Optional[float] = None,
+        delta_press: Optional[float] = None):
+    input_calc = InputCalcMD(temperature, n_ionic_steps, n_print, pressure, time_step, temperature_damping_timescale,
+    pressure_damping_timescale, seed, tloop, initial_temperature, langevin, delta_temp,
+    delta_press)
+    return input_calc
+
+
 @as_function_node("calculator")
-def CalcMD(calculator_input: Optional[InputCalcMD | dict] = InputCalcMD()):
-    calculator_kwargs = parse_input_kwargs(calculator_input, InputCalcMD)
+def CalcMD(calculator_input: Optional[InputCalcMD.dataclass] = None):
+    from dataclasses import asdict
+    if calculator_input is None:
+        calculator_input = InputCalcMD().dataclass()
+
+    calculator_kwargs = asdict(calculator_input)
+    # calculator_kwargs = parse_input_kwargs(calculator_input, InputCalcMD)
     calculator = LammpsControl()
     calculator.calc_md(**calculator_kwargs)
     calculator.mode = "md"
@@ -66,13 +93,16 @@ def CalcMD(calculator_input: Optional[InputCalcMD | dict] = InputCalcMD()):
 
 
 @as_function_node("path")
-def InitLammps(structure, potential: str, calculator, working_directory: str):
+def InitLammps(structure, potential: str, calculator, working_directory: str, create_dir: bool = True):
     import os
     from pyiron_atomistics.lammps.potential import LammpsPotential, LammpsPotentialFile
 
-    assert os.path.isdir(
-        working_directory
-    ), f"working directory {working_directory} missing, create it!"
+    if create_dir:
+        os.makedirs(working_directory, exist_ok=True)
+    else:
+        assert os.path.isdir(
+            working_directory
+        ), f"working directory {working_directory} is missing, create it!"
 
     pot = LammpsPotential()
     pot.df = LammpsPotentialFile().find_by_name(potential)
@@ -263,7 +293,7 @@ def Code(
 ):
     # from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
-    print("Lammps: ", structure)
+    # print("Lammps: ", structure)
     wf.Potential = Potential(
         structure=structure, name=potential
     )

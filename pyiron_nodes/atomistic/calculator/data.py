@@ -4,6 +4,7 @@ from dataclasses import field
 from typing import Optional
 
 from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
+from pyiron_workflow import as_dataclass_node
 
 
 @wf_data_class()
@@ -75,56 +76,22 @@ class OutputCalcMD:
     )
 
 
-@wf_data_class()
+# @wf_data_class()
+@as_dataclass_node
 class InputCalcMD:
-    """
-        Set an MD calculation within LAMMPS. Nosé Hoover is used by default.
-
-    Parameters
-    temperature (None/float/list) – Target temperature value(-s). If set to None, an NVE calculation is performed. It is required when the pressure is set or langevin is set It can be a list of temperature values, containing the initial target temperature and the final target temperature (in between the target value is varied linearly).
-
-    pressure (None/float/numpy.ndarray/list) – Target pressure. If set to None, an NVE or an NVT calculation is performed. A list of up to length 6 can be given to specify xx, yy, zz, xy, xz, and yz components of the pressure tensor, respectively. These values can mix floats and None to allow only certain degrees of cell freedom to change. (Default is None, run isochorically.)
-
-    n_ionic_steps (int) – Number of ionic steps
-
-    time_step (float) – Step size in fs between two steps.
-
-    n_print (int) – Print frequency
-
-    temperature_damping_timescale (float) – The time associated with the thermostat adjusting the temperature. (In fs. After rescaling to appropriate time units, is equivalent to Lammps’ Tdamp.)
-
-    pressure_damping_timescale (float) – The time associated with the barostat adjusting the temperature. (In fs. After rescaling to appropriate time units, is equivalent to Lammps’ Pdamp.)
-
-    seed (int) – Seed for the random number generation (required for the velocity creation)
-
-    tloop –
-
-    initial_temperature (None/float) – Initial temperature according to which the initial velocity field is created. If None, the initial temperature will be twice the target temperature (which would go immediately down to the target temperature as described in equipartition theorem). If 0, the velocity field is not initialized (in which case the initial velocity given in structure will be used). If any other number is given, this value is going to be used for the initial temperature.
-
-    langevin (bool) – (True or False) Activate Langevin dynamics
-
-    delta_temp (float) – Thermostat timescale, but in your Lammps time units, whatever those are. (DEPRECATED.)
-
-    delta_press (float) – Barostat timescale, but in your Lammps time units, whatever those are. (DEPRECATED.)
-
-    job_name (str) – Job name of the job to generate a unique random seed.
-
-    rotation_matrix (numpy.ndarray) – The rotation matrix from the pyiron to Lammps coordinate frame.
-    """
-
-    temperature: int | float = 300
+    temperature: Optional[int | float] = 300
     n_ionic_steps: int = 10_000
     n_print: int = 100
-    pressure = None
-    time_step: int | float = 1.0
-    temperature_damping_timescale: int | float = 100.0
-    pressure_damping_timescale: int | float = 1000.0
-    seed = None
-    tloop = None
-    initial_temperature = None
-    langevin = False
-    delta_temp = None
-    delta_press = None
+    pressure: Optional[int | float] = None
+    time_step: Optional[int | float] = 1.0
+    temperature_damping_timescale: Optional[int | float] = 100.0
+    pressure_damping_timescale: Optional[int | float] = 1000.0
+    seed: Optional[int] = None
+    tloop: Optional[float] = None
+    initial_temperature: Optional[float] = None
+    langevin: bool = False
+    delta_temp: Optional[float] = None
+    delta_press: Optional[float] = None
 
 
 @wf_data_class()
