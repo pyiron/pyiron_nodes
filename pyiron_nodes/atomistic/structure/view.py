@@ -6,15 +6,17 @@ from typing import Optional
 
 
 @as_function_node("plot")
-def Plot3d(structure: _Atoms,
-           camera: str = "orthographic",
-           particle_size: int | float = 1.0,
-           select_atoms: Optional[_np.ndarray] = None,
-           view_plane: _np.ndarray = _np.array([0, 0, 1]),
-           distance_from_camera: int | float = 1.0,
-           ):
+def Plot3d(
+    structure: _Atoms,
+    camera: str = "orthographic",
+    particle_size: int | float = 1.0,
+    select_atoms: Optional[_np.ndarray] = None,
+    view_plane: _np.ndarray = _np.array([0, 0, 1]),
+    distance_from_camera: int | float = 1.0,
+):
     """Display atomistic structure (ase.Atoms) using nglview"""
     from structuretoolkit import plot3d
+
     return structure.plot3d(
         structure=structure,
         camera=camera,
