@@ -72,8 +72,8 @@ def SetInputCalcMD(
         delta_temp: Optional[float] = None,
         delta_press: Optional[float] = None):
     input_calc = InputCalcMD(temperature, n_ionic_steps, n_print, pressure, time_step, temperature_damping_timescale,
-    pressure_damping_timescale, seed, tloop, initial_temperature, langevin, delta_temp,
-    delta_press)
+                             pressure_damping_timescale, seed, tloop, initial_temperature, langevin, delta_temp,
+                             delta_press)
     return input_calc
 
 

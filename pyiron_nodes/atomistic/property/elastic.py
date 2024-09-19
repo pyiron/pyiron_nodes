@@ -1,4 +1,4 @@
-from __future__ import annotations
+# from __future__ import annotations
 from typing import Optional
 
 from dataclasses import field
@@ -15,6 +15,7 @@ from pyiron_workflow import (
 from pyiron_nodes.atomistic.calculator.ase import Static
 from pyiron_nodes.atomistic.engine.generic import OutputEngine
 from pyiron_nodes.dev_tools import wf_data_class
+from pyiron_workflow import as_dataclass_node
 
 
 @wf_data_class()
@@ -26,8 +27,8 @@ class OutputElasticSymmetryAnalysis:
     epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
-# @as_dataclass_node
-@wf_data_class()
+@as_dataclass_node
+# @wf_data_class()
 class InputElasticTensor:
     num_of_point: int = 5
     eps_range: float = 0.005
@@ -80,7 +81,8 @@ def ElasticConstants(
         # But OutputEngine had better be holding a ase.calculators.calculator.BaseCalculator
         # There is too much misdirection for me to track everything right now, but I think
         # some of the "generic" stuff doesn't work
-        parameters: Optional[InputElasticTensor] = InputElasticTensor(),  # contains the default values
+        parameters: Optional[InputElasticTensor.dataclass] = InputElasticTensor.dataclass(),
+        # contains the default values
 ) -> OutputElasticAnalysis:
     self.symmetry_analysis = SymmetryAnalysis(structure, parameters=parameters)
 
@@ -117,9 +119,9 @@ def ExtractFinalEnergy(df):
 
 @as_function_node
 def SymmetryAnalysis(
-        structure, parameters: Optional[InputElasticTensor]
+        structure, parameters: Optional[InputElasticTensor.dataclass]
 ) -> OutputElasticSymmetryAnalysis:
-    parameters = InputElasticTensor() if parameters is None else parameters
+    parameters = InputElasticTensor.dataclass() if parameters is None else parameters
     out = OutputElasticSymmetryAnalysis(structure)
 
     out.SGN = sym.find_symmetry_group_number(structure)
@@ -137,7 +139,7 @@ def SymmetryAnalysis(
 def GenerateStructures(
         structure,
         analysis: OutputElasticSymmetryAnalysis,
-        parameters: Optional[InputElasticTensor] = None,
+        parameters: Optional[InputElasticTensor.dataclass] = None,
 ):
     structure_dict = {}
 
@@ -201,7 +203,7 @@ def GenerateStructures(
 def AnalyseStructures(
         data_df: DataStructureContainer,
         analysis: OutputElasticSymmetryAnalysis,
-        parameters: Optional[InputElasticTensor] = None,
+        parameters: Optional[InputElasticTensor.dataclass] = None,
 ) -> OutputElasticAnalysis:
     zero_strain_job_name = "s_e_0"
 
