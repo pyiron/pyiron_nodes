@@ -12,7 +12,7 @@ dependencies:
 - pandas =2.2.2
 - phonopy =2.26.6
 - pyiron_atomistics =0.6.11
-- pyiron_base =0.9.12
+- pyiron_base =0.10.2
 - pyiron_contrib =0.1.18
 - pyiron-data =0.0.30
 - pyiron_workflow =0.10.2
