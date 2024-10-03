@@ -3,7 +3,7 @@ import os
 import filecmp
 from pathlib import Path
 import shutil
-from pyiron_nodes.pyiron_nodes.atomistic.engine.vasp import (
+from pyiron_nodes.atomistic.engine.vasp import (
     vasp_job,
     run_job,
     create_WorkingDirectory,
