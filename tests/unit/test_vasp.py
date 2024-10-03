@@ -70,8 +70,8 @@ class TestVaspJob(unittest.TestCase):
         test_file = "test_file.txt"
         with open(test_file, "w") as f:
             f.write("This is a test line.\n")
-        self.assertTrue(is_line_in_file(test_file, "This is a test line."))
-        self.assertFalse(is_line_in_file(test_file, "This is not in the file."))
+        self.assertTrue(isLineInFile.node_function(test_file, "This is a test line."))
+        self.assertFalse(isLineInFile.node_function(test_file, "This is not in the file."))
         os.remove(test_file)
 
     def test_create_WorkingDirectory(self):
