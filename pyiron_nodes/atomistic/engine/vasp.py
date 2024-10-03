@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import os
 import warnings
 from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional
-from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -25,36 +26,44 @@ from pyiron_snippets.resources import ResourceResolver
 from pyiron_nodes.atomistic.engine.lammps import Shell
 from pyiron_nodes.lammps import ShellOutput
 
+
 def get_potcar_config_path(config_file: Optional[Path] = None) -> Optional[Path]:
     """
     Get the POTCAR library path from the config file.
     If the config file is not specified, it defaults to '.pyiron_vasp_config' in the user's home directory.
-    
+
     Args:
         config_file (Path, optional): Path to the config file. Defaults to None.
-    
+
     Returns:
         Path or None: The path where the POTCAR files are stored, or None if not found.
     """
     # If no config file is specified, use the default '.pyiron_vasp_config' in the user's home directory
     if config_file is None:
-        config_file = Path.home().joinpath('.pyiron_vasp_config')
-    
+        config_file = Path.home().joinpath(".pyiron_vasp_config")
+
     # Read the config file and extract the path
     try:
-        with open(config_file, 'r') as f:
+        with open(config_file, "r") as f:
             for line in f:
-                if line.startswith('pyiron_vasp_POTCAR_config'):
+                if line.startswith("pyiron_vasp_POTCAR_config"):
                     # Parse the line to get the path value
-                    potcar_path = line.split('=')[1].strip()
+                    potcar_path = line.split("=")[1].strip()
                     return Path(potcar_path)
     except FileNotFoundError:
-        warnings.warn(f"Configuration file not found: {config_file}, using default or manual path.", UserWarning)
+        warnings.warn(
+            f"Configuration file not found: {config_file}, using default or manual path.",
+            UserWarning,
+        )
     except Exception as e:
         warnings.warn(f"Error reading potcar configuration file: {str(e)}", UserWarning)
-    
-    warnings.warn("POTCAR path not found in configuration file, please check the configuration.", UserWarning)
+
+    warnings.warn(
+        "POTCAR path not found in configuration file, please check the configuration.",
+        UserWarning,
+    )
     return None
+
 
 # Use the function to get the path
 POTCAR_library_path = get_potcar_config_path()
@@ -64,12 +73,13 @@ POTCAR_specification_data = str(
     Path(__file__).parent.joinpath("vasp_pseudopotential_PBE_data.csv")
 )
 
+
 @dataclass
 class VaspInput:
     structure: Structure
     incar: Incar
     pseudopot_lib_path: str = field(default=POTCAR_library_path)
-    potcar_paths: Optional[List[str]] = None
+    potcar_paths: Optional[list[str]] = None
     kpoints: Optional[Kpoints] = None
 
 
@@ -87,13 +97,15 @@ def isLineInFile(filepath: str, line: str, exact_match: bool = True) -> bool:
                     break  # Exit loop if a partial match is found
     except FileNotFoundError:
         logger.logger.log(f"File '{filepath}' not found.")
-    
+
     return line_found
+
 
 def write_POSCAR(workdir: str, structure: Structure, filename: str = "POSCAR") -> str:
     poscar_path = os.path.join(workdir, filename)
     structure.to(fmt="poscar", filename=poscar_path)
     return poscar_path
+
 
 def write_INCAR(workdir: str, incar: Incar, filename: str = "INCAR") -> str:
     incar_path = os.path.join(workdir, filename)
@@ -158,6 +170,7 @@ def write_VaspInputSet(workdir: str, vasp_input: VaspInput) -> str:
         _ = write_KPOINTS(workdir=workdir, kpoints=vasp_input.kpoints)
 
     return workdir
+
 
 @Workflow.wrap.as_function_node("output")
 def run_job(

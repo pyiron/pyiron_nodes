@@ -101,6 +101,7 @@ class TestVaspJob(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "POTCAR")))
 
+
 def test_run_job(self):
     output = run_job(f"cp -r {self.example_converged_path} .", self.workdir)()
 
@@ -111,22 +112,44 @@ def test_run_job(self):
 
     # Define the source and destination directories
     source_dir = self.example_converged_path
-    destination_dir = os.path.join(self.workdir, os.path.basename(self.example_converged_path))
+    destination_dir = os.path.join(
+        self.workdir, os.path.basename(self.example_converged_path)
+    )
 
     # Check if destination directory exists
-    self.assertTrue(os.path.exists(destination_dir), "Destination directory was not created")
+    self.assertTrue(
+        os.path.exists(destination_dir), "Destination directory was not created"
+    )
 
     # Compare the contents of source and destination directories
     dir_comparison = filecmp.dircmp(source_dir, destination_dir)
 
     # Ensure the contents are identical
-    self.assertEqual(dir_comparison.left_only, [], "There are files only in the source directory")
-    self.assertEqual(dir_comparison.right_only, [], "There are files only in the destination directory")
-    self.assertEqual(dir_comparison.diff_files, [], "There are files that differ between source and destination")
+    self.assertEqual(
+        dir_comparison.left_only, [], "There are files only in the source directory"
+    )
+    self.assertEqual(
+        dir_comparison.right_only,
+        [],
+        "There are files only in the destination directory",
+    )
+    self.assertEqual(
+        dir_comparison.diff_files,
+        [],
+        "There are files that differ between source and destination",
+    )
 
     # Optionally, compare recursively if the directories contain subdirectories
-    self.assertTrue(filecmp.cmpfiles(source_dir, destination_dir, commonfiles=dir_comparison.common_files, shallow=False)[2] == [],
-                    "There are differences in common files between source and destination")
+    self.assertTrue(
+        filecmp.cmpfiles(
+            source_dir,
+            destination_dir,
+            commonfiles=dir_comparison.common_files,
+            shallow=False,
+        )[2]
+        == [],
+        "There are differences in common files between source and destination",
+    )
 
     def test_parse_VaspOutput(self):
         output = parse_VaspOutput(self.example_converged_path)()
