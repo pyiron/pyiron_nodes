@@ -3,21 +3,66 @@ import warnings
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Optional, List, Dict, Tuple
+from typing import Optional
+from __future__ import annotations
 from dataclasses import dataclass, field
+
 import pandas as pd
-from pyiron_workflow import Workflow
-from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
+
 from pymatgen.core import Structure
 from pymatgen.io.vasp.inputs import Incar, Kpoints
 from pymatgen.io.vasp.outputs import Vasprun
+
 from ase import Atoms
 
-POTCAR_library_path = "/cmmc/u/hmai/vasp_potentials_54/"
+from pyiron_workflow import Workflow
+
+from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
+
+from pyiron_snippets.logger import logger
+from pyiron_snippets.resources import ResourceResolver
+
+from pyiron_nodes.atomistic.engine.lammps import Shell
+from pyiron_nodes.lammps import ShellOutput
+
+def get_potcar_config_path(config_file: Optional[Path] = None) -> Optional[Path]:
+    """
+    Get the POTCAR library path from the config file.
+    If the config file is not specified, it defaults to '.pyiron_vasp_config' in the user's home directory.
+    
+    Args:
+        config_file (Path, optional): Path to the config file. Defaults to None.
+    
+    Returns:
+        Path or None: The path where the POTCAR files are stored, or None if not found.
+    """
+    # If no config file is specified, use the default '.pyiron_vasp_config' in the user's home directory
+    if config_file is None:
+        config_file = Path.home().joinpath('.pyiron_vasp_config')
+    
+    # Read the config file and extract the path
+    try:
+        with open(config_file, 'r') as f:
+            for line in f:
+                if line.startswith('pyiron_vasp_POTCAR_config'):
+                    # Parse the line to get the path value
+                    potcar_path = line.split('=')[1].strip()
+                    return Path(potcar_path)
+    except FileNotFoundError:
+        warnings.warn(f"Configuration file not found: {config_file}, using default or manual path.", UserWarning)
+    except Exception as e:
+        warnings.warn(f"Error reading potcar configuration file: {str(e)}", UserWarning)
+    
+    warnings.warn("POTCAR path not found in configuration file, please check the configuration.", UserWarning)
+    return None
+
+# Use the function to get the path
+POTCAR_library_path = get_potcar_config_path()
+
+# Other parts of vasp.py can now use POTCAR_library_path
 POTCAR_specification_data = str(
     Path(__file__).parent.joinpath("vasp_pseudopotential_PBE_data.csv")
 )
-
 
 @dataclass
 class VaspInput:
@@ -28,24 +73,27 @@ class VaspInput:
     kpoints: Optional[Kpoints] = None
 
 
-def is_line_in_file(filepath: str, line: str, exact_match: bool = True) -> bool:
+@Workflow.wrap.as_function_node("line_found")
+def isLineInFile(filepath: str, line: str, exact_match: bool = True) -> bool:
+    line_found = False  # Initialize the result as False
     try:
         with open(filepath, "r") as file:
             for file_line in file:
                 if exact_match and line == file_line.strip():
-                    return True
+                    line_found = True
+                    break  # Exit loop if the line is found
                 elif not exact_match and line in file_line:
-                    return True
+                    line_found = True
+                    break  # Exit loop if a partial match is found
     except FileNotFoundError:
-        print(f"File '{filepath}' not found.")
-    return False
-
+        logger.logger.log(f"File '{filepath}' not found.")
+    
+    return line_found
 
 def write_POSCAR(workdir: str, structure: Structure, filename: str = "POSCAR") -> str:
     poscar_path = os.path.join(workdir, filename)
     structure.to(fmt="poscar", filename=poscar_path)
     return poscar_path
-
 
 def write_INCAR(workdir: str, incar: Incar, filename: str = "INCAR") -> str:
     incar_path = os.path.join(workdir, filename)
@@ -93,7 +141,7 @@ def create_WorkingDirectory(workdir: str, quiet: bool = False) -> str:
     # Check if workdir exists
     if not os.path.exists(workdir):
         os.makedirs(workdir)
-        print(f"made directory '{workdir}'")
+        logger.log(f"made directory '{workdir}'")
     else:
         warnings.warn(
             f"Directory '{workdir}' already exists. Existing files may be overwritten."
@@ -102,7 +150,7 @@ def create_WorkingDirectory(workdir: str, quiet: bool = False) -> str:
 
 
 @Workflow.wrap.as_function_node("workdir")
-def write_VaspInputSet(workdir: str, vasp_input) -> str:
+def write_VaspInputSet(workdir: str, vasp_input: VaspInput) -> str:
     _ = write_POSCAR(workdir=workdir, structure=vasp_input.structure)
     _ = write_INCAR(workdir=workdir, incar=vasp_input.incar)
     _ = write_POTCAR(workdir=workdir, vasp_input=vasp_input)
@@ -111,35 +159,18 @@ def write_VaspInputSet(workdir: str, vasp_input) -> str:
 
     return workdir
 
-
-class Storage:
-    @staticmethod
-    def _convert_to_dict(instance) -> Dict:
-        attributes = vars(instance)
-        result_dict = {
-            key: value for key, value in attributes.items() if "_" not in key[0]
-        }
-        return result_dict
-
-
-class ShellOutput(Storage):
-    stdout: str
-    stderr: str
-    return_code: int
-
-
 @Workflow.wrap.as_function_node("output")
 def run_job(
     command: str,
-    workdir: str = os.getcwd(),
-    environment: Optional[Dict[str, str]] = None,
-    arguments: Optional[List[str]] = None,
+    workdir: str | None = None,
+    environment: Optional[dict[str, str]] = None,
+    arguments: Optional[list[str]] = None,
 ) -> ShellOutput:
     if environment is None:
         environment = {}
     if arguments is None:
         arguments = []
-    print(f"run_job is in {os.getcwd()}")
+    logger.log(print(f"run_job is in {os.getcwd()}"))
     environ = dict(os.environ)
     environ.update({k: str(v) for k, v in environment.items()})
     proc = subprocess.run(
@@ -150,18 +181,16 @@ def run_job(
         env=environ,
         shell=True,
     )
-    print(f"Running job in directory: {workdir}")
     output = ShellOutput()
     output.stdout = proc.stdout
     output.stderr = proc.stderr
-    print(proc.stdout, proc.stderr)
     output.return_code = proc.returncode
     return output
 
 
 @Workflow.wrap.as_function_node("output_dict")
-def parse_VaspOutput(workdir: str) -> Dict:
-    print(f"workdir of parse: {workdir}")
+def parse_VaspOutput(workdir: str) -> dict:
+    logger.log(f"workdir of parse: {workdir}")
     return pvo(workdir)
 
 
@@ -182,14 +211,14 @@ def check_convergence(
         converged = vr.converged
     except:
         try:
-            converged = is_line_in_file(
+            converged = isLineInFile.node_function(
                 filepath=os.path.join(workdir, filename_vasplog),
                 line=line_converged,
                 exact_match=False,
             )
         except:
             try:
-                converged = is_line_in_file(
+                converged = isLineInFile.node_function(
                     filepath=os.path.join(workdir, backup_vasplog),
                     line=line_converged,
                     exact_match=False,
@@ -204,7 +233,7 @@ def check_convergence(
 def vasp_job(
     self,
     workdir: str,
-    vasp_input,
+    vasp_input: VaspInput,
     command: str = "module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 1 vasp_std",
 ):
     self.working_dir = create_WorkingDirectory(workdir=workdir)
@@ -224,7 +253,7 @@ def vasp_job(
     return self.vasp_output, self.convergence_status
 
 
-def stack_element_string(structure) -> Tuple[List[str], List[int]]:
+def stack_element_string(structure) -> tuple[list[str], list[int]]:
     # site_element_list = [atom.symbol for atom in atoms]
     site_element_list = [site.species_string for site in structure]
     past_element = site_element_list[0]
@@ -249,7 +278,7 @@ def get_default_POTCAR_paths(
     structure: Structure,
     pseudopot_lib_path: str,
     potcar_df: pd.DataFrame = pd.read_csv(POTCAR_specification_data),
-) -> List[str]:
+) -> list[str]:
     ele_list, _ = stack_element_string(structure)
     potcar_paths = []
     for element in ele_list:
