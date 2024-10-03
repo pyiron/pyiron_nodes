@@ -11,7 +11,7 @@ from pyiron_nodes.atomistic.engine.vasp import (
     parse_VaspOutput,
     get_default_POTCAR_paths,
     write_POTCAR,
-    is_line_in_file,
+    isLineInFile,
     write_POSCAR,
     write_INCAR,
     write_KPOINTS,
