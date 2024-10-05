@@ -1,6 +1,6 @@
 from pyiron_workflow import as_function_node, as_macro_node
 from typing import Optional
-from pyiron_nodes.FEM.geometries.three_d_geometries import BarParameters
+from pyiron_nodes.continuum_fem.geometries.three_d_geometries import BarParameters
 from pyiron_nodes.dev_tools import wf_data_class
 from pyiron_workflow import as_dataclass_node
 from dataclasses import field
