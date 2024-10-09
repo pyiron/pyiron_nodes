@@ -7,13 +7,13 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-import pandas
+import pandas as pd
 
 from pyiron_workflow import as_function_node
 
 
 @as_function_node("fig")
-def PlotDataFrame(df: pandas.DataFrame, x: Optional[list | np.ndarray] = None):
+def PlotDataFrame(df: pd.DataFrame, x: Optional[list | np.ndarray] = None):
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
@@ -22,7 +22,7 @@ def PlotDataFrame(df: pandas.DataFrame, x: Optional[list | np.ndarray] = None):
 
 
 @as_function_node("fig")
-def PlotDataFrameXY(df: pandas.DataFrame, x: Optional[list | np.ndarray] = None):
+def PlotDataFrameXY(df: pd.DataFrame, x: Optional[list | np.ndarray] = None):
     from matplotlib import pyplot as plt
 
     # Check if dataframe has only two columns and x parameter is not provided.
@@ -70,10 +70,10 @@ def Histogram(x: Optional[list | np.ndarray], bins: int = 50):
     return plt.show()
 
 
-@as_function_node("axis")
+@as_function_node("figure")
 def Plot(
-        y: Optional[list | np.ndarray | pandas.core.series.Series],
-        x: Optional[list | np.ndarray | pandas.core.series.Series] = None,
+        y: Optional[list | np.ndarray | pd.core.series.Series],
+        x: Optional[list | np.ndarray | pd.core.series.Series] = None,
         axis: Optional[object] = None,
         title: Optional[str] = "",
         color: Optional[str] = "b",
@@ -82,17 +82,21 @@ def Plot(
 ):
     from matplotlib import pyplot as plt
 
-    if x is None:
-        x = np.arange(len(y))
+    # If x is not provided, generate a default sequence
+    x = np.arange(len(y)) if x is None else x
 
     if axis is None:
         axis = plt
         axis.title = title
+        axis.plot(x, y, color=color, marker=symbol, label=legend_label)
+        figure = axis.show()
+
     else:
         axis.set_title(title)  # Set the title of the plot
-    axis.plot(x, y, color=color, marker=symbol, label=legend_label)
+        axis.plot(x, y, color=color, marker=symbol, label=legend_label)
+        figure = axis
 
-    return axis.show()
+    return figure
 
 
 @as_function_node("linspace")

@@ -81,7 +81,7 @@ def SetInputCalcMD(
 def CalcMD(calculator_input: Optional[InputCalcMD.dataclass] = None):
     from dataclasses import asdict
     if calculator_input is None:
-        calculator_input = InputCalcMD().dataclass()
+        calculator_input = InputCalcMD.dataclass()
 
     calculator_kwargs = asdict(calculator_input)
     # calculator_kwargs = parse_input_kwargs(calculator_input, InputCalcMD)
