@@ -1,0 +1,8 @@
+ PAW_PBE Mn_pv 02Aug2007                
+   13.0000000000000     
+ parameters from PSCTR are:
+   VRHFIN =Mn: 3p4s3d
+   LEXCH  = PE
+   TITEL  = PAW_PBE Mn_pv 02Aug2007
+   RCORE  =    2.400    outmost cutoff radius
+   ENMAX  =  269.864; ENMIN  =  202.398 eV

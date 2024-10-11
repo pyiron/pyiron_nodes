@@ -1,0 +1,9 @@
+  PAW_PBE Fe_sv 23Jul2007                
+   16.0000000000000     
+ parameters from PSCTR are:
+   VRHFIN =Fe:  d7 s1
+   LEXCH  = PE
+   TITEL  = PAW_PBE Fe_sv 23Jul2007
+   EATOM  =   500 eV
+   RCORE  =    2    outmost cutoff radius
+   ENMAX  =  390.558; ENMIN  =  292.918 eV
