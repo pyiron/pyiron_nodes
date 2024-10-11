@@ -1,0 +1,20 @@
+# Set the default POTCAR set
+# Make sure that the default_POTCAR_set matches one of the suffixes in the vasp_POTCAR_path_*
+default_POTCAR_set = potpaw54
+default_functional = PBE
+# Path to the root directory containing the VASP pseudopotential files
+pyiron_vasp_resources = /home/resources/vasp/
+
+# Path for different POTPAW versions (adjust these paths according to your setup)
+
+# Each of these dirs must have a "GGA" and "LDA" subdirectory structure
+# i.e.
+# The structure should look like
+# .../vasp/potpaw_64/LDA
+# .../vasp/potpaw_64/GGA
+# .../vasp/potpaw_54/LDA etc.
+vasp_POTCAR_path_potpaw64 = {pyiron_vasp_resources}/potpaw_64
+vasp_POTCAR_path_potpaw54 = {pyiron_vasp_resources}/potpaw_54
+vasp_POTCAR_path_potpaw52 = {pyiron_vasp_resources}/potpaw_52
+# Note that pyiron vasp nodes can detect variants of vasp_POTCAR_path_{randomsuffix}
+# So if you want to do something with custom pseudopotentials, you can...
