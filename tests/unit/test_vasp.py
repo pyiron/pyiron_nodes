@@ -1,9 +1,30 @@
+import os
+from pathlib import Path
+
+# Set up the configuration file before importing the module
+home_config_file_path = Path(os.path.expanduser("~")) / ".pyiron_vasp_config"
+
+# Write the mock configuration content to the file in the home directory
+mock_config_content = """
+default_POTCAR_set = potpaw54
+default_functional = PBE
+pyiron_vasp_resources = /home/resources/vasp/
+vasp_POTCAR_path_potpaw64 = {pyiron_vasp_resources}/potpaw_64
+vasp_POTCAR_path_potpaw54 = {pyiron_vasp_resources}/potpaw_54
+vasp_POTCAR_path_potpaw52 = {pyiron_vasp_resources}/potpaw_52
+"""
+
+# Write the configuration file before importing the module
+with open(home_config_file_path, "w") as config_file:
+    config_file.write(mock_config_content)
+    
 import unittest
 import os
 import filecmp
 from pathlib import Path
 import shutil
 from pyiron_nodes.atomistic.engine.vasp import (
+    read_potcar_config,
     vasp_job,
     run_job,
     create_WorkingDirectory,
@@ -56,7 +77,43 @@ class TestVaspJob(unittest.TestCase):
             os.remove("./POTCAR")
         if os.path.exists(self.workdir):
             shutil.rmtree(self.workdir)
+            
+    def test_valid_config(self):
+        result = read_potcar_config(self.config_file_path)
 
+        expected_result = {
+            'default_POTCAR_set': 'potpaw54',
+            'default_functional': 'PBE',
+            'pyiron_vasp_resources': '/home/resources/vasp/',
+            'vasp_POTCAR_path_potpaw64': '/home/resources/vasp/potpaw_64',
+            'vasp_POTCAR_path_potpaw54': '/home/resources/vasp/potpaw_54',
+            'vasp_POTCAR_path_potpaw52': '/home/resources/vasp/potpaw_52',
+            'default_POTCAR_path': '/home/resources/vasp/potpaw_54',
+        }
+
+        self.assertEqual(result, expected_result)
+
+    def test_missing_file(self):
+        # Remove the file for this test
+        self.config_file_path.unlink()
+        with self.assertRaises(FileNotFoundError):
+            read_potcar_config(self.config_file_path)
+
+    def test_invalid_default_POTCAR_set(self):
+        # Modify the config file to have an invalid default_POTCAR_set
+        with open(self.config_file_path, "w") as config_file:
+            config_file.write(self.mock_config_content.replace("potpaw54", "invalid_set"))
+
+        with self.assertRaises(ValueError):
+            read_potcar_config(self.config_file_path)
+
+    def test_invalid_default_functional(self):
+        # Modify the config file to have an invalid default_functional
+        with open(self.config_file_path, "w") as config_file:
+            config_file.write(self.mock_config_content.replace("PBE", "invalid_functional"))
+
+        with self.assertRaises(ValueError):
+            read_potcar_config(self.config_file_path)
     def test_write_POTCAR(self):
         write_POTCAR(".", vasp_input=self.vasp_input)
         self.assertTrue(os.path.exists("./POTCAR"))
@@ -102,54 +159,54 @@ class TestVaspJob(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "POTCAR")))
 
 
-def test_run_job(self):
-    output = run_job(f"cp -r {self.example_converged_path} .", self.workdir)()
+    def test_run_job(self):
+        output = run_job(f"cp -r {self.example_converged_path} .", self.workdir)()
 
-    # Check the standard output, error, and return code
-    self.assertEqual(output.stdout, "")
-    self.assertEqual(output.stderr, "")
-    self.assertEqual(output.return_code, 0)
+        # Check the standard output, error, and return code
+        self.assertEqual(output.stdout, "")
+        self.assertEqual(output.stderr, "")
+        self.assertEqual(output.return_code, 0)
 
-    # Define the source and destination directories
-    source_dir = self.example_converged_path
-    destination_dir = os.path.join(
-        self.workdir, os.path.basename(self.example_converged_path)
-    )
+        # Define the source and destination directories
+        source_dir = self.example_converged_path
+        destination_dir = os.path.join(
+            self.workdir, os.path.basename(self.example_converged_path)
+        )
 
-    # Check if destination directory exists
-    self.assertTrue(
-        os.path.exists(destination_dir), "Destination directory was not created"
-    )
+        # Check if destination directory exists
+        self.assertTrue(
+            os.path.exists(destination_dir), "Destination directory was not created"
+        )
 
-    # Compare the contents of source and destination directories
-    dir_comparison = filecmp.dircmp(source_dir, destination_dir)
+        # Compare the contents of source and destination directories
+        dir_comparison = filecmp.dircmp(source_dir, destination_dir)
 
-    # Ensure the contents are identical
-    self.assertEqual(
-        dir_comparison.left_only, [], "There are files only in the source directory"
-    )
-    self.assertEqual(
-        dir_comparison.right_only,
-        [],
-        "There are files only in the destination directory",
-    )
-    self.assertEqual(
-        dir_comparison.diff_files,
-        [],
-        "There are files that differ between source and destination",
-    )
+        # Ensure the contents are identical
+        self.assertEqual(
+            dir_comparison.left_only, [], "There are files only in the source directory"
+        )
+        self.assertEqual(
+            dir_comparison.right_only,
+            [],
+            "There are files only in the destination directory",
+        )
+        self.assertEqual(
+            dir_comparison.diff_files,
+            [],
+            "There are files that differ between source and destination",
+        )
 
-    # Optionally, compare recursively if the directories contain subdirectories
-    self.assertTrue(
-        filecmp.cmpfiles(
-            source_dir,
-            destination_dir,
-            commonfiles=dir_comparison.common_files,
-            shallow=False,
-        )[2]
-        == [],
-        "There are differences in common files between source and destination",
-    )
+        # Optionally, compare recursively if the directories contain subdirectories
+        self.assertTrue(
+            filecmp.cmpfiles(
+                source_dir,
+                destination_dir,
+                commonfiles=dir_comparison.common_files,
+                shallow=False,
+            )[2]
+            == [],
+            "There are differences in common files between source and destination",
+        )
 
     def test_parse_VaspOutput(self):
         output = parse_VaspOutput(self.example_converged_path)()
