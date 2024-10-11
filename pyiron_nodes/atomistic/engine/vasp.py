@@ -21,64 +21,137 @@ from pyiron_workflow import Workflow
 from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
 
 from pyiron_snippets.logger import logger
-from pyiron_snippets.resources import ResourceResolver
 
 from pyiron_nodes.atomistic.engine.lammps import Shell
 from pyiron_nodes.lammps import ShellOutput
 
-
-def get_potcar_config_path(config_file: Optional[Path] = None) -> Optional[Path]:
+def read_potcar_config(config_file: Path) -> dict:
     """
-    Get the POTCAR library path from the config file.
-    If the config file is not specified, it defaults to '.pyiron_vasp_config' in the user's home directory.
+    Reads the POTCAR configuration from a file and resolves the paths dynamically based on config content.
+
+    This function reads the VASP configuration file and dynamically constructs the paths for the POTCAR files.
+    It checks the validity of the `default_POTCAR_set` and the `default_functional` fields. 
+    The `default_functional` can be set to functional types like PBE or LDA.
 
     Args:
-        config_file (Path, optional): Path to the config file. Defaults to None.
+        config_file (Path): Path to the configuration file.
 
     Returns:
-        Path or None: The path where the POTCAR files are stored, or None if not found.
-    """
-    # If no config file is specified, use the default '.pyiron_vasp_config' in the user's home directory
-    if config_file is None:
-        config_file = Path.home().joinpath(".pyiron_vasp_config")
+        dict: A dictionary containing the resolved paths and the default POTCAR path.
+        
+    Raises:
+        ValueError: 
+            - If no valid `default_POTCAR_set` is found in the config file.
+            - If no valid `default_functional` (e.g., PBE or LDA) is found in the config.
 
-    # Read the config file and extract the path
+    Example configuration file format:
+        default_POTCAR_set = potpaw_64
+        default_functional = PBE
+        pyiron_vasp_resources = /home/pyiron_resources_cmmc/vasp
+        vasp_POTCAR_path_potpaw_64 = {pyiron_vasp_resources}/potpaw_64
+        vasp_POTCAR_path_potpaw_54 = {pyiron_vasp_resources}/potpaw_54
+        vasp_POTCAR_path_potpaw_52 = {pyiron_vasp_resources}/potpaw_52
+    """
+
+    config_data = {}
+
+    # Read the configuration file
     try:
         with open(config_file, "r") as f:
             for line in f:
-                if line.startswith("pyiron_vasp_POTCAR_config"):
-                    # Parse the line to get the path value
-                    potcar_path = line.split("=")[1].strip()
-                    return Path(potcar_path)
+                # Skip comments and empty lines
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                
+                # Split the line into key and value
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    # Store the configuration
+                    config_data[key] = value
+
+        # Resolve the pyiron_vasp_resources path
+        pyiron_vasp_resources = config_data.get("pyiron_vasp_resources", "")
+        default_POTCAR_set = config_data.get("default_POTCAR_set")
+        default_functional = config_data.get("default_functional")
+        print(config_data)
+        # Dynamically identify all POTCAR sets based on keys in the config file
+        potcar_sets = []
+        for key in config_data:
+            if key.startswith("vasp_POTCAR_path_"):
+                potcar_sets.append(key.split("vasp_POTCAR_path_")[1])
+
+        # Check if a valid default_POTCAR_set is provided
+        if not default_POTCAR_set or default_POTCAR_set not in potcar_sets:
+            raise ValueError(f"Unknown or missing default_POTCAR_set: {default_POTCAR_set}. Valid options: {potcar_sets}")
+        
+        # Check if a valid default_functional is provided
+        if not default_functional or default_functional not in ["PBE", "LDA"]:
+            raise ValueError(f"Unknown or missing default_functional: {default_functional}. Valid options: PBE, LDA")
+        
+        # Dynamically generate the paths for all potpaw sets based on the config content
+        for potcar_set in potcar_sets:
+            key = f"vasp_POTCAR_path_{potcar_set}"
+            config_data[key] = os.path.join(pyiron_vasp_resources, potcar_set)
+        print(config_data)
+        # Set the default POTCAR path
+        config_data["default_POTCAR_path"] = config_data[f"vasp_POTCAR_path_{default_POTCAR_set}"]
+
+        return config_data
+
     except FileNotFoundError:
-        warnings.warn(
-            f"Configuration file not found: {config_file}, using default or manual path.",
-            UserWarning,
-        )
+        print(f"Configuration file not found: {config_file}")
+        return {}
+
     except Exception as e:
-        warnings.warn(f"Error reading potcar configuration file: {str(e)}", UserWarning)
+        print(f"Error reading configuration file: {e}")
+        return {}
+    
+# Look in user's home dir
+config_file = os.path.join(Path.home(), ".pyiron_vasp_config")
+potcar_config = read_potcar_config(config_file)
+default_POTCAR_library_path = potcar_config["default_POTCAR_path"]
+default_POTCAR_generation_path = os.path.join(potcar_config["default_POTCAR_path"], potcar_config["default_functional"])
 
-    warnings.warn(
-        "POTCAR path not found in configuration file, please check the configuration.",
-        UserWarning,
-    )
-    return None
-
-
-# Use the function to get the path
-POTCAR_library_path = get_potcar_config_path()
-
-# Other parts of vasp.py can now use POTCAR_library_path
-POTCAR_specification_data = str(
-    Path(__file__).parent.joinpath("vasp_pseudopotential_PBE_data.csv")
+POTCAR_default_specification_data = str(
+    Path(__file__).parent.joinpath("vasp_resources", f"vasp_pseudopotential_{potcar_config["default_functional"]}_data.csv")
 )
-
 
 @dataclass
 class VaspInput:
+    """
+    Class to represent the input settings for a VASP calculation, including structure, INCAR parameters, and pseudopotential paths.
+
+    Attributes:
+        structure (Structure): The atomic structure of the system to be used in the VASP calculation.
+        incar (Incar): The INCAR object containing the VASP input parameters.
+        pseudopot_lib_path (str): The path to the library of VASP pseudopotentials (POTCAR files). 
+        Defaults to `default_POTCAR_generation_path` generated by the .pyiron_vasp_config.
+        potcar_paths (Optional[list[str]]): A list of paths to user-specified POTCAR files associated with the calculation. 
+            When specified, this _OVERRIDES_ default POTCAR generation.
+            This list must contain all the necessary POTCAR files for the elements in the structure. 
+            For example, if the structure contains H O H atoms, the list should contain paths like:
+            - ".../vasp/potpaw_64/H/POTCAR"
+            - ".../vasp/custom_charged_potential/O/POTCAR"
+            - ".../vasp/potpaw_64/H/POTCAR"
+            No checks are performed to ensure the POTCAR files match the species in the structure, so it is the user's responsibility 
+            to ensure consistency between the elements in the structure and the provided POTCAR files when using this functionality.
+            
+        kpoints (Optional[Kpoints]): The KPOINTS object defining the k-point mesh for the calculation. If not provided, default settings will be used.
+
+    Notes:
+        - The `potcar_paths` attribute is exposed to allow users to make one-off changes to the pseudopotentials. This is 
+          useful when custom/non-default potentials are required for specific elements.
+        - When potcar_paths is used, the class does not validate that the provided POTCAR files match the elements in the structure,
+          so incorrect configurations may lead to invalid calculations.
+    """
     structure: Structure
     incar: Incar
-    pseudopot_lib_path: str = field(default=POTCAR_library_path)
+    pseudopot_lib_path: str = field(default=default_POTCAR_library_path)
+    pseudopot_functional: str = "PBE"
     potcar_paths: Optional[list[str]] = None
     kpoints: Optional[Kpoints] = None
 
@@ -183,7 +256,7 @@ def run_job(
         environment = {}
     if arguments is None:
         arguments = []
-    logger.log(print(f"run_job is in {os.getcwd()}"))
+    logger.log(f"run_job is in {os.getcwd()}")
     environ = dict(os.environ)
     environ.update({k: str(v) for k, v in environment.items()})
     proc = subprocess.run(
@@ -290,7 +363,7 @@ def stack_element_string(structure) -> tuple[list[str], list[int]]:
 def get_default_POTCAR_paths(
     structure: Structure,
     pseudopot_lib_path: str,
-    potcar_df: pd.DataFrame = pd.read_csv(POTCAR_specification_data),
+    potcar_df: pd.DataFrame = pd.read_csv(POTCAR_default_specification_data),
 ) -> list[str]:
     ele_list, _ = stack_element_string(structure)
     potcar_paths = []
