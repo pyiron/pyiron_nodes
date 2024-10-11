@@ -21,6 +21,7 @@ from pyiron_workflow import Workflow
 from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
 
 from pyiron_snippets.logger import logger
+#from pyiron_snippets.resources import ResourceResolver
 
 from pyiron_nodes.atomistic.engine.lammps import Shell
 from pyiron_nodes.lammps import ShellOutput
@@ -43,7 +44,9 @@ def read_potcar_config(config_file: Path) -> dict:
         ValueError: 
             - If no valid `default_POTCAR_set` is found in the config file.
             - If no valid `default_functional` (e.g., PBE or LDA) is found in the config.
-
+        FileNotFoundError: If the configuration file does not exist.
+        Exception: For any other unexpected issues encountered while reading the file.
+    
     Example configuration file format:
         default_POTCAR_set = potpaw_64
         default_functional = PBE
@@ -77,7 +80,6 @@ def read_potcar_config(config_file: Path) -> dict:
         pyiron_vasp_resources = config_data.get("pyiron_vasp_resources", "")
         default_POTCAR_set = config_data.get("default_POTCAR_set")
         default_functional = config_data.get("default_functional")
-        print(config_data)
         # Dynamically identify all POTCAR sets based on keys in the config file
         potcar_sets = []
         for key in config_data:
@@ -96,19 +98,16 @@ def read_potcar_config(config_file: Path) -> dict:
         for potcar_set in potcar_sets:
             key = f"vasp_POTCAR_path_{potcar_set}"
             config_data[key] = os.path.join(pyiron_vasp_resources, potcar_set)
-        print(config_data)
         # Set the default POTCAR path
         config_data["default_POTCAR_path"] = config_data[f"vasp_POTCAR_path_{default_POTCAR_set}"]
 
         return config_data
 
-    except FileNotFoundError:
-        print(f"Configuration file not found: {config_file}")
-        return {}
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Configuration file not found: {config_file}") from e
 
     except Exception as e:
-        print(f"Error reading configuration file: {e}")
-        return {}
+        raise Exception(f"Error reading configuration file: {e}") from e
     
 # Look in user's home dir
 config_file = os.path.join(Path.home(), ".pyiron_vasp_config")
@@ -159,7 +158,7 @@ class VaspInput:
 @Workflow.wrap.as_function_node("line_found")
 def isLineInFile(filepath: str, line: str, exact_match: bool = True) -> bool:
     line_found = False  # Initialize the result as False
-    try:
+    try:I 
         with open(filepath, "r") as file:
             for file_line in file:
                 if exact_match and line == file_line.strip():
@@ -169,8 +168,7 @@ def isLineInFile(filepath: str, line: str, exact_match: bool = True) -> bool:
                     line_found = True
                     break  # Exit loop if a partial match is found
     except FileNotFoundError:
-        logger.logger.log(f"File '{filepath}' not found.")
-
+        logger.info(f"File '{filepath}' not found.")
     return line_found
 
 
@@ -185,8 +183,7 @@ def write_INCAR(workdir: str, incar: Incar, filename: str = "INCAR") -> str:
     incar.write_file(incar_path)
     return incar_path
 
-
-def write_POTCAR(workdir: str, vasp_input, filename: str = "POTCAR") -> str:
+def write_POTCAR(workdir: str, vasp_input: VaspInput, filename: str = "POTCAR") -> str:
     class PotcarNotGeneratedError(Exception):
         pass
 
@@ -226,7 +223,7 @@ def create_WorkingDirectory(workdir: str, quiet: bool = False) -> str:
     # Check if workdir exists
     if not os.path.exists(workdir):
         os.makedirs(workdir)
-        logger.log(f"made directory '{workdir}'")
+        logger.info(f"made directory '{workdir}'")
     else:
         warnings.warn(
             f"Directory '{workdir}' already exists. Existing files may be overwritten."
@@ -256,7 +253,7 @@ def run_job(
         environment = {}
     if arguments is None:
         arguments = []
-    logger.log(f"run_job is in {os.getcwd()}")
+    logger.info(f"run_job is in {os.getcwd()}")
     environ = dict(os.environ)
     environ.update({k: str(v) for k, v in environment.items()})
     proc = subprocess.run(
@@ -276,7 +273,7 @@ def run_job(
 
 @Workflow.wrap.as_function_node("output_dict")
 def parse_VaspOutput(workdir: str) -> dict:
-    logger.log(f"workdir of parse: {workdir}")
+    logger.info(f"workdir of parse: {workdir}")
     return pvo(workdir)
 
 
