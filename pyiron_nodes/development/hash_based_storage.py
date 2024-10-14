@@ -24,6 +24,7 @@ import pickle
 import pandas as pd
 import os
 import sys
+import importlib
 
 
 def compute_hash_value(input_dict, length=256):
@@ -179,8 +180,8 @@ def add_node_dict_to_db(db, inputs, name="", path=".", length=256):
 
     # Check if a node with this hash exists
     exists = (
-        session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar()
-        is not None
+            session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar()
+            is not None
     )
 
     # If the node does not exist, add it to the session
@@ -200,14 +201,14 @@ def add_node_dict_to_db(db, inputs, name="", path=".", length=256):
 
 
 def edit_node_dict_in_db(
-    db,
-    node_id,
-    inputs=None,
-    outputs=None,
-    name=None,
-    lib_path=None,
-    output_ready=None,
-    file_path=None,
+        db,
+        node_id,
+        inputs=None,
+        outputs=None,
+        name=None,
+        lib_path=None,
+        output_ready=None,
+        file_path=None,
 ):
     """
     Edits the attributes of a Node in a database.
@@ -291,7 +292,7 @@ def remove_nodes_from_db(db, indices=None, verbose=False):
                 if verbose:
                     print(f"Row with id {index} does not exist.")
             else:
-                print("file path: ", node.file_path)
+                # print("file path: ", node.file_path)
                 remove_directory_if_contains_file(node.file_path)
                 ids_to_delete.append(int(index))
 
@@ -487,16 +488,17 @@ def extract_node_input(node, db):
     inp_node_dict = get_all_connected_input_nodes(node)
     # print(inp_node_dict.keys())
 
-    ic = node.inputs.to_dict()["channels"]
+    ic = node.inputs.channel_dict
+    # print('ic: ', ic)
     input_dict = dict()
     for k, v in ic.items():
-        # print(k)
+        # print('extract: ', k, v)
         if k in inp_node_dict:
             inp_node = inp_node_dict[k]
             input_dict[k] = "hash_" + get_node_hash(inp_node, db)
             save_node(inp_node, db, file_output=False)
         else:
-            input_dict[k] = v["value"]
+            input_dict[k] = str(v.value)  # ["value"]
     return input_dict
 
 
@@ -545,11 +547,20 @@ def extract_unique_identifier(node):
     Returns:
     A string representing the unique identifier for the node.
     """
-    return str(node.package_identifier) + "." + str(node.label)
+    return get_node_storage_path(node)
+
+
+def get_import_path(obj):
+    module = obj.__module__ if hasattr(obj, "__module__") else obj.__class__.__module__
+    name = obj.__name__ if hasattr(obj, "__name__") else obj.__class__.__name__
+    path = f"{module}.{name}"
+    if path == "numpy.ndarray":
+        path = "numpy.array"
+    return path
 
 
 def get_node_storage_path(node):
-    node_storage_path = extract_unique_identifier(node).replace(".", "/")
+    node_storage_path = get_import_path(node).replace(".", "/")
     return node_storage_path
 
 
@@ -582,22 +593,18 @@ def create_node(node_lib_path):
     Returns:
     The node as given by the node_lib_path.
     """
-    # Initial object is Workflow.create
-    from pyiron_workflow import Workflow
+    # Split a __class__ string into module and attribute
+    parts = node_lib_path.split(".")
+    module_path = ".".join(parts[:-1])
+    attribute_name = parts[-1]
 
-    obj = Workflow.create
+    # Import the module
+    module = importlib.import_module(module_path)
 
-    # Split the string into individual attributes
-    attrs = node_lib_path.split(".")
+    # Get the node object
+    obj = getattr(module, attribute_name)
 
-    # Access the nested attributes
-    for attr in attrs:
-        if callable(obj):
-            obj = obj()
-        obj = getattr(obj, attr)
-
-    # if the final attribute is callable, call and return the result
-    return obj() if callable(obj) else obj
+    return obj()
 
 
 def add_node_to_db(node, db):
@@ -618,7 +625,7 @@ def add_node_to_db(node, db):
     # print('add: ', node_dic)
 
     # Convert node_identifier to a path format by replacing '.' with '/'
-    path_format = node_dic["node_identifier"].replace(".", "/")
+    path_format = get_node_storage_path(node)  # (node_dic["node_identifier"].replace(".", "/"))
 
     # Add the node's metadata to the database
     exists = add_node_dict_to_db(db, inputs=node_dic, path=path_format)
@@ -633,7 +640,7 @@ def add_node_to_db(node, db):
 
 
 def save_node(
-    node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000
+        node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000
 ):  # , node_id):
     """
     This function stores a node by setting its storage_directory attribute to a certain path.
@@ -651,6 +658,7 @@ def save_node(
     """
 
     path = get_node_storage_path(node)
+    # print ('path: ', path)
     node_id = get_node_db_id(node, db)
     if node_id is None:
         add_node_to_db(node, db)
@@ -955,8 +963,11 @@ def eval_db_value(value, db):
 
             val = eval(value)
         except Exception as e:
-            print("eval exception: ", e, value)
-            val = None
+            # print("eval exception: ", e, value)
+            if isinstance(value, str):
+                val = value
+            else:
+                val = None
     return val
 
 
@@ -982,7 +993,8 @@ def get_node_from_db_id(node_id, db, data_only=False):
         # print('path: ', node_lib_path)
         if not lib_path.startswith("None"):
             # node class defined in library
-            node_lib_path = ".".join(lib_path.split("/")[1:])
+            node_lib_path = ".".join(lib_path.split("/"))  # [1:])
+            # print('node_lib_path: ', node_lib_path)
             node = create_node(node_lib_path)
 
             if q.file_path != "":
@@ -1090,7 +1102,7 @@ def get_all_connected_input_nodes(node):
     from pyiron_workflow.topology import get_nodes_in_data_tree
 
     # Get channel_dict dictionary containing all input channels
-    channel_dict = node.inputs.channel_dict
+    # channel_dict = node.inputs.channel_dict
 
     # Get the nodes in the data tree of the given node
     nodes_in_data_tree = get_nodes_in_data_tree(node)
@@ -1098,22 +1110,12 @@ def get_all_connected_input_nodes(node):
     connected_nodes = {}
 
     # Iterate over each input channel
-    for channel_name, input_channel in channel_dict.items():
-        connections, connected = (
-            input_channel.to_dict()["connections"],
-            input_channel.to_dict()["connected"],
-        )
-
-        # Check if the input channel is connected
-        if connected:
-            # Iterate over the connections and the nodes in the data tree
-            for connection in connections:
-                for node_in_data_tree in nodes_in_data_tree:
-                    # Compare function names of nodes in the data tree with connection
-                    # print (node_in_data_tree.__class__.__name__)
-                    # print (connection.split('.')[0])
-                    if node_in_data_tree.__class__.__name__ == connection.split(".")[0]:
-                        connected_nodes[channel_name] = node_in_data_tree
+    for label in node.inputs.labels:
+        # print ('label: ', node.label, label)
+        # print ('node: ', id(node))
+        if node.inputs[label].connected:
+            connections = node.inputs[label].connections
+            connected_nodes[label] = connections[0].owner
 
     return connected_nodes
 
@@ -1143,10 +1145,10 @@ def _bracketed_split(string, delimiter, strip_brackets=False):
                 continue
         elif c in closers:
             assert (
-                depth > 0
+                    depth > 0
             ), f"You exited more brackets that we have entered in string {string}"
             assert (
-                c == opener_to_closer[opening_bracket[depth]]
+                    c == opener_to_closer[opening_bracket[depth]]
             ), f"Closing bracket {c} did not match opening bracket {opening_bracket[depth]} in string {string}"
             depth -= 1
             if strip_brackets and depth == 0:
@@ -1237,7 +1239,7 @@ def clone_node_with_inputs(node):
     Returns:
     A new node with the same inputs as the given node, but with outputs reset.
     """
-    lib_path = ".".join(node.package_identifier.split(".")[1:])
+    lib_path = ".".join(node.package_identifier.split("."))  # [1:])
     node_lib_path = ".".join([lib_path, node.label])
     new_node = create_node(node_lib_path)
     for k, v in node.inputs.to_dict()["channels"].items():
