@@ -34,7 +34,7 @@ def Bulk(
 
 @as_macro_node("structure")
 def CubicBulkCell(
-    wf, element: str, cell_size: int = 1, vacancy_index: int | None = None
+    wf, element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
 ):
     from pyiron_nodes.atomistic.structure.transform import (
         CreateVacancy,
