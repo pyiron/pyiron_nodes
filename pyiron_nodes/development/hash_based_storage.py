@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import sqlalchemy
 import hashlib
 import json
-import pickle
+import cloudpickle as pickle
 import pandas as pd
 import os
 import sys
@@ -686,7 +686,7 @@ def save_node(
         file_path = Path(path) / str(node_id)
 
         # Set the node's storage_directory path
-        node.storage_directory.path = file_path
+        # node.storage_directory.path = file_path
         if not node.outputs.ready:
             run()
 
@@ -1078,7 +1078,7 @@ def run_node(node, db, verbose=False):
     if node_id is None:
         # node instance not yet in db
         new_node = node  # TODO implement .copy()
-        out = new_node.run()
+        new_node.pull()
         save_node(node, db)
     else:
         new_node = get_node_from_db_id(node_id, db)
