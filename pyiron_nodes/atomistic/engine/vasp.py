@@ -158,7 +158,7 @@ class VaspInput:
 @Workflow.wrap.as_function_node("line_found")
 def isLineInFile(filepath: str, line: str, exact_match: bool = True) -> bool:
     line_found = False  # Initialize the result as False
-    try:I 
+    try:
         with open(filepath, "r") as file:
             for file_line in file:
                 if exact_match and line == file_line.strip():
