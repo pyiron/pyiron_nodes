@@ -1,0 +1,4 @@
+    0
+jmolscript: load "" {1 1 1} spacegroup "x,y,z" unitcell [{      3.053090     0.269923    -1.012017 }, {      0.023534     3.074168     0.451121 }, {     -0.765147     0.023305     3.046897 }]
+atom1, atom2, translation A, translation B, translation C, overlap population
+  
