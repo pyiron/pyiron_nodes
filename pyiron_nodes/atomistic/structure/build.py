@@ -3,7 +3,7 @@ from __future__ import annotations
 from pyiron_workflow import as_function_node, as_macro_node
 from typing import Optional
 from ase.atoms import Atoms
-
+import numpy as np
 # from pyiron_workflow.workflow import Workflow
 
 
@@ -29,6 +29,44 @@ def Bulk(
         u,
         orthorhombic,
         cubic,
+    )
+
+@as_function_node("structure")
+def Surface(
+        element: str,
+        surface_type: str,
+        size: tuple,
+        vacuum: float,
+        center: bool = True,
+        pbc: list | np.ndarray | bool = True,
+):
+
+    """
+    Generate a surface based on the ase.build.surface module.
+
+    Args:
+        element (str): Element name
+        surface_type (str): The string specifying the surface type generators available through ase (fcc111,
+        hcp0001 etc.)
+        size (tuple): Size of the surface
+        vacuum (float): Length of vacuum layer added to the surface along the z direction
+        center (bool): Tells if the surface layers have to be at the center or at one end along the z-direction
+        pbc (list/numpy.ndarray): List of booleans specifying the periodic boundary conditions along all three
+                                directions.
+        **kwargs: Additional, arguments you would normally pass to the structure generator like 'a', 'b',
+        'orthogonal' etc.
+
+    Returns:
+        pyiron_atomistics.atomistics.structure.atoms.Atoms instance: Required surface
+    """
+    from pyiron_atomistics import _StructureFactory
+    return _StructureFactory().surface(
+        element,
+        surface_type,
+        size,
+        vacuum,
+        center,
+        pbc
     )
 
 
