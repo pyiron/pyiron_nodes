@@ -55,6 +55,7 @@ class TestVaspJob(unittest.TestCase):
             "ISMEAR": 1,
             "SIGMA": 0.1,
         }
+        self.config_file_path = home_config_file_path
         self.bulk_Fe = bulk("Fe", cubic=True) * [2, 2, 2]
         self.structure = AseAtomsAdaptor().get_structure(self.bulk_Fe)
         self.structure[1] = "Mn"
@@ -201,7 +202,7 @@ class TestVaspJob(unittest.TestCase):
             filecmp.cmpfiles(
                 source_dir,
                 destination_dir,
-                commonfiles=dir_comparison.common_files,
+                dir_comparison.common_files,
                 shallow=False,
             )[2]
             == [],
