@@ -24,7 +24,26 @@ from pyiron_snippets.logger import logger
 #from pyiron_snippets.resources import ResourceResolver
 
 from pyiron_nodes.atomistic.engine.lammps import Shell
-from pyiron_nodes.lammps import ShellOutput
+
+class Storage:
+    def _convert_to_dict(instance):
+        # Get the attributes of the instance
+        attributes = vars(instance)
+
+        # Convert attributes to a dictionary
+        result_dict = {
+            key: value for key, value in attributes.items() if "_" not in key[0]
+        }
+
+        return result_dict
+
+
+class ShellOutput(Storage):
+    stdout: str
+    stderr: str
+    return_code: int
+    dump: FileObject  # TODO: should be done in a specific lammps object
+    log: FileObject
 
 def read_potcar_config(config_file: Path) -> dict:
     """
