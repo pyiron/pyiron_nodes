@@ -17,7 +17,7 @@ from pymatgen.io.vasp.outputs import Vasprun
 from ase import Atoms
 
 from pyiron_workflow import Workflow
-
+from pyiron_nodes.dev_tools import VarType, FileObject
 from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
 
 from pyiron_snippets.logger import logger
@@ -133,9 +133,9 @@ config_file = os.path.join(Path.home(), ".pyiron_vasp_config")
 potcar_config = read_potcar_config(config_file)
 default_POTCAR_library_path = potcar_config["default_POTCAR_path"]
 default_POTCAR_generation_path = os.path.join(potcar_config["default_POTCAR_path"], potcar_config["default_functional"])
-
+default_functional = potcar_config["default_functional"]
 POTCAR_default_specification_data = str(
-    Path(__file__).parent.joinpath("vasp_resources", f"vasp_pseudopotential_{potcar_config["default_functional"]}_data.csv")
+    Path(__file__).parent.joinpath("vasp_resources", f"vasp_pseudopotential_{default_functional}_data.csv")
 )
 
 @dataclass
