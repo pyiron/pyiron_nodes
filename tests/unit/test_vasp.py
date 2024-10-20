@@ -104,9 +104,10 @@ class TestVaspJob(unittest.TestCase):
 
     def test_invalid_default_POTCAR_set(self):
         # Modify the config file to have an invalid default_POTCAR_set
-        with open(self.config_file_path, "w") as config_file:
-            config_file.write(self.mock_config_content.replace("default_POTCAR_set = potpaw54", "default_POTCAR_set = invalid_set"))
-
+        with open(home_config_file_path, "w") as config_file:
+            # Replace the exact line `default_POTCAR_set = potpaw54` with an invalid set
+            config_file.write(mock_config_content.replace("default_POTCAR_set = potpaw54", "default_POTCAR_set = invalid_set"))
+            
         with self.assertRaises(ValueError):
             read_potcar_config(self.config_file_path)
 

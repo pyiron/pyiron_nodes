@@ -49,10 +49,6 @@ def read_potcar_config(config_file: Path) -> dict:
     """
     Reads the POTCAR configuration from a file and resolves the paths dynamically based on config content.
 
-    This function reads the VASP configuration file and dynamically constructs the paths for the POTCAR files.
-    It checks the validity of the `default_POTCAR_set` and the `default_functional` fields. 
-    The `default_functional` can be set to functional types like PBE or LDA.
-
     Args:
         config_file (Path): Path to the configuration file.
 
@@ -65,14 +61,6 @@ def read_potcar_config(config_file: Path) -> dict:
             - If no valid `default_functional` (e.g., PBE or LDA) is found in the config.
         FileNotFoundError: If the configuration file does not exist.
         Exception: For any other unexpected issues encountered while reading the file.
-    
-    Example configuration file format:
-        default_POTCAR_set = potpaw_64
-        default_functional = PBE
-        pyiron_vasp_resources = /home/pyiron_resources_cmmc/vasp
-        vasp_POTCAR_path_potpaw_64 = {pyiron_vasp_resources}/potpaw_64
-        vasp_POTCAR_path_potpaw_54 = {pyiron_vasp_resources}/potpaw_54
-        vasp_POTCAR_path_potpaw_52 = {pyiron_vasp_resources}/potpaw_52
     """
 
     config_data = {}
@@ -99,6 +87,7 @@ def read_potcar_config(config_file: Path) -> dict:
         pyiron_vasp_resources = config_data.get("pyiron_vasp_resources", "")
         default_POTCAR_set = config_data.get("default_POTCAR_set")
         default_functional = config_data.get("default_functional")
+        
         # Dynamically identify all POTCAR sets based on keys in the config file
         potcar_sets = []
         for key in config_data:
@@ -116,7 +105,9 @@ def read_potcar_config(config_file: Path) -> dict:
         # Dynamically generate the paths for all potpaw sets based on the config content
         for potcar_set in potcar_sets:
             key = f"vasp_POTCAR_path_{potcar_set}"
-            config_data[key] = os.path.join(pyiron_vasp_resources, potcar_set)
+            # Preserve the underscores in the path
+            config_data[key] = os.path.join(pyiron_vasp_resources, potcar_set.replace("potpaw", "potpaw_"))
+        
         # Set the default POTCAR path
         config_data["default_POTCAR_path"] = config_data[f"vasp_POTCAR_path_{default_POTCAR_set}"]
 
