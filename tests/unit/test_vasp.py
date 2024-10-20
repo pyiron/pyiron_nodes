@@ -73,6 +73,10 @@ class TestVaspJob(unittest.TestCase):
             resources.joinpath("POTCAR_lib", "pseudopotential_PBE_data.csv").resolve()
         )
         self.mock_config_content = mock_config_content
+        # Ensure the config file is reset to a valid state before each test
+        with open(self.config_file_path, "w") as config_file:
+            config_file.write(self.mock_config_content)
+
     def tearDown(self):
         if os.path.exists("./POTCAR"):
             os.remove("./POTCAR")
@@ -101,7 +105,7 @@ class TestVaspJob(unittest.TestCase):
     def test_invalid_default_POTCAR_set(self):
         # Modify the config file to have an invalid default_POTCAR_set
         with open(self.config_file_path, "w") as config_file:
-            config_file.write(self.mock_config_content.replace("potpaw54", "invalid_set"))
+            config_file.write(self.mock_config_content.replace("default_POTCAR_set = potpaw54", "default_POTCAR_set = invalid_set"))
 
         with self.assertRaises(ValueError):
             read_potcar_config(self.config_file_path)
