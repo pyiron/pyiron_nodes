@@ -124,7 +124,8 @@ def read_potcar_config(config_file: Path) -> dict:
 
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Configuration file not found: {config_file}") from e
-
+    except ValueError as e:
+        raise e  # Let specific ValueErrors propagate
     except Exception as e:
         raise Exception(f"Error reading configuration file: {e}") from e
     

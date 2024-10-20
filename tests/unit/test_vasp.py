@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 # Set up the configuration file before importing the module
-home_config_file_path = os.path.join(Path(os.path.expanduser("~")),".pyiron_vasp_config")
+home_config_file_path = os.path.join(os.path.expanduser("~"), ".pyiron_vasp_config")
 
 # Write the mock configuration content to the file in the home directory
 mock_config_content = """
