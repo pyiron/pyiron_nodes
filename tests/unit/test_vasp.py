@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 # Set up the configuration file before importing the module
-home_config_file_path = Path(os.path.expanduser("~")) / ".pyiron_vasp_config"
+home_config_file_path = os.path.join(Path(os.path.expanduser("~")),".pyiron_vasp_config")
 
 # Write the mock configuration content to the file in the home directory
 mock_config_content = """
@@ -72,7 +72,7 @@ class TestVaspJob(unittest.TestCase):
         self.POTCAR_specification_data = str(
             resources.joinpath("POTCAR_lib", "pseudopotential_PBE_data.csv").resolve()
         )
-
+        self.mock_config_content = mock_config_content
     def tearDown(self):
         if os.path.exists("./POTCAR"):
             os.remove("./POTCAR")
@@ -115,6 +115,7 @@ class TestVaspJob(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             read_potcar_config(self.config_file_path)
+            
     def test_write_POTCAR(self):
         write_POTCAR(".", vasp_input=self.vasp_input)
         self.assertTrue(os.path.exists("./POTCAR"))
