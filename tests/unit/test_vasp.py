@@ -17,7 +17,7 @@ vasp_POTCAR_path_potpaw52 = {pyiron_vasp_resources}/potpaw_52
 # Write the configuration file before importing the module
 with open(home_config_file_path, "w") as config_file:
     config_file.write(mock_config_content)
-    
+
 import unittest
 import os
 import filecmp
@@ -82,18 +82,18 @@ class TestVaspJob(unittest.TestCase):
             os.remove("./POTCAR")
         if os.path.exists(self.workdir):
             shutil.rmtree(self.workdir)
-            
+
     def test_valid_config(self):
         result = read_potcar_config(self.config_file_path)
         print(result)
         expected_result = {
-            'default_POTCAR_set': 'potpaw54',
-            'default_functional': 'PBE',
-            'pyiron_vasp_resources': '/home/resources/vasp/',
-            'vasp_POTCAR_path_potpaw64': '/home/resources/vasp/potpaw_64',
-            'vasp_POTCAR_path_potpaw54': '/home/resources/vasp/potpaw_54',
-            'vasp_POTCAR_path_potpaw52': '/home/resources/vasp/potpaw_52',
-            'default_POTCAR_path': '/home/resources/vasp/potpaw_54',
+            "default_POTCAR_set": "potpaw54",
+            "default_functional": "PBE",
+            "pyiron_vasp_resources": "/home/resources/vasp/",
+            "vasp_POTCAR_path_potpaw64": "/home/resources/vasp/potpaw_64",
+            "vasp_POTCAR_path_potpaw54": "/home/resources/vasp/potpaw_54",
+            "vasp_POTCAR_path_potpaw52": "/home/resources/vasp/potpaw_52",
+            "default_POTCAR_path": "/home/resources/vasp/potpaw_54",
         }
 
         self.assertEqual(result, expected_result)
@@ -104,21 +104,27 @@ class TestVaspJob(unittest.TestCase):
 
     def test_invalid_default_POTCAR_set(self):
         # Modify the config file to have an invalid default_POTCAR_set
-        with open(home_config_file_path, "w") as config_file:
+        with open(self.config_file_path, "w") as config_file:
             # Replace the exact line `default_POTCAR_set = potpaw54` with an invalid set
-            config_file.write(mock_config_content.replace("default_POTCAR_set = potpaw54", "default_POTCAR_set = invalid_set"))
-            
+            config_file.write(
+                self.mock_config_content.replace(
+                    "default_POTCAR_set = potpaw54", "default_POTCAR_set = invalid_set"
+                )
+            )
+
         with self.assertRaises(ValueError):
             read_potcar_config(self.config_file_path)
 
     def test_invalid_default_functional(self):
         # Modify the config file to have an invalid default_functional
         with open(self.config_file_path, "w") as config_file:
-            config_file.write(self.mock_config_content.replace("PBE", "invalid_functional"))
+            config_file.write(
+                self.mock_config_content.replace("PBE", "invalid_functional")
+            )
 
         with self.assertRaises(ValueError):
             read_potcar_config(self.config_file_path)
-            
+
     def test_write_POTCAR(self):
         write_POTCAR(".", vasp_input=self.vasp_input)
         self.assertTrue(os.path.exists("./POTCAR"))
@@ -133,7 +139,9 @@ class TestVaspJob(unittest.TestCase):
         with open(test_file, "w") as f:
             f.write("This is a test line.\n")
         self.assertTrue(isLineInFile.node_function(test_file, "This is a test line."))
-        self.assertFalse(isLineInFile.node_function(test_file, "This is not in the file."))
+        self.assertFalse(
+            isLineInFile.node_function(test_file, "This is not in the file.")
+        )
         os.remove(test_file)
 
     def test_create_WorkingDirectory(self):
@@ -162,7 +170,6 @@ class TestVaspJob(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "POSCAR")))
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "POTCAR")))
-
 
     def test_run_job(self):
         output = run_job(f"cp -r {self.example_converged_path} .", self.workdir)()
