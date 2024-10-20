@@ -1,0 +1,4 @@
+rm: cannot remove 'CHGCAR': No such file or directory
+rm: cannot remove 'CHGCAR.relax_1': No such file or directory
+rm: cannot remove 'CHGCAR.relax_2': No such file or directory
+rm: cannot remove 'REPORT': No such file or directory

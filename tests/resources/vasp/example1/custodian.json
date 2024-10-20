@@ -1,0 +1,156 @@
+[
+    {
+        "job": {
+            "@module": "custodian.vasp.jobs",
+            "@class": "VaspJob",
+            "@version": "2024.1.9",
+            "vasp_cmd": [
+                "srun",
+                "-n",
+                "40",
+                "--exclusive",
+                "--mem-per-cpu=0",
+                "-m",
+                "block:block,Pack",
+                "vasp_std"
+            ],
+            "output_file": "vasp.log",
+            "stderr_file": "std_err.txt",
+            "suffix": ".relax_1",
+            "final": false,
+            "backup": true,
+            "auto_npar": false,
+            "auto_gamma": true,
+            "settings_override": [
+                {
+                    "dict": "INCAR",
+                    "action": {
+                        "_set": {
+                            "KSPACING": 0.5
+                        }
+                    }
+                }
+            ],
+            "gamma_vasp_cmd": null,
+            "copy_magmom": false,
+            "auto_continue": false
+        },
+        "corrections": [],
+        "handler": null,
+        "validator": null,
+        "max_errors": false,
+        "max_errors_per_job": false,
+        "max_errors_per_handler": false,
+        "nonzero_return_code": false
+    },
+    {
+        "job": {
+            "@module": "custodian.vasp.jobs",
+            "@class": "VaspJob",
+            "@version": "2024.1.9",
+            "vasp_cmd": [
+                "srun",
+                "-n",
+                "40",
+                "--exclusive",
+                "--mem-per-cpu=0",
+                "-m",
+                "block:block,Pack",
+                "vasp_std"
+            ],
+            "output_file": "vasp.log",
+            "stderr_file": "std_err.txt",
+            "suffix": ".relax_2",
+            "final": false,
+            "backup": true,
+            "auto_npar": false,
+            "auto_gamma": true,
+            "settings_override": [
+                {
+                    "file": "CONTCAR",
+                    "action": {
+                        "_file_copy": {
+                            "dest": "POSCAR"
+                        }
+                    }
+                },
+                {
+                    "dict": "INCAR",
+                    "action": {
+                        "_set": {
+                            "KSPACING": 0.5,
+                            "EDIFF": 1e-05,
+                            "EDIFFG": 0.0001
+                        }
+                    }
+                }
+            ],
+            "gamma_vasp_cmd": null,
+            "copy_magmom": true,
+            "auto_continue": false
+        },
+        "corrections": [],
+        "handler": null,
+        "validator": null,
+        "max_errors": false,
+        "max_errors_per_job": false,
+        "max_errors_per_handler": false,
+        "nonzero_return_code": false
+    },
+    {
+        "job": {
+            "@module": "custodian.vasp.jobs",
+            "@class": "VaspJob",
+            "@version": "2024.1.9",
+            "vasp_cmd": [
+                "srun",
+                "-n",
+                "40",
+                "--exclusive",
+                "--mem-per-cpu=0",
+                "-m",
+                "block:block,Pack",
+                "vasp_std"
+            ],
+            "output_file": "vasp.log",
+            "stderr_file": "std_err.txt",
+            "suffix": "",
+            "final": true,
+            "backup": true,
+            "auto_npar": false,
+            "auto_gamma": true,
+            "settings_override": [
+                {
+                    "dict": "INCAR",
+                    "action": {
+                        "_set": {
+                            "NSW": 0,
+                            "LAECHG": true,
+                            "LCHARGE": true,
+                            "NELM": 240,
+                            "EDIFF": 1e-05
+                        }
+                    }
+                },
+                {
+                    "file": "CONTCAR",
+                    "action": {
+                        "_file_copy": {
+                            "dest": "POSCAR"
+                        }
+                    }
+                }
+            ],
+            "gamma_vasp_cmd": null,
+            "copy_magmom": false,
+            "auto_continue": false
+        },
+        "corrections": [],
+        "handler": null,
+        "validator": null,
+        "max_errors": false,
+        "max_errors_per_job": false,
+        "max_errors_per_handler": false,
+        "nonzero_return_code": false
+    }
+]
