@@ -81,7 +81,7 @@ class TestVaspJob(unittest.TestCase):
             
     def test_valid_config(self):
         result = read_potcar_config(self.config_file_path)
-
+        print(result)
         expected_result = {
             'default_POTCAR_set': 'potpaw54',
             'default_functional': 'PBE',
@@ -95,10 +95,8 @@ class TestVaspJob(unittest.TestCase):
         self.assertEqual(result, expected_result)
 
     def test_missing_file(self):
-        # Remove the file for this test
-        self.config_file_path.unlink()
         with self.assertRaises(FileNotFoundError):
-            read_potcar_config(self.config_file_path)
+            read_potcar_config("random_nonexisting_filepath")
 
     def test_invalid_default_POTCAR_set(self):
         # Modify the config file to have an invalid default_POTCAR_set
