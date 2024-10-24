@@ -90,7 +90,7 @@ class GB_character:
             print("Sorry! For now only works for cubic lattices ... ")
             sys.exit()
 
-    def WriteGB(self, overlap=0.0, rigid=False,
+    def WriteGB(self, filename, overlap=0.0, rigid=False,
                 dim1=1, dim2=1, dim3=1, file='LAMMPS',
                 **kwargs):
         """
@@ -136,7 +136,7 @@ class GB_character:
                 if self.File == "LAMMPS":
                     self.Write_to_Lammps(count)
                 elif self.File == "VASP":
-                    a = self.Write_to_Vasp(count)
+                    filename = self.Write_to_Vasp(count)
                 else:
                     print("The output file must be either LAMMPS or VASP!")
             elif self.trans:
@@ -161,13 +161,13 @@ class GB_character:
                 if self.File == "LAMMPS":
                     self.Write_to_Lammps(count)
                 elif self.File == "VASP":
-                    self.Write_to_Vasp(count)
+                    filename = self.Write_to_Vasp(filename, count)
                 else:
                     print("The output file must be either LAMMPS or VASP!")
         else:
             print('Overlap distance is not inputted incorrectly!')
             sys.exit()
-
+        return filename
     def CSL_Ortho_unitcell_atom_generator(self):
 
         """
@@ -371,15 +371,14 @@ class GB_character:
                     shift = i * shift1 + j * shift2
                     atoms1_new = XX.copy() + shift
                     self.atoms1 = atoms1_new
-                    self.Write_to_Vasp(count)
+                    filename = self.Write_to_Vasp(filename, count)
         else:
             print("The output file must be either LAMMPS or VASP!")
-        
-    def Write_to_Vasp(self, trans):
+        return filename
+    def Write_to_Vasp(self, filename, trans):
         """
         write a single GB without translations to POSCAR.
         """
-        name = 'POS_G'
         plane = str(self.gbplane[0])+str(self.gbplane[1])+str(self.gbplane[2])
         if self.overD > 0:
             overD = str(self.overD)
@@ -404,7 +403,7 @@ class GB_character:
         LenZ = zhi - zlo
 
         Wf = np.concatenate((X_new, Y_new))
-        filename = name + "_" + overD + "_" + Trans +".vasp"
+        filename = filename + "_" + overD + "_" + Trans +".vasp"
         with open(filename, 'w') as f:
             f.write('#POSCAR written by GB_code \n')
             f.write('1 \n')
