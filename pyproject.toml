@@ -50,7 +50,7 @@ dependencies = [
 	"pyiron_base==0.9.12",
 	"pyiron_contrib==0.1.18",
   	"pyiron_workflow==0.10.2",
-	"pymatgen==2024.8.9",
+	"pymatgen==2024.11.13",
 	"scipy==1.14.1",
 	"sqlalchemy==2.0.32",
 	"structuretoolkit==0.0.28",
