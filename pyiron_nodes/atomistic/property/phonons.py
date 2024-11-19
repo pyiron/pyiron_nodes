@@ -16,6 +16,7 @@ from structuretoolkit.common import atoms_to_phonopy, phonopy_to_atoms
 
 from pyiron_nodes.atomistic.calculator.ase import Static
 from pyiron_nodes.atomistic.engine.generic import OutputEngine
+from pyiron_nodes.development.settings import Storage
 
 
 @as_function_node("phonopy")
@@ -38,9 +39,8 @@ class PhonopyParameters:
 
 @as_function_node
 def GenerateSupercells(
-    phonopy: Phonopy, parameters: PhonopyParameters.dataclass | None
+        phonopy: Phonopy, parameters: PhonopyParameters.dataclass | None
 ) -> list[Atoms]:
-
     parameters = PhonopyParameters.dataclass() if parameters is None else parameters
     phonopy.generate_displacements(**asdict(parameters))
 
@@ -50,10 +50,10 @@ def GenerateSupercells(
 
 @as_macro_node("phonopy", "calculations")
 def CreatePhonopy(
-    self,
-    structure: Atoms,
-    engine: OutputEngine | None = None,
-    parameters: PhonopyParameters.dataclass | None = None,
+        self,
+        structure: Atoms,
+        engine: OutputEngine | None = None,
+        parameters: PhonopyParameters.dataclass | None = None,
 ):
     import warnings
 
@@ -108,7 +108,8 @@ def CheckConsistency(self, phonopy: Phonopy, tolerance: float = 1e-10):
 
 
 @as_function_node
-def GetTotalDos(phonopy, mesh=None):
+def GetTotalDos(phonopy, mesh=None,
+                storage: Optional[Storage.dataclass] = Storage.dataclass(hash_output=True)):
     from pandas import DataFrame
 
     mesh = 3 * [10] if mesh is None else mesh

@@ -4,10 +4,12 @@ from dataclasses import field
 from typing import Optional
 
 from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
+from pyiron_nodes.development.node_dataclass import as_output_node
 from pyiron_workflow import as_dataclass_node
 
 
-@wf_data_class()
+# @wf_data_class()
+@as_output_node
 class OutputCalcStatic:
     from ase import Atoms
     import numpy as np
@@ -48,16 +50,17 @@ class OutputCalcStaticList:
 class OutputCalcMinimize:
     # energies: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
     initial: Optional[OutputCalcStatic] = field(
-        default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
+        default_factory=lambda: OutputCalcStatic.dataclass(), metadata=wfMetaData(log_level=0)
     )
     final: Optional[OutputCalcStatic] = field(
-        default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
+        default_factory=lambda: OutputCalcStatic.dataclass(), metadata=wfMetaData(log_level=0)
     )
     is_converged: bool = False
     iter_steps: int = 0
 
 
-@wf_data_class()
+# @wf_data_class()
+@as_output_node
 class OutputCalcMD:
     import numpy as np
 

@@ -208,7 +208,7 @@ def Collect(
         generic = OutputCalcMinimize()
 
     elif calc_mode == "md":
-        generic = OutputCalcMD()
+        generic = OutputCalcMD.dataclass()
         generic.energies_pot = log["PotEng"].values
         generic.energies_kin = log["TotEng"].values - generic.energies_pot
         generic.forces = np.array([o.data[["fx", "fy", "fz"]] for o in out_dump])

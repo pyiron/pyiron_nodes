@@ -18,7 +18,7 @@ def Static(
 
     structure.calc = engine.calculator
 
-    out = OutputCalcStatic()
+    out = OutputCalcStatic.dataclass()
     out.energy = np.array(
         [float(structure.get_potential_energy())]
     )  # TODO: originally of type np.float32 -> why??

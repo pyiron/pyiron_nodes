@@ -364,6 +364,7 @@ def list_table(db):
 
     # Run SELECT * FROM node
     df = pd.read_sql(session.query(db.Node).statement, session.bind)
+    session.close()
 
     return df
 
@@ -474,6 +475,19 @@ def list_column_names(db, table_name):
     return [column["name"] for column in columns]
 
 
+def get_output_port_label(input_port):
+    label = None
+    if len(input_port.connections) == 1:
+        label = input_port.connections[0].full_label.split('.')[-1]
+
+    return label
+
+
+def has_multiple_output_ports(node):
+    num_ports = len(node.outputs.channel_dict)
+    return num_ports > 1
+
+
 def extract_node_input(node, db):
     """
     This function extracts input from a pyiron_workflow node object as a dictionary.
@@ -496,6 +510,11 @@ def extract_node_input(node, db):
         if k in inp_node_dict:
             inp_node = inp_node_dict[k]
             input_dict[k] = "hash_" + get_node_hash(inp_node, db)
+            if has_multiple_output_ports(inp_node):
+                label = get_output_port_label(node.inputs[k])
+                input_dict[k] += f':{label}'
+                print('label: ', label)
+
             save_node(inp_node, db, file_output=False)
         else:
             input_dict[k] = str(v.value)  # ["value"]
@@ -896,6 +915,7 @@ def get_node_db_id(node, db):
     # query = f"SELECT * FROM node WHERE hash_value = '{hash}'"
     # result = session.execute(text(query)).fetchall()
     # result[0][0]
+    session.close()
 
     if len(q) == 0:
         node_id = None
@@ -942,6 +962,11 @@ def eval_db_value(value, db):
         # Extract the hash value by removing the prefix
         hash_value = value[5:]
 
+        split = hash_value.split(':')
+        output_port_label = None
+        if len(split) == 2:
+            hash_value, output_port_label = split
+
         # Get a dictionary using the hash value
         node_dict = get_node_by_hash(db, hash_value)
 
@@ -951,7 +976,11 @@ def eval_db_value(value, db):
         # Retrieve the Node using the node_id
         new_node = get_node_from_db_id(node_id, db)
 
-        val = new_node
+        if output_port_label is None:
+            val = new_node
+        else:
+            val = new_node.outputs[output_port_label]
+
     elif value.startswith("array"):
         import numpy as np
 
@@ -976,6 +1005,7 @@ def get_dict_from_db_id(node_id, db):
 
     # Check if a node with this node_id exists
     q = session.query(db.Node).filter_by(node_id=node_id).scalar()
+    session.close()
     return q
 
 
@@ -984,6 +1014,7 @@ def get_node_from_db_id(node_id, db, data_only=False):
 
     # Check if a node with this node_id exists
     q = session.query(db.Node).filter_by(node_id=node_id).scalar()
+    session.close()
 
     node = None
     if q is not None:
@@ -1079,9 +1110,17 @@ def run_node(node, db, verbose=False):
         # node instance not yet in db
         new_node = node  # TODO implement .copy()
         new_node.pull()
-        save_node(node, db)
+
+        db_output = False
+        if 'storage' in new_node.inputs.labels:
+            db_output = new_node.inputs.storage.value.hash_output
+        else:
+            print ('run_node: ', node)
+        save_node(node, db, db_output=db_output)
     else:
         new_node = get_node_from_db_id(node_id, db)
+        if not new_node.outputs.ready:
+            new_node.pull()
         if verbose:
             print(f"node with id={node_id} is loaded rather than recomputed")
 

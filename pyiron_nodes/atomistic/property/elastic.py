@@ -15,7 +15,9 @@ from pyiron_workflow import (
 from pyiron_nodes.atomistic.calculator.ase import Static
 from pyiron_nodes.atomistic.engine.generic import OutputEngine
 from pyiron_nodes.dev_tools import wf_data_class
+from pyiron_nodes.development.settings import Storage
 from pyiron_workflow import as_dataclass_node
+from pyiron_nodes.development.node_dataclass import as_output_node
 
 
 @wf_data_class()
@@ -45,7 +47,7 @@ class DataStructureContainer:
     stress: list = field(default_factory=lambda: [])
 
 
-@wf_data_class()
+@as_output_node
 class OutputElasticAnalysis:
     from pyiron_nodes.development.hash_based_storage import str_to_dict
 
@@ -69,8 +71,13 @@ class OutputElasticAnalysis:
     A2: list = field(default_factory=lambda: [])
     C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
     C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    _serialize: callable = str_to_dict  # provide optional function for serialization
+    # _serialize: callable = str_to_dict  # provide optional function for serialization
     _skip_default_values = False
+
+
+@as_function_node
+def StorageSettings(settings: Optional[Storage.dataclass] = Storage.dataclass()):
+    return settings
 
 
 @as_macro_node
@@ -82,8 +89,14 @@ def ElasticConstants(
         # There is too much misdirection for me to track everything right now, but I think
         # some of the "generic" stuff doesn't work
         parameters: Optional[InputElasticTensor.dataclass] = InputElasticTensor.dataclass(),
+        storage: Optional[Storage.dataclass] = Storage.dataclass(hash_output=True),
         # contains the default values
-) -> OutputElasticAnalysis:
+): # -> OutputElasticAnalysis.dataclass:
+    # This is a fix since providing only an input parameter 'storage' fails pickling
+    # This is a strange bug in pyiron_workflow and should be fixed
+    self._settings = StorageSettings(storage)
+
+    # self.my_storage = my_storage
     self.symmetry_analysis = SymmetryAnalysis(structure, parameters=parameters)
 
     self.structure_table = GenerateStructures(
@@ -204,13 +217,13 @@ def AnalyseStructures(
         data_df: DataStructureContainer,
         analysis: OutputElasticSymmetryAnalysis,
         parameters: Optional[InputElasticTensor.dataclass] = None,
-) -> OutputElasticAnalysis:
+) -> OutputElasticAnalysis.dataclass:
     zero_strain_job_name = "s_e_0"
 
     epss = analysis.epss
     Lag_strain_list = analysis.Lag_strain_list
 
-    out = OutputElasticAnalysis()
+    out = OutputElasticAnalysis.dataclass()
     energy_dict = {k: v for k, v in zip(data_df.job_name, data_df.energy)}
 
     if 0.0 in epss:
@@ -231,7 +244,7 @@ def AnalyseStructures(
     return out
 
 
-def calculate_modulus(out: OutputElasticAnalysis):
+def calculate_modulus(out: OutputElasticAnalysis.dataclass):
     C = out.C
 
     BV = (C[0, 0] + C[1, 1] + C[2, 2] + 2 * (C[0, 1] + C[0, 2] + C[1, 2])) / 9
@@ -288,7 +301,7 @@ def calculate_modulus(out: OutputElasticAnalysis):
     return out
 
 
-def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
+def fit_elastic_matrix(out: OutputElasticAnalysis.dataclass, fit_order, v0, LC):
     import scipy
 
     A2 = []
