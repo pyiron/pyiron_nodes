@@ -21,7 +21,7 @@ dependencies:
 - pyiron_base =0.9.12
 - pyiron_contrib =0.1.18
 - pyiron-data =0.0.30
-- pyiron_workflow =0.10.2
+- pyiron_workflow =0.11.1
 - pymatgen =2024.8.9
 - scipy =1.14.1
 - sqlalchemy =2.0.32
