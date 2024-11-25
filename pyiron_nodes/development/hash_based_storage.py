@@ -125,7 +125,7 @@ class Database:
     Node: any
 
 
-def create_nodes_table(db_url="postgresql://localhost/joerg", echo=False):
+def create_nodes_table(db_url="postgresql://localhost/neugebauer", echo=False):
     """
     Creates a nodess table in the database.
 

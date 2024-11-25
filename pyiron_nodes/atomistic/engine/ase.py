@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from pyiron_workflow import as_function_node
 
-from pyiron_nodes.atomistic.engine.generic import OutputEngine
-
 
 @as_function_node("engine")
 def EMT():
     from ase.calculators.emt import EMT
+    from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
     out = OutputEngine(calculator=EMT())
 
@@ -17,6 +16,7 @@ def EMT():
 @as_function_node("engine")
 def M3GNet():
     import matgl
+    from pyiron_nodes.atomistic.engine.generic import OutputEngine
     from matgl.ext.ase import M3GNetCalculator
 
     out = OutputEngine(
