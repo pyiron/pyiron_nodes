@@ -1,4 +1,17 @@
 *.pyc
+*.pkl
+*.cpckl
+*.inp
+*.out
+*.json
+*.jpg
+*.png
+*.ts*
+*.alloy
+*.traj
+log.lammps
+notebooks_dev/vp4*/
+pyiron_nodes/tmp/
 .DS_Store
 .coverage
 nohup.out
@@ -14,3 +27,4 @@ core.*
 /notebooks/pyiron_nodes/
 /notebooks/Sin/
 /tests/integration/test_notebooks.py
+notebooks/tmp.log
