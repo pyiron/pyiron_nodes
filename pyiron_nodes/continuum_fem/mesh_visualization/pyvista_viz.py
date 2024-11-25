@@ -1,6 +1,6 @@
 from pyiron_workflow import as_function_node
 from typing import Optional
-import ufl
+
 
 @as_function_node("plotter")
 def PlotInitMeshObject(function_space):
@@ -36,15 +36,19 @@ def PlotDeformedMesh1DObject(function_space, solution_vector, warp_factor: Optio
 
 
 def epsilon(u):
+    import ufl
     return ufl.sym(ufl.grad(u))
     
 def three_d_strain_voigt(e):
+    import ufl
     return ufl.as_vector([e[0,0], e[1,1], e[2,2], 2*e[0,1], 2*e[0,2], 2*e[1,2]])
     
 def three_d_voigt_stress(s):
+    import ufl
     return ufl.as_tensor([[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]])
     
 def three_d_sigma(u, C):
+    import ufl
     return three_d_voigt_stress(ufl.dot(C, three_d_strain_voigt(epsilon(u))))
 
 @as_function_node("plotter")

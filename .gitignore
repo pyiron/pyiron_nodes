@@ -1,4 +1,9 @@
 *.pyc
+pyiron_nodes/tmp/
+*.pckl
+*.log
+*.traj
+temp_file.py
 .DS_Store
 .coverage
 nohup.out
@@ -14,3 +19,4 @@ core.*
 /notebooks/pyiron_nodes/
 /notebooks/Sin/
 /tests/integration/test_notebooks.py
+

@@ -4,7 +4,7 @@ from pyiron_nodes.continuum_fem.geometries.three_d_geometries import BarParamete
 from pyiron_nodes.dev_tools import wf_data_class
 from pyiron_workflow import as_dataclass_node
 from dataclasses import field
-import ufl
+
 
 @as_function_node("traction_vector")
 def TractionVector3D(
@@ -35,15 +35,19 @@ def BodyForceVectorBar(
     return f
 
 def epsilon(u):
+    import ufl
     return ufl.sym(ufl.grad(u))
     
 def three_d_strain_voigt(e):
+    import ufl
     return ufl.as_vector([e[0,0], e[1,1], e[2,2], 2*e[0,1], 2*e[0,2], 2*e[1,2]])
     
 def three_d_voigt_stress(s):
+    import ufl
     return ufl.as_tensor([[s[0], s[3], s[4]], [s[3], s[1], s[5]], [s[4], s[5], s[2]]])
     
 def three_d_sigma(u, C):
+    import ufl
     return three_d_voigt_stress(ufl.dot(C, three_d_strain_voigt(epsilon(u))))
 
 @as_function_node("solution_vector")
