@@ -301,11 +301,14 @@ def run_job(
     return output
 
 
+# @Workflow.wrap.as_function_node("output_dict")
+# def parse_VaspOutput(workdir: str) -> dict:
+#     logger.info(f"workdir of parse: {workdir}")
+#     return pvo(workdir)
 @Workflow.wrap.as_function_node("output_dict")
-def parse_VaspOutput(workdir: str) -> dict:
-    logger.info(f"workdir of parse: {workdir}")
-    return pvo(workdir)
-
+def parse_VaspOutput(workdir):
+    from pyiron_nodes.atomistic.engine.vasp_parser.output import parse_vasp_directory
+    return parse_vasp_directory(workdir)
 
 @Workflow.wrap.as_function_node("convergence")
 def check_convergence(
