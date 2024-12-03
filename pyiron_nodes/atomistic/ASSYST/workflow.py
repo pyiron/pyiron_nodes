@@ -9,85 +9,22 @@ from ase.build import bulk
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.vasp.inputs import Incar
-from pymatgen.transformations.standard_transformations import DeformStructureTransformation
+from pymatgen.transformations.standard_transformations import (
+    DeformStructureTransformation,
+)
 
 # PyIron Workflow and Nodes
 import pyiron_workflow as pwf
 from pyiron_workflow import standard_nodes as std
 from pyiron_workflow import for_node, Workflow
 from pyiron_nodes.atomistic.engine.vasp import (
-    get_default_POTCAR_paths, 
-    write_POTCAR, 
-    VaspInput, 
-    vasp_job, 
-    create_WorkingDirectory, 
-    stack_element_string
+    VaspInput,
+    vasp_job,
+    get_multiple_input,
+    generate_VaspInput,
+    generate_modified_incar,
+    construct_sequential_VaspInput_from_vaspoutput_structure
 )
-from pyiron_atomistics.vasp.output import parse_vasp_output
-
-@Workflow.wrap.as_function_node("incar")
-def generate_modified_incar(incar, modifications):
-    """
-    Generates a modified INCAR dictionary by updating specific keys.
-
-    Parameters:
-    - incar (dict): Original INCAR dictionary to modify.
-    - modifications (dict): Dictionary of keys and their corresponding new values to update.
-
-    Returns:
-    - dict: A modified INCAR dictionary with the specified changes.
-
-    Example:
-    --------
-    Original INCAR:
-        incar = {
-            "ENCUT": 520,
-            "EDIFF": 1e-5,
-            "ISMEAR": 0,
-            "SIGMA": 0.1
-        }
-
-    Modifications:
-        modifications = {
-            "ISIF": 2,
-            "LREAL": "Auto",
-            "NSW": 100
-        }
-
-    Call:
-        modified_incar = generate_single_modified_incar(incar, modifications)
-
-    Result:
-        modified_incar = {
-            "ENCUT": 520,
-            "EDIFF": 1e-05,
-            "ISMEAR": 0,
-            "SIGMA": 0.1,
-            "ISIF": 2,
-            "LREAL": "Auto",
-            "NSW": 100
-        }
-    """
-    if not isinstance(modifications, dict):
-        raise ValueError("Modifications must be provided as a dictionary.")
-    
-    # Create a copy of the original INCAR and apply modifications
-    modified_incar = incar.copy()
-    for key, value in modifications.items():
-        modified_incar[key] = value
-
-    return modified_incar
-
-@Workflow.wrap.as_function_node("VaspInput")
-def construct_next_VaspInput(vasp_output,
-                             incar,
-                             potcar_paths):
-    
-    vi = VaspInput(Structure.from_str(vasp_output.structures.iloc[0][-1], fmt="json"),
-                   incar,
-                   potcar_paths=potcar_paths)
-    return vi
-
 def select_indices_by_threshold(array, threshold):
     """
     Selects the indices of the first, last, and all values in the array
@@ -117,8 +54,11 @@ def select_indices_by_threshold(array, threshold):
 
     return selected_indices
 
+
 @Workflow.wrap.as_function_node
-def collect_structures(df_list, energy_diff_threshold=0.2, job_names=["ISIF2", "ISIF5", "ISIF7"]):
+def collect_structures(
+    df_list, energy_diff_threshold=0.2, job_names=["ISIF2", "ISIF5", "ISIF7"]
+):
     """
     Collects energies and structures from a list of workflow nodes based on a threshold.
 
@@ -138,70 +78,65 @@ def collect_structures(df_list, energy_diff_threshold=0.2, job_names=["ISIF2", "
     all_structures = []
     all_scf_convergence = []
     all_job_names = []
-    
+
     # Iterate over the workflow nodes
     for node_idx, (df, job_name) in enumerate(zip(df_list, job_names)):
         # Select indices based on the threshold
         selected_indices = select_indices_by_threshold(
-            df.energy.iloc[0],
-            threshold=energy_diff_threshold
+            df.energy.iloc[0], threshold=energy_diff_threshold
         )
-        
+
         # Extract structures, energies, SCF convergence, and job names for the selected indices
         structures = [
-            Structure.from_str(
-                df.structures.iloc[0][i],
-                fmt="json"
-            ) for i in selected_indices
-        ]
-        energies = [
-            df.energy.iloc[0][i]
+            Structure.from_str(df.structures.iloc[0][i], fmt="json")
             for i in selected_indices
         ]
-        scf_convergence = [
-            df.scf_convergence[0][i]
-            for i in selected_indices
-        ]
+        energies = [df.energy.iloc[0][i] for i in selected_indices]
+        scf_convergence = [df.scf_convergence[0][i] for i in selected_indices]
         job_names_for_node = [
-            f"{job_name}_base{node_idx + 1}_relaxstep{i + 1}" for i in range(len(selected_indices))
+            f"{job_name}_base{node_idx + 1}_relaxstep{i + 1}"
+            for i in range(len(selected_indices))
         ]
-        
+
         # Append to the main lists
         all_energies.extend(energies)
         all_structures.extend(structures)
         all_scf_convergence.extend(scf_convergence)
         all_job_names.extend(job_names_for_node)
-    
+
     # Filter out entries where SCF convergence is False
     filtered_energies = []
     filtered_structures = []
     filtered_scf_convergence = []
     filtered_job_names = []
-    
-    for energy, structure, scf, job_name in zip(all_energies, all_structures, all_scf_convergence, all_job_names):
+
+    for energy, structure, scf, job_name in zip(
+        all_energies, all_structures, all_scf_convergence, all_job_names
+    ):
         if scf:  # Only keep entries where SCF convergence is True
             filtered_energies.append(energy)
             filtered_structures.append(structure)
             filtered_scf_convergence.append(scf)
             filtered_job_names.append(job_name)
-    
-    return filtered_energies, filtered_structures, filtered_scf_convergence, filtered_job_names
 
+    return (
+        filtered_energies,
+        filtered_structures,
+        filtered_scf_convergence,
+        filtered_job_names,
+    )
 
 
 @Workflow.wrap.as_function_node("VaspInputs")
-def generate_VaspInputs(structure_list,
-                        incar_list,
-                        potcar_paths):
+def generate_VaspInputs(structure_list, incar_list, potcar_paths):
     VaspInput_list = []
     for idx, struct in enumerate(structure_list):
         print(struct)
-        vi = VaspInput(struct,
-                       incar_list[idx],
-                       potcar_paths=potcar_paths[idx])
+        vi = VaspInput(struct, incar_list[idx], potcar_paths=potcar_paths[idx])
         VaspInput_list.append(vi)
     return VaspInput_list
-    
+
+
 def apply_triaxial_strain(structure, max_strain=0.8):
     """Apply random triaxial strain up to max_strain."""
     # Generating a diagonal strain matrix for triaxial strain
@@ -209,6 +144,7 @@ def apply_triaxial_strain(structure, max_strain=0.8):
     strain_matrix = np.diag(strain_values)
     transformation = DeformStructureTransformation(strain_matrix)
     return transformation.apply_transformation(structure)
+
 
 def apply_shear_strain(structure, max_strain=0.8):
     """Apply random shear strain up to max_strain."""
@@ -218,6 +154,7 @@ def apply_shear_strain(structure, max_strain=0.8):
     transformation = DeformStructureTransformation(shear_matrix)
     return transformation.apply_transformation(structure)
 
+
 def apply_rattle(structure, displacement=0.5, max_cell_strain=0.05):
     """Apply random displacement (RATTLE) to atoms and a small strain."""
     new_struct = structure.copy()
@@ -225,13 +162,14 @@ def apply_rattle(structure, displacement=0.5, max_cell_strain=0.05):
     for site in new_struct:
         displacement_vector = np.random.normal(0, displacement, 3)
         site.coords += displacement_vector
-    
+
     # Random small strain
     strain_values = 1 + np.random.uniform(-max_cell_strain, max_cell_strain, 3)
     strain_matrix = np.diag(strain_values)
     transformation = DeformStructureTransformation(strain_matrix)
     return transformation.apply_transformation(new_struct)
-    
+
+
 @Workflow.wrap.as_function_node
 def get_ASSYST_deformed_structures(
     structure_list,
@@ -273,25 +211,19 @@ def get_ASSYST_deformed_structures(
             rattled = apply_rattle(
                 structure,
                 displacement=rattle_displacement,
-                max_cell_strain=rattle_strain
+                max_cell_strain=rattle_strain,
             )
             rattled_structures.append(rattled)
             job_names.append(f"{job_basename[idx]}_rattle_relpath{idx}_{i}")
 
         # Apply triaxial strain
         for i in range(n_stretch_permutations):
-            triaxed = apply_triaxial_strain(
-                structure,
-                max_strain=triaxial_strain
-            )
+            triaxed = apply_triaxial_strain(structure, max_strain=triaxial_strain)
             triaxed_structures.append(triaxed)
             job_names.append(f"{job_basename[idx]}_triaxial_relpath{idx}_{i}")
 
             # Apply shear strain for the same structure
-            sheared = apply_shear_strain(
-                structure,
-                max_strain=shear_strain
-            )
+            sheared = apply_shear_strain(structure, max_strain=shear_strain)
             sheared_structures.append(sheared)
             job_names.append(f"{job_basename[idx]}_shear_relpath{idx}_{i}")
 
@@ -301,3 +233,121 @@ def get_ASSYST_deformed_structures(
         all_structures.extend(sheared_structures)
 
     return all_structures, job_names
+
+
+@pwf.as_macro_node
+def run_ASSYST_on_structure(
+    wf,
+    structure,
+    incar,
+    potcar_paths,
+    ionic_steps=100,
+    n_stretch_permutations=2,
+    n_rattle_permutations=2,
+    shear_strain=0.8,
+    triaxial_strain=0.8,
+    rattle_displacement=0.1,
+    rattle_strain=0.05,
+    job_name="struct_pyxtal",
+    vasp_command="module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 40 vasp_std",
+):
+
+    wf.ISIF7_incar = generate_modified_incar(incar, {"ISIF": 7, "NSW": ionic_steps})
+    wf.ISIF7_input = generate_VaspInput(
+        structure=structure, incar=incar, potcar_paths=potcar_paths
+    )
+    wf.ISIF7_job = vasp_job(
+        workdir=f"{job_name}/ISIF7", vasp_input=wf.ISIF7_input, command=vasp_command
+    )
+    wf.ISIF5_incar = generate_modified_incar(incar, {"ISIF": 5})
+    wf.ISIF5_input = construct_sequential_VaspInput_from_vaspoutput_structure(
+        wf.ISIF7_job.outputs.vasp_output,
+        incar=wf.ISIF5_incar.outputs.incar,
+        potcar_paths=potcar_paths,
+    )
+    wf.ISIF5_job = vasp_job(
+        workdir=f"{job_name}/ISIF5", vasp_input=wf.ISIF5_input, command=vasp_command
+    )
+    wf.ISIF2_incar = generate_modified_incar(incar, {"ISIF": 2})
+    wf.ISIF2_input = construct_sequential_VaspInput_from_vaspoutput_structure(
+        wf.ISIF5_job.outputs.vasp_output,
+        incar=wf.ISIF2_incar.outputs.incar,
+        potcar_paths=potcar_paths,
+    )
+    wf.ISIF2_job = vasp_job(
+        workdir=f"{job_name}/ISIF2", vasp_input=wf.ISIF2_input, command=vasp_command
+    )
+    # Need to feed the computed outputs into a different node in the shape of a list
+    wf.ISIF_vaspoutputs = pwf.inputs_to_list(
+        3,
+        wf.ISIF2_job.outputs.vasp_output,
+        wf.ISIF5_job.outputs.vasp_output,
+        wf.ISIF7_job.outputs.vasp_output,
+    )
+
+    wf.ASSYST_base_structures = collect_structures(
+        df_list=wf.ISIF_vaspoutputs,
+        energy_diff_threshold=0.1,
+        job_names=[
+            f"{os.getcwd()}/{job_name}/ISIF2",
+            f"{os.getcwd()}/{job_name}/ISIF5",
+            f"{os.getcwd()}/{job_name}/ISIF7",
+        ],
+    )
+    # Generate the accurate incar that is used for potential training data
+    wf.accurate_incar = generate_modified_incar(
+        incar,
+        {"KSPACING": 0.25, "EDIFFG": 1e-4, "EDIFF": 1e-5, "LREAL": False, "NSW": 0},
+    )
+
+    wf.n_base_jobs = pwf.standard_nodes.Length(
+        wf.ASSYST_base_structures.outputs.filtered_structures
+    )
+    wf.get_incar_list = get_multiple_input(
+        wf.accurate_incar.outputs.incar, n=wf.n_base_jobs
+    )
+    wf.get_potcar_paths_base = get_multiple_input(potcar_paths, n=wf.n_base_jobs)
+    # Generate the VaspInputs which will be used for the calculations of base structure
+    wf.ASSYST_base_VaspInputs = generate_VaspInputs(
+        structure_list=wf.ASSYST_base_structures.outputs.filtered_structures,
+        incar_list=wf.get_incar_list.outputs.objects_list,
+        potcar_paths=wf.get_potcar_paths_base,
+    )
+    wf.ASSYST_base_structure_jobs = for_node(
+        vasp_job,
+        zip_on=("vasp_input", "workdir"),
+        vasp_input=wf.ASSYST_base_VaspInputs.outputs.VaspInputs,
+        workdir=wf.ASSYST_base_structures.outputs.filtered_job_names,
+        command=vasp_command,
+    )
+
+    wf.ASSYST_permutation_structures = get_ASSYST_deformed_structures(
+        wf.ASSYST_base_structures.outputs.filtered_structures,
+        job_basename=wf.ASSYST_base_structures.outputs.filtered_job_names,
+        n_stretch_permutations=n_stretch_permutations,
+        n_rattle_permutations=n_rattle_permutations,
+        shear_strain=shear_strain,
+        triaxial_strain=triaxial_strain,
+        rattle_displacement=rattle_displacement,
+        rattle_strain=rattle_strain,
+    )
+    wf.n_perm_jobs = pwf.standard_nodes.Length(
+        wf.ASSYST_permutation_structures.outputs.job_names
+    )
+    wf.get_potcar_paths_perms = get_multiple_input(potcar_paths, n=wf.n_perm_jobs)
+    wf.get_permutations_incar_list = get_multiple_input(
+        wf.accurate_incar.outputs.incar, n=wf.n_perm_jobs
+    )
+    wf.ASSYST_permutation_VaspInputs = generate_VaspInputs(
+        structure_list=wf.ASSYST_permutation_structures.outputs.all_structures,
+        incar_list=wf.get_permutations_incar_list.outputs.objects_list,
+        potcar_paths=wf.get_potcar_paths_perms,
+    )
+    wf.ASSYST_permutation_structure_jobs = for_node(
+        vasp_job,
+        zip_on=("vasp_input", "workdir"),
+        vasp_input=wf.ASSYST_permutation_VaspInputs.outputs.VaspInputs,
+        workdir=wf.ASSYST_permutation_structures.outputs.job_names,
+        command=vasp_command,
+    )
+    return wf.ASSYST_permutation_structure_jobs, wf.ASSYST_base_structure_jobs

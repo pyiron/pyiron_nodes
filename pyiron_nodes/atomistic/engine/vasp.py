@@ -17,6 +17,8 @@ from pymatgen.io.vasp.outputs import Vasprun
 from ase import Atoms
 
 from pyiron_workflow import Workflow
+import pyiron_workflow as pwf
+
 from pyiron_nodes.dev_tools import VarType, FileObject
 from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
 
@@ -406,3 +408,79 @@ def get_default_POTCAR_paths(
         )
 
     return potcar_paths
+
+#%% These are utilities 
+@pwf.as_function_node
+def generate_VaspInput(structure,
+                       incar,
+                       potcar_paths):
+    vaspinput = VaspInput(structure, incar, potcar_paths=potcar_paths)
+    return vaspinput
+    
+@pwf.as_function_node
+def get_multiple_input(object, n=1):
+    objects_list = [object] * n
+    return objects_list
+    
+@Workflow.wrap.as_function_node("incar")
+def generate_modified_incar(incar, modifications):
+    """
+    Generates a modified INCAR dictionary by updating specific keys.
+
+    Parameters:
+    - incar (dict): Original INCAR dictionary to modify.
+    - modifications (dict): Dictionary of keys and their corresponding new values to update.
+
+    Returns:
+    - dict: A modified INCAR dictionary with the specified changes.
+
+    Example:
+    --------
+    Original INCAR:
+        incar = {
+            "ENCUT": 520,
+            "EDIFF": 1e-5,
+            "ISMEAR": 0,
+            "SIGMA": 0.1
+        }
+
+    Modifications:
+        modifications = {
+            "ISIF": 2,
+            "LREAL": "Auto",
+            "NSW": 100
+        }
+
+    Call:
+        modified_incar = generate_single_modified_incar(incar, modifications)
+
+    Result:
+        modified_incar = {
+            "ENCUT": 520,
+            "EDIFF": 1e-05,
+            "ISMEAR": 0,
+            "SIGMA": 0.1,
+            "ISIF": 2,
+            "LREAL": "Auto",
+            "NSW": 100
+        }
+    """
+    if not isinstance(modifications, dict):
+        raise ValueError("Modifications must be provided as a dictionary.")
+    
+    # Create a copy of the original INCAR and apply modifications
+    modified_incar = incar.copy()
+    for key, value in modifications.items():
+        modified_incar[key] = value
+
+    return modified_incar
+
+@Workflow.wrap.as_function_node("VaspInput")
+def construct_sequential_VaspInput_from_vaspoutput_structure(vasp_output,
+                                            incar,
+                                            potcar_paths):
+    
+    vi = VaspInput(Structure.from_str(vasp_output.structures.iloc[0][-1], fmt="json"),
+                   incar,
+                   potcar_paths=potcar_paths)
+    return vi
