@@ -81,6 +81,7 @@ def collect_structures(
 
     # Iterate over the workflow nodes
     for node_idx, (df, job_name) in enumerate(zip(df_list, job_names)):
+        print(job_name)
         # Select indices based on the threshold
         selected_indices = select_indices_by_threshold(
             df.energy.iloc[0], threshold=energy_diff_threshold
@@ -238,6 +239,11 @@ def get_ASSYST_deformed_structures(
 def get_string(string):
     print(string)
     return string
+
+@pwf.as_function_node
+def get_ionic_steps_incar(incar, ionic_steps):
+    mod_incar = generate_modified_incar.node_function(incar, {"ISIF": 7, "NSW": ionic_steps})
+    return mod_incar
     
 @pwf.as_macro_node
 def run_ASSYST_on_structure(
@@ -255,8 +261,8 @@ def run_ASSYST_on_structure(
     job_name="struct_pyxtal",
     vasp_command="module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 40 vasp_std",
 ):
-
-    wf.ISIF7_incar = generate_modified_incar(incar, {"ISIF": 7, "NSW": ionic_steps})
+    wf.ISIF7_incar_nsw = get_ionic_steps_incar(incar, ionic_steps)
+    wf.ISIF7_incar = generate_modified_incar(wf.ISIF7_incar_nsw , {"ISIF": 7})
     wf.ISIF7_input = generate_VaspInput(
         structure=structure, incar=incar, potcar_paths=potcar_paths
     )
