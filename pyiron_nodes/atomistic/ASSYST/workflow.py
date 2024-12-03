@@ -118,7 +118,7 @@ def collect_structures(
             filtered_structures.append(structure)
             filtered_scf_convergence.append(scf)
             filtered_job_names.append(job_name)
-
+    
     return (
         filtered_energies,
         filtered_structures,
@@ -131,7 +131,7 @@ def collect_structures(
 def generate_VaspInputs(structure_list, incar_list, potcar_paths):
     VaspInput_list = []
     for idx, struct in enumerate(structure_list):
-        print(struct)
+        #print(struct)
         vi = VaspInput(struct, incar_list[idx], potcar_paths=potcar_paths[idx])
         VaspInput_list.append(vi)
     return VaspInput_list
@@ -233,8 +233,12 @@ def get_ASSYST_deformed_structures(
         all_structures.extend(sheared_structures)
 
     return all_structures, job_names
-
-
+    
+@pwf.as_function_node
+def get_string(string):
+    print(string)
+    return string
+    
 @pwf.as_macro_node
 def run_ASSYST_on_structure(
     wf,
@@ -256,8 +260,10 @@ def run_ASSYST_on_structure(
     wf.ISIF7_input = generate_VaspInput(
         structure=structure, incar=incar, potcar_paths=potcar_paths
     )
+    # This is really unpleasant, 
+    wf.ISIF7_jobname = get_string(job_name + "/ISIF7")
     wf.ISIF7_job = vasp_job(
-        workdir=f"{job_name}/ISIF7", vasp_input=wf.ISIF7_input, command=vasp_command
+        workdir=wf.ISIF7_jobname, vasp_input=wf.ISIF7_input, command=vasp_command
     )
     wf.ISIF5_incar = generate_modified_incar(incar, {"ISIF": 5})
     wf.ISIF5_input = construct_sequential_VaspInput_from_vaspoutput_structure(
@@ -265,8 +271,9 @@ def run_ASSYST_on_structure(
         incar=wf.ISIF5_incar.outputs.incar,
         potcar_paths=potcar_paths,
     )
+    wf.ISIF5_jobname = get_string(job_name + "/ISIF5")
     wf.ISIF5_job = vasp_job(
-        workdir=f"{job_name}/ISIF5", vasp_input=wf.ISIF5_input, command=vasp_command
+        workdir=wf.ISIF5_jobname, vasp_input=wf.ISIF5_input, command=vasp_command
     )
     wf.ISIF2_incar = generate_modified_incar(incar, {"ISIF": 2})
     wf.ISIF2_input = construct_sequential_VaspInput_from_vaspoutput_structure(
@@ -274,8 +281,9 @@ def run_ASSYST_on_structure(
         incar=wf.ISIF2_incar.outputs.incar,
         potcar_paths=potcar_paths,
     )
+    wf.ISIF2_jobname = get_string(job_name + "/ISIF2")
     wf.ISIF2_job = vasp_job(
-        workdir=f"{job_name}/ISIF2", vasp_input=wf.ISIF2_input, command=vasp_command
+        workdir=wf.ISIF2_jobname, vasp_input=wf.ISIF2_input, command=vasp_command
     )
     # Need to feed the computed outputs into a different node in the shape of a list
     wf.ISIF_vaspoutputs = pwf.inputs_to_list(
@@ -284,15 +292,16 @@ def run_ASSYST_on_structure(
         wf.ISIF5_job.outputs.vasp_output,
         wf.ISIF7_job.outputs.vasp_output,
     )
-
+    wf.ISIF_jobnames = pwf.inputs_to_list(
+        3,
+        wf.ISIF2_jobname,
+        wf.ISIF5_jobname,
+        wf.ISIF7_jobname,
+    )
     wf.ASSYST_base_structures = collect_structures(
         df_list=wf.ISIF_vaspoutputs,
         energy_diff_threshold=0.1,
-        job_names=[
-            f"{os.getcwd()}/{job_name}/ISIF2",
-            f"{os.getcwd()}/{job_name}/ISIF5",
-            f"{os.getcwd()}/{job_name}/ISIF7",
-        ],
+        job_names=wf.ISIF_jobnames,
     )
     # Generate the accurate incar that is used for potential training data
     wf.accurate_incar = generate_modified_incar(

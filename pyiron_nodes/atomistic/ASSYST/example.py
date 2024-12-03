@@ -1,17 +1,21 @@
+import os
 from ase.build import bulk
+
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.vasp.inputs import Incar
+
+from pyiron_workflow import Workflow
 from pyiron_nodes.atomistic.engine.vasp import VaspInput
 from pyiron_nodes.atomistic.ASSYST.workflow import run_ASSYST_on_structure
 
 
-vasp_command="module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 40 vasp_std"
+vasp_command="module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 40 vasp_std >> vasp.log"
 potcar_paths = ["/cmmc/u/hmai/vasp_potentials_54/Fe_sv/POTCAR"]
 bulk_Fe = bulk("Fe", cubic=True, a=2.7)
 bulk_Fe = AseAtomsAdaptor().get_structure(bulk_Fe)
 bulk_Fe.perturb(0.1)
-structure_folder = "/cmmc/ptmp/hmai/ASSYST_testrun/struct_pyxtal_4"
+structure_folder = "struct_pyxtal_5"
 
 incar = Incar.from_dict({
     "ALGO": "Fast",
@@ -45,7 +49,13 @@ incar["MAGMOM"] = "2*3"
 
 vi = VaspInput(bulk_Fe, incar, potcar_paths=["/cmmc/u/hmai/vasp_potentials_54/Fe_sv/POTCAR"])
 
-macro_node = run_ASSYST_on_structure(bulk_Fe,
+test_dir = "/cmmc/ptmp/hmai/test_pyiron_nodes/ASSYST/test1"
+os.makedirs(test_dir, exist_ok=True)
+curr_dir = os.getcwd()
+os.chdir(test_dir)
+wf = Workflow("struct_pyxtal")
+
+wf.ASSYST = run_ASSYST_on_structure(bulk_Fe,
                         incar,
                         potcar_paths=potcar_paths,
                         ionic_steps = 100,
@@ -55,6 +65,7 @@ macro_node = run_ASSYST_on_structure(bulk_Fe,
                         triaxial_strain=0.8,
                         rattle_displacement=0.1,
                         rattle_strain=0.05,
-                        job_name=structure_folder,
+                        job_name="lol",
                         vasp_command=vasp_command)
-macro_node.run()
+wf.run()
+os.chdir(curr_dir)
