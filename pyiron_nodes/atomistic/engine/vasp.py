@@ -63,7 +63,7 @@ def read_potcar_config(config_file: Path) -> dict:
     Raises:
         ValueError:
             - If no valid `default_POTCAR_set` is found in the config file.
-            - If no valid `default_functional` (e.g., PBE or LDA) is found in the config.
+            - If no valid `default_functional` (e.g., GGA or LDA) is found in the config.
         FileNotFoundError: If the configuration file does not exist.
         Exception: For any other unexpected issues encountered while reading the file.
     """
@@ -106,9 +106,9 @@ def read_potcar_config(config_file: Path) -> dict:
             )
 
         # Check if a valid default_functional is provided
-        if not default_functional or default_functional not in ["PBE", "LDA"]:
+        if not default_functional or default_functional not in ["GGA", "LDA"]:
             raise ValueError(
-                f"Unknown or missing default_functional: {default_functional}. Valid options: PBE, LDA"
+                f"Unknown or missing default_functional: {default_functional}. Valid options: GGA, LDA"
             )
 
         # Dynamically generate the paths for all potpaw sets based on the config content
@@ -181,7 +181,7 @@ class VaspInput:
     structure: Structure
     incar: Incar
     pseudopot_lib_path: str = field(default=default_POTCAR_library_path)
-    pseudopot_functional: str = "PBE"
+    pseudopot_functional: str = "GGA"
     potcar_paths: Optional[list[str]] = None
     kpoints: Optional[Kpoints] = None
 
@@ -221,7 +221,7 @@ def write_POTCAR(workdir: str, vasp_input: VaspInput, filename: str = "POTCAR") 
 
     if vasp_input.potcar_paths is None:
         potcar_paths = get_default_POTCAR_paths(
-            vasp_input.structure, vasp_input.pseudopot_lib_path
+            vasp_input.structure, pseudopot_lib_path=vasp_input.pseudopot_lib_path, pseudopot_functional=vasp_input.pseudopot_functional
         )
     else:
         potcar_paths = vasp_input.potcar_paths
@@ -359,7 +359,8 @@ def vasp_job(
     self.job = run_job(command=command, workdir=workdir)
     self.vasp_output = parse_VaspOutput(workdir=workdir)
     self.convergence_status = check_convergence(workdir=workdir)
-
+    # self.cleanup = cleanup(workdir=workdir)
+    # self.compress = compress(workdir=workdir, inplace=compress_inplace) 
     (
         self.working_dir
         >> self.vaspwriter
@@ -367,7 +368,9 @@ def vasp_job(
         >> self.vasp_output
         >> self.convergence_status
     )
+    # This looks weird but it's mandatory for the signals!
     self.starting_nodes = [self.working_dir]
+
     return self.vasp_output, self.convergence_status
 
 
@@ -395,6 +398,7 @@ def stack_element_string(structure) -> tuple[list[str], list[int]]:
 def get_default_POTCAR_paths(
     structure: Structure,
     pseudopot_lib_path: str,
+    pseudopot_functional: str = "GGA",
     potcar_df: pd.DataFrame = pd.read_csv(POTCAR_default_specification_data),
 ) -> list[str]:
     ele_list, _ = stack_element_string(structure)
@@ -404,7 +408,7 @@ def get_default_POTCAR_paths(
             (potcar_df["symbol"] == element) & (potcar_df["default"] == True)
         ].potential_name.values[0]
         potcar_paths.append(
-            os.path.join(pseudopot_lib_path, ele_default_potcar_path, "POTCAR")
+            os.path.join(pseudopot_lib_path, pseudopot_functional, ele_default_potcar_path, "POTCAR")
         )
 
     return potcar_paths
