@@ -75,7 +75,6 @@ RCORE = {
     "Bi": 3.000000 * 0.5291773,
 }
 
-
 def _element_wise_dist(structure):
     """
     Computes the minimum distance between each pair of elements in the structure using pymatgen.
@@ -106,23 +105,51 @@ def _element_wise_dist(structure):
 
     return pair
 
-
-def filter_distance(structure):
+def is_valid_structure(structure, min_dist = 1.0, core_overlap_tolerance=0.2):
+    # Validate both the minimum distance and RCORE-based constraints
+    if get_minimum_distance(structure) < min_dist:
+        return False
+    return filter_distance_by_species(structure, core_overlap_tolerance=core_overlap_tolerance)
+    
+def get_minimum_distance(structure):
     """
-    Checks if all interatomic distances in the structure are greater than the sum of
-    the core radii for the involved element pairs.
-
+    Computes the minimum interatomic distance in a structure, excluding self-site distances.
+    
     Parameters:
     structure (Structure): A pymatgen Structure object.
 
     Returns:
-    bool: True if all interatomic distances are greater than the sum of core radii, False otherwise.
+    float: The minimum interatomic distance.
     """
-    pair = _element_wise_dist(structure)
-    species_list = sorted(set([site.specie.symbol for site in structure]))
+    distance_matrix = structure.distance_matrix
+    np.fill_diagonal(distance_matrix, np.inf)  # Exclude self-site distances
+    return np.min(distance_matrix)
 
-    # Iterate through all unique element combinations
+
+def filter_distance_by_species(structure, RCORE=RCORE, core_overlap_tolerance=0.2):
+    """
+    Checks if all interatomic distances in the structure are greater than the sum of 
+    the core radii for the involved element pairs, allowing for a percentage overlap tolerance.
+
+    Parameters:
+    structure (Structure): A pymatgen Structure object.
+    RCORE (dict): Dictionary of core radii for elements.
+    core_overlap_tolerance (float): Fractional overlap tolerance allowed (e.g., 0.2 for 20%).
+
+    Returns:
+    bool: True if all interatomic distances are within the allowed overlap tolerance, False otherwise.
+    """
+    if len(structure) == 1:
+        structure_copy = structure * [2, 2, 2]
+    else:
+        structure_copy = structure.copy()
+
+    pair = _element_wise_dist(structure_copy)
+    species_list = sorted(set([site.specie.symbol for site in structure_copy]))
+
     for ei, ej in combinations_with_replacement(species_list, 2):
-        if pair[ei, ej] < RCORE[ei] + RCORE[ej]:
+        # Allow for overlap tolerance
+        allowed_distance = (1 - core_overlap_tolerance) * (RCORE[ei] + RCORE[ej])
+        if pair[ei, ej] < allowed_distance:
             return False
     return True
