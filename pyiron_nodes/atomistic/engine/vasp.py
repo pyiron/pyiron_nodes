@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from typing import Optional
 from dataclasses import dataclass, field
+import tarfile
 
 import pandas as pd
 
@@ -346,6 +347,108 @@ def check_convergence(
 
     return converged
 
+@Workflow.wrap.as_function_node("convergence")
+def delete_files_recursively(workdir: str, files_to_be_deleted: list[str]):
+    """
+    Recursively delete specific files in a directory and its subdirectories.
+
+    Args:
+        workdir (str): The directory to search for files.
+        files_to_be_deleted (list[str]): List of filenames to delete.
+    """
+    if not os.path.isdir(workdir):
+        print(f"Error: {workdir} is not a valid directory.")
+    else:
+        for root, _, files in os.walk(workdir):
+            for file in files:
+                if file in files_to_be_deleted:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Error deleting {file_path}: {e}")
+    return workdir
+
+@Workflow.wrap.as_function_node("compressed_file")
+def compress_directory(
+    directory_path: str,
+    exclude_files=[],
+    exclude_file_patterns=[],
+    print_message=True,
+    inside_dir=True,
+    actually_compress=True,
+):
+    """
+    Compresses a directory and its contents into a tarball with gzip compression.
+
+    Parameters:
+        directory_path (str): The path of the directory to compress.
+        exclude_files (list, optional): A list of filenames to exclude from the compression. Defaults to an empty list.
+        exclude_file_patterns (list, optional): A list of file patterns (glob patterns) to match against filenames and exclude from the compression. Defaults to an empty list.
+        print_message (bool, optional): Determines whether to print a message indicating the compression. Defaults to True.
+        inside_dir (bool, optional): Determines whether the output tarball should be placed inside the source directory or in the same directory as the source directory. Defaults to True.
+
+    Usage:
+        # Compress a directory and place the resulting tarball inside the directory
+        compress_directory("/path/to/source_directory")
+
+        # Compress a directory and place the resulting tarball in the same directory as the source directory
+        compress_directory("/path/to/source_directory", inside_dir=False)
+
+        # Compress a directory and exclude specific files from the compression
+        compress_directory("/path/to/source_directory", exclude_files=["file1.txt", "file2.jpg"])
+
+        # Compress a directory and exclude files matching specific file patterns from the compression
+        compress_directory("/path/to/source_directory", exclude_file_patterns=["*.txt", "*.log"], inside_dir=False)
+
+    Note:
+        - The function creates a tarball with gzip compression of the directory and its contents.
+        - The resulting tarball will be placed either inside the source directory (if inside_dir is True) or in the same directory as the source directory (if inside_dir is False).
+        - Files specified in the `exclude_files` list and those matching the `exclude_file_patterns` will be excluded from the compression.
+        - The `print_message` parameter controls whether a message indicating the compression is printed. By default, it is set to True.
+    """
+    if actually_compress:
+        if inside_dir:
+            output_file = os.path.join(
+                directory_path, os.path.basename(directory_path) + ".tar.gz"
+            )
+        else:
+            output_file = os.path.join(
+                os.path.dirname(directory_path),
+                os.path.basename(directory_path) + ".tar.gz",
+            )
+        with tarfile.open(output_file, "w:gz") as tar:
+            for root, _, files in os.walk(directory_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Exclude the output tarball from being added
+                    if file_path == output_file:
+                        continue
+                    if any(
+                        fnmatch.fnmatch(file, pattern) for pattern in exclude_file_patterns
+                    ):
+                        continue
+                    if file in exclude_files:
+                        continue
+                    arcname = os.path.join(
+                        os.path.basename(directory_path),
+                        os.path.relpath(file_path, directory_path),
+                    )
+                    tar.add(file_path, arcname=arcname)
+                    # tar.add(file_path, arcname=os.path.relpath(file_path, directory_path))
+                    # print(f"{file} added")
+        if print_message:
+            print(f"Compressed directory: {directory_path}")
+    else:
+        output_file = None
+        print("no compression")
+    return output_file
+
+@Workflow.wrap.as_function_node("compressed_file")
+def remove_dir(directory_path):
+    shutil.rmtree(directory_path, ignore_errors=True)
+    return directory_path
 
 @Workflow.wrap.as_macro_node("vasp_output", "convergence_status")
 def vasp_job(
@@ -353,26 +456,33 @@ def vasp_job(
     workdir: str,
     vasp_input: VaspInput,
     command: str = "module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 1 vasp_std",
+    files_to_be_deleted = ["CHG", "CHGCAR", "WAVECAR"],
+    compress = False,
+    compressed_file_in_dir = False,
+    remove_calc_dir = False
 ):
     self.working_dir = create_WorkingDirectory(workdir=workdir)
     self.vaspwriter = write_VaspInputSet(workdir=workdir, vasp_input=vasp_input)
     self.job = run_job(command=command, workdir=workdir)
     self.vasp_output = parse_VaspOutput(workdir=workdir)
     self.convergence_status = check_convergence(workdir=workdir)
-    # self.cleanup = cleanup(workdir=workdir)
-    # self.compress = compress(workdir=workdir, inplace=compress_inplace) 
+    self.cleanup = delete_files_recursively(workdir=workdir, files_to_be_deleted = files_to_be_deleted)
+    self.compress_operation = compress_directory(directory_path=workdir, actually_compress=compress, inside_dir=compressed_file_in_dir)
+    self.remove_dir = remove_dir(directory_path=workdir)
     (
         self.working_dir
         >> self.vaspwriter
         >> self.job
         >> self.vasp_output
         >> self.convergence_status
+        >> self.cleanup
+        >> self.compress_operation
+        >> self.remove_dir
     )
     # This looks weird but it's mandatory for the signals!
     self.starting_nodes = [self.working_dir]
 
     return self.vasp_output, self.convergence_status
-
 
 def stack_element_string(structure) -> tuple[list[str], list[int]]:
     # site_element_list = [atom.symbol for atom in atoms]

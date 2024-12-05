@@ -278,9 +278,30 @@ def get_ASSYST_deformed_structures(
 
 @pwf.as_function_node
 def get_string(string):
-    print(string)
     return string
 
+@pwf.as_function_node
+def get_concat_df(df_list):
+    concat_df = pd.concat(df_list)
+    return concat_df
+
+@pwf.as_function_node
+def save_df(df, filename="df.pkl", format="pickle"):
+    if format == "pickle":
+        df.to_pickle(filename)
+    return filename
+
+@pwf.as_function_node
+def get_ionic_steps_dict(incar, ionic_steps):
+    modded_incar = incar.copy()
+    modded_incar["NSW"] = ionic_steps
+    return modded_incar
+    
+@pwf.as_function_node
+def get_df_from_vaspfornode(vaspfornode):
+    df = pd.concat(vaspfornode.vasp_output.values)
+    return df
+    
 @pwf.as_macro_node
 def run_ASSYST_on_structure(
     wf,
@@ -295,23 +316,24 @@ def run_ASSYST_on_structure(
     triaxial_strain=0.8,
     rattle_displacement=0.1,
     rattle_strain=0.05,
-    core_overlap_tolerance=0.2,
+    core_overlap_tolerance=0.3,
     job_name="struct_pyxtal",
     vasp_command="module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 40 vasp_std",
+    compress_dirs=True,
+    compressed_file_in_dir=False,
+    remove_calc_dirs=True,
+    train_df_filename="df.pkl"
 ):
-    wf.ISIF_7_modifier_dict = pwf.inputs_to_dict(
-    input_specification={
-        "ISIF": (None, 7),
-        "NSW": (int, ionic_steps)
-    })
-    wf.ISIF7_incar = generate_modified_incar(wf.ISIF7_incar_nsw , wf.ISIF_7_modifier_dict)
+    wf.ISIF_7_modded_ionicsteps_dict = get_ionic_steps_dict(incar, ionic_steps=ionic_steps)
+   
+    wf.ISIF7_incar = generate_modified_incar(wf.ISIF_7_modded_ionicsteps_dict , {"ISIF": 7})
     wf.ISIF7_input = generate_VaspInput(
-        structure=structure, incar=incar, potcar_paths=potcar_paths
+        structure=structure, incar=wf.ISIF7_incar, potcar_paths=potcar_paths
     )
     # This is really unpleasant, 
     wf.ISIF7_jobname = get_string(job_name + "/ISIF7")
     wf.ISIF7_job = vasp_job(
-        workdir=wf.ISIF7_jobname, vasp_input=wf.ISIF7_input, command=vasp_command
+        workdir=wf.ISIF7_jobname, vasp_input=wf.ISIF7_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
     wf.ISIF5_incar = generate_modified_incar(incar, {"ISIF": 5})
     wf.ISIF5_input = construct_sequential_VaspInput_from_vaspoutput_structure(
@@ -321,7 +343,7 @@ def run_ASSYST_on_structure(
     )
     wf.ISIF5_jobname = get_string(job_name + "/ISIF5")
     wf.ISIF5_job = vasp_job(
-        workdir=wf.ISIF5_jobname, vasp_input=wf.ISIF5_input, command=vasp_command
+        workdir=wf.ISIF5_jobname, vasp_input=wf.ISIF5_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
     wf.ISIF2_incar = generate_modified_incar(incar, {"ISIF": 2})
     wf.ISIF2_input = construct_sequential_VaspInput_from_vaspoutput_structure(
@@ -331,7 +353,7 @@ def run_ASSYST_on_structure(
     )
     wf.ISIF2_jobname = get_string(job_name + "/ISIF2")
     wf.ISIF2_job = vasp_job(
-        workdir=wf.ISIF2_jobname, vasp_input=wf.ISIF2_input, command=vasp_command
+        workdir=wf.ISIF2_jobname, vasp_input=wf.ISIF2_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
     # Need to feed the computed outputs into a different node in the shape of a list
     wf.ISIF_vaspoutputs = pwf.inputs_to_list(
@@ -376,6 +398,9 @@ def run_ASSYST_on_structure(
         vasp_input=wf.ASSYST_base_VaspInputs.outputs.VaspInputs,
         workdir=wf.ASSYST_base_structures.outputs.filtered_job_names,
         command=vasp_command,
+        compress=compress_dirs,
+        compressed_file_in_dir=compressed_file_in_dir,
+        remove_calc_dir=remove_calc_dirs
     )
 
     wf.ASSYST_permutation_structures = get_ASSYST_deformed_structures(
@@ -407,5 +432,17 @@ def run_ASSYST_on_structure(
         vasp_input=wf.ASSYST_permutation_VaspInputs.outputs.VaspInputs,
         workdir=wf.ASSYST_permutation_structures.outputs.job_names,
         command=vasp_command,
+        compress=compress_dirs,
+        compressed_file_in_dir=compressed_file_in_dir,
+        remove_calc_dir = remove_calc_dirs
     )
-    return wf.ASSYST_permutation_structure_jobs, wf.ASSYST_base_structure_jobs
+    wf.ASSYST_permutation_df = get_df_from_vaspfornode(wf.ASSYST_permutation_structure_jobs)
+    wf.ASSYST_base_df = get_df_from_vaspfornode(wf.ASSYST_base_structure_jobs)
+    wf.final_dflist_input = pwf.inputs_to_list(
+        2,
+        wf.ASSYST_permutation_df,
+        wf.ASSYST_base_df
+    )
+    wf.final_df = get_concat_df(wf.final_dflist_input)
+    wf.save_df = save_df(wf.final_df, filename=train_df_filename, format="pickle")
+    return wf.ASSYST_permutation_structure_jobs, wf.ASSYST_base_structure_jobs, wf.final_df
