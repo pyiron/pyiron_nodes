@@ -446,8 +446,9 @@ def compress_directory(
     return output_file
 
 @Workflow.wrap.as_function_node("compressed_file")
-def remove_dir(directory_path):
-    shutil.rmtree(directory_path, ignore_errors=True)
+def remove_dir(directory_path, actually_remove=False):
+    if actually_remove:
+        shutil.rmtree(directory_path, ignore_errors=True)
     return directory_path
 
 @Workflow.wrap.as_macro_node("vasp_output", "convergence_status")
@@ -468,7 +469,7 @@ def vasp_job(
     self.convergence_status = check_convergence(workdir=workdir)
     self.cleanup = delete_files_recursively(workdir=workdir, files_to_be_deleted = files_to_be_deleted)
     self.compress_operation = compress_directory(directory_path=workdir, actually_compress=compress, inside_dir=compressed_file_in_dir)
-    self.remove_dir = remove_dir(directory_path=workdir)
+    self.remove_dir = remove_dir(directory_path=workdir, actually_remove=remove_calc_dir)
     (
         self.working_dir
         >> self.vaspwriter
