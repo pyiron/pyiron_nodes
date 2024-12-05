@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from typing import Optional
 from dataclasses import dataclass, field
+import tarfile
 
 import pandas as pd
 
@@ -17,6 +18,8 @@ from pymatgen.io.vasp.outputs import Vasprun
 from ase import Atoms
 
 from pyiron_workflow import Workflow
+import pyiron_workflow as pwf
+
 from pyiron_nodes.dev_tools import VarType, FileObject
 from pyiron_atomistics.vasp.output import parse_vasp_output as pvo
 
@@ -61,7 +64,7 @@ def read_potcar_config(config_file: Path) -> dict:
     Raises:
         ValueError:
             - If no valid `default_POTCAR_set` is found in the config file.
-            - If no valid `default_functional` (e.g., PBE or LDA) is found in the config.
+            - If no valid `default_functional` (e.g., GGA or LDA) is found in the config.
         FileNotFoundError: If the configuration file does not exist.
         Exception: For any other unexpected issues encountered while reading the file.
     """
@@ -104,9 +107,9 @@ def read_potcar_config(config_file: Path) -> dict:
             )
 
         # Check if a valid default_functional is provided
-        if not default_functional or default_functional not in ["PBE", "LDA"]:
+        if not default_functional or default_functional not in ["GGA", "LDA"]:
             raise ValueError(
-                f"Unknown or missing default_functional: {default_functional}. Valid options: PBE, LDA"
+                f"Unknown or missing default_functional: {default_functional}. Valid options: GGA, LDA"
             )
 
         # Dynamically generate the paths for all potpaw sets based on the config content
@@ -179,7 +182,7 @@ class VaspInput:
     structure: Structure
     incar: Incar
     pseudopot_lib_path: str = field(default=default_POTCAR_library_path)
-    pseudopot_functional: str = "PBE"
+    pseudopot_functional: str = "GGA"
     potcar_paths: Optional[list[str]] = None
     kpoints: Optional[Kpoints] = None
 
@@ -219,7 +222,7 @@ def write_POTCAR(workdir: str, vasp_input: VaspInput, filename: str = "POTCAR") 
 
     if vasp_input.potcar_paths is None:
         potcar_paths = get_default_POTCAR_paths(
-            vasp_input.structure, vasp_input.pseudopot_lib_path
+            vasp_input.structure, pseudopot_lib_path=vasp_input.pseudopot_lib_path, pseudopot_functional=vasp_input.pseudopot_functional
         )
     else:
         potcar_paths = vasp_input.potcar_paths
@@ -301,11 +304,14 @@ def run_job(
     return output
 
 
+# @Workflow.wrap.as_function_node("output_dict")
+# def parse_VaspOutput(workdir: str) -> dict:
+#     logger.info(f"workdir of parse: {workdir}")
+#     return pvo(workdir)
 @Workflow.wrap.as_function_node("output_dict")
-def parse_VaspOutput(workdir: str) -> dict:
-    logger.info(f"workdir of parse: {workdir}")
-    return pvo(workdir)
-
+def parse_VaspOutput(workdir):
+    from pyiron_nodes.atomistic.engine.vasp_parser.output import parse_vasp_directory
+    return parse_vasp_directory(workdir)
 
 @Workflow.wrap.as_function_node("convergence")
 def check_convergence(
@@ -341,6 +347,109 @@ def check_convergence(
 
     return converged
 
+@Workflow.wrap.as_function_node("convergence")
+def delete_files_recursively(workdir: str, files_to_be_deleted: list[str]):
+    """
+    Recursively delete specific files in a directory and its subdirectories.
+
+    Args:
+        workdir (str): The directory to search for files.
+        files_to_be_deleted (list[str]): List of filenames to delete.
+    """
+    if not os.path.isdir(workdir):
+        print(f"Error: {workdir} is not a valid directory.")
+    else:
+        for root, _, files in os.walk(workdir):
+            for file in files:
+                if file in files_to_be_deleted:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"Error deleting {file_path}: {e}")
+    return workdir
+
+@Workflow.wrap.as_function_node("compressed_file")
+def compress_directory(
+    directory_path: str,
+    exclude_files=[],
+    exclude_file_patterns=[],
+    print_message=True,
+    inside_dir=True,
+    actually_compress=True,
+):
+    """
+    Compresses a directory and its contents into a tarball with gzip compression.
+
+    Parameters:
+        directory_path (str): The path of the directory to compress.
+        exclude_files (list, optional): A list of filenames to exclude from the compression. Defaults to an empty list.
+        exclude_file_patterns (list, optional): A list of file patterns (glob patterns) to match against filenames and exclude from the compression. Defaults to an empty list.
+        print_message (bool, optional): Determines whether to print a message indicating the compression. Defaults to True.
+        inside_dir (bool, optional): Determines whether the output tarball should be placed inside the source directory or in the same directory as the source directory. Defaults to True.
+
+    Usage:
+        # Compress a directory and place the resulting tarball inside the directory
+        compress_directory("/path/to/source_directory")
+
+        # Compress a directory and place the resulting tarball in the same directory as the source directory
+        compress_directory("/path/to/source_directory", inside_dir=False)
+
+        # Compress a directory and exclude specific files from the compression
+        compress_directory("/path/to/source_directory", exclude_files=["file1.txt", "file2.jpg"])
+
+        # Compress a directory and exclude files matching specific file patterns from the compression
+        compress_directory("/path/to/source_directory", exclude_file_patterns=["*.txt", "*.log"], inside_dir=False)
+
+    Note:
+        - The function creates a tarball with gzip compression of the directory and its contents.
+        - The resulting tarball will be placed either inside the source directory (if inside_dir is True) or in the same directory as the source directory (if inside_dir is False).
+        - Files specified in the `exclude_files` list and those matching the `exclude_file_patterns` will be excluded from the compression.
+        - The `print_message` parameter controls whether a message indicating the compression is printed. By default, it is set to True.
+    """
+    if actually_compress:
+        if inside_dir:
+            output_file = os.path.join(
+                directory_path, os.path.basename(directory_path) + ".tar.gz"
+            )
+        else:
+            output_file = os.path.join(
+                os.path.dirname(directory_path),
+                os.path.basename(directory_path) + ".tar.gz",
+            )
+        with tarfile.open(output_file, "w:gz") as tar:
+            for root, _, files in os.walk(directory_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Exclude the output tarball from being added
+                    if file_path == output_file:
+                        continue
+                    if any(
+                        fnmatch.fnmatch(file, pattern) for pattern in exclude_file_patterns
+                    ):
+                        continue
+                    if file in exclude_files:
+                        continue
+                    arcname = os.path.join(
+                        os.path.basename(directory_path),
+                        os.path.relpath(file_path, directory_path),
+                    )
+                    tar.add(file_path, arcname=arcname)
+                    # tar.add(file_path, arcname=os.path.relpath(file_path, directory_path))
+                    # print(f"{file} added")
+        if print_message:
+            print(f"Compressed directory: {directory_path}")
+    else:
+        output_file = None
+        print("no compression")
+    return output_file
+
+@Workflow.wrap.as_function_node("compressed_file")
+def remove_dir(directory_path, actually_remove=False):
+    if actually_remove:
+        shutil.rmtree(directory_path, ignore_errors=True)
+    return directory_path
 
 @Workflow.wrap.as_macro_node("vasp_output", "convergence_status")
 def vasp_job(
@@ -348,23 +457,33 @@ def vasp_job(
     workdir: str,
     vasp_input: VaspInput,
     command: str = "module load vasp; module load intel/19.1.0 impi/2019.6; unset I_MPI_HYDRA_BOOTSTRAP; unset I_MPI_PMI_LIBRARY; mpiexec -n 1 vasp_std",
+    files_to_be_deleted = ["CHG", "CHGCAR", "WAVECAR"],
+    compress = False,
+    compressed_file_in_dir = False,
+    remove_calc_dir = False
 ):
     self.working_dir = create_WorkingDirectory(workdir=workdir)
     self.vaspwriter = write_VaspInputSet(workdir=workdir, vasp_input=vasp_input)
     self.job = run_job(command=command, workdir=workdir)
     self.vasp_output = parse_VaspOutput(workdir=workdir)
     self.convergence_status = check_convergence(workdir=workdir)
-
+    self.cleanup = delete_files_recursively(workdir=workdir, files_to_be_deleted = files_to_be_deleted)
+    self.compress_operation = compress_directory(directory_path=workdir, actually_compress=compress, inside_dir=compressed_file_in_dir)
+    self.remove_dir = remove_dir(directory_path=workdir, actually_remove=remove_calc_dir)
     (
         self.working_dir
         >> self.vaspwriter
         >> self.job
         >> self.vasp_output
         >> self.convergence_status
+        >> self.cleanup
+        >> self.compress_operation
+        >> self.remove_dir
     )
+    # This looks weird but it's mandatory for the signals!
     self.starting_nodes = [self.working_dir]
-    return self.vasp_output, self.convergence_status
 
+    return self.vasp_output, self.convergence_status
 
 def stack_element_string(structure) -> tuple[list[str], list[int]]:
     # site_element_list = [atom.symbol for atom in atoms]
@@ -390,6 +509,7 @@ def stack_element_string(structure) -> tuple[list[str], list[int]]:
 def get_default_POTCAR_paths(
     structure: Structure,
     pseudopot_lib_path: str,
+    pseudopot_functional: str = "GGA",
     potcar_df: pd.DataFrame = pd.read_csv(POTCAR_default_specification_data),
 ) -> list[str]:
     ele_list, _ = stack_element_string(structure)
@@ -399,7 +519,83 @@ def get_default_POTCAR_paths(
             (potcar_df["symbol"] == element) & (potcar_df["default"] == True)
         ].potential_name.values[0]
         potcar_paths.append(
-            os.path.join(pseudopot_lib_path, ele_default_potcar_path, "POTCAR")
+            os.path.join(pseudopot_lib_path, pseudopot_functional, ele_default_potcar_path, "POTCAR")
         )
 
     return potcar_paths
+
+#%% These are utilities 
+@pwf.as_function_node
+def generate_VaspInput(structure,
+                       incar,
+                       potcar_paths):
+    vaspinput = VaspInput(structure, incar, potcar_paths=potcar_paths)
+    return vaspinput
+    
+@pwf.as_function_node
+def get_multiple_input(object, n=1):
+    objects_list = [object] * n
+    return objects_list
+    
+@Workflow.wrap.as_function_node("incar")
+def generate_modified_incar(incar, modifications):
+    """
+    Generates a modified INCAR dictionary by updating specific keys.
+
+    Parameters:
+    - incar (dict): Original INCAR dictionary to modify.
+    - modifications (dict): Dictionary of keys and their corresponding new values to update.
+
+    Returns:
+    - dict: A modified INCAR dictionary with the specified changes.
+
+    Example:
+    --------
+    Original INCAR:
+        incar = {
+            "ENCUT": 520,
+            "EDIFF": 1e-5,
+            "ISMEAR": 0,
+            "SIGMA": 0.1
+        }
+
+    Modifications:
+        modifications = {
+            "ISIF": 2,
+            "LREAL": "Auto",
+            "NSW": 100
+        }
+
+    Call:
+        modified_incar = generate_single_modified_incar(incar, modifications)
+
+    Result:
+        modified_incar = {
+            "ENCUT": 520,
+            "EDIFF": 1e-05,
+            "ISMEAR": 0,
+            "SIGMA": 0.1,
+            "ISIF": 2,
+            "LREAL": "Auto",
+            "NSW": 100
+        }
+    """
+    if not isinstance(modifications, dict):
+        raise ValueError("Modifications must be provided as a dictionary.")
+    
+    # Create a copy of the original INCAR and apply modifications
+    modified_incar = incar.copy()
+    for key, value in modifications.items():
+        modified_incar[key] = value
+
+    return modified_incar
+
+@Workflow.wrap.as_function_node("VaspInput")
+def construct_sequential_VaspInput_from_vaspoutput_structure(vasp_output,
+                                            incar,
+                                            potcar_paths):
+    
+    vi = VaspInput(Structure.from_str(vasp_output.structures.iloc[0][-1], fmt="json"),
+                   incar,
+                   potcar_paths=potcar_paths)
+    return vi
