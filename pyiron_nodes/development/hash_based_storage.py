@@ -474,7 +474,7 @@ def list_column_names(db, table_name):
     return [column["name"] for column in columns]
 
 
-def extract_node_input(node, db):
+def extract_node_input(node, db=None):
     """
     This function extracts input from a pyiron_workflow node object as a dictionary.
 
@@ -496,7 +496,8 @@ def extract_node_input(node, db):
         if k in inp_node_dict:
             inp_node = inp_node_dict[k]
             input_dict[k] = "hash_" + get_node_hash(inp_node, db)
-            save_node(inp_node, db, file_output=False)
+            if db is not None:
+                save_node(inp_node, db, file_output=False)
         else:
             input_dict[k] = str(v.value)  # ["value"]
     return input_dict
@@ -564,7 +565,7 @@ def get_node_storage_path(node):
     return node_storage_path
 
 
-def extract_node_dictionary(node, db):
+def extract_node_dictionary(node, db=None):
     """
     This function creates a dictionary from a given node. The dictionary combines the output of
     'extract_node_input' and 'create_unique_identifier'.
@@ -882,7 +883,7 @@ def load_node_from_json(node, file_path, db, verbose=False):
     return node
 
 
-def get_node_hash(node, db, hash_length=256):
+def get_node_hash(node, db=None, hash_length=256):
     hash_value = compute_hash_value(
         extract_node_dictionary(node, db), length=hash_length
     )
