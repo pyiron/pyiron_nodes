@@ -1,6 +1,7 @@
 from pyiron_workflow import as_function_node
 from typing import Optional
 
+
 @as_function_node("function_space")
 def FunctionSpace(
     domain,
@@ -11,6 +12,7 @@ def FunctionSpace(
 
     V = fem.functionspace(domain, (el_type, el_order))
     return V
+
 
 @as_function_node("function_space")
 def VectorFunctionSpace(

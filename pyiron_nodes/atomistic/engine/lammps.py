@@ -59,6 +59,7 @@ def CalcMinimize(calculator_input: Optional[InputCalcMinimize | dict] = None):
 @as_function_node("calculator")
 def CalcMD(calculator_input: Optional[InputCalcMD.dataclass] = None):
     from dataclasses import asdict
+
     if calculator_input is None:
         calculator_input = InputCalcMD.dataclass()
 
@@ -72,7 +73,13 @@ def CalcMD(calculator_input: Optional[InputCalcMD.dataclass] = None):
 
 
 @as_function_node("path")
-def InitLammps(structure, potential: str, calculator, working_directory: str, create_dir: bool = True):
+def InitLammps(
+    structure,
+    potential: str,
+    calculator,
+    working_directory: str,
+    create_dir: bool = True,
+):
     import os
     from pyiron_atomistics.lammps.potential import LammpsPotential, LammpsPotentialFile
 
@@ -127,10 +134,10 @@ class ShellOutput:
 
 @as_function_node("output", "dump", "log")
 def Shell(
-        working_directory: str,
-        command: str = "lmp",
-        environment: Optional[dict] = None,
-        arguments: Optional[list] = None,
+    working_directory: str,
+    command: str = "lmp",
+    environment: Optional[dict] = None,
+    arguments: Optional[list] = None,
 ):
     arguments = ["-in", "control.inp"] if arguments is None else arguments
     # -> (ShellOutput, FileObject, FileObject):  TODO: fails -> why
@@ -174,9 +181,9 @@ class GenericOutput:
 
 @as_function_node
 def Collect(
-        out_dump,
-        out_log,
-        calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
+    out_dump,
+    out_log,
+    calc_mode: str | LammpsControl | InputCalcMinimize | InputCalcMD | InputCalcStatic,
 ):
     import numpy as np
 
@@ -264,22 +271,18 @@ from ase import Atoms
 
 @as_macro_node("generic")
 def Code(
-        wf,
-        structure: Atoms,
-        calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
-        potential: Optional[str] = None,
-        working_dir: str = "test2",
+    wf,
+    structure: Atoms,
+    calculator=InputCalcStatic(),  # TODO: Don't use mutable defaults
+    potential: Optional[str] = None,
+    working_dir: str = "test2",
 ):
     # from pyiron_contrib.tinybase.shell import ExecutablePathResolver
 
     # print("Lammps: ", structure)
-    wf.Potential = Potential(
-        structure=structure, name=potential
-    )
+    wf.Potential = Potential(structure=structure, name=potential)
 
-    wf.ListPotentials = ListPotentials(
-        structure=structure
-    )
+    wf.ListPotentials = ListPotentials(structure=structure)
 
     wf.calc = Calc(calculator)
 
@@ -295,12 +298,8 @@ def Code(
         working_directory=wf.InitLammps,
     )
 
-    wf.ParseLogFile = ParseLogFile(
-        log_file=wf.Shell.outputs.log
-    )
-    wf.ParseDumpFile = ParseDumpFile(
-        dump_file=wf.Shell.outputs.dump
-    )
+    wf.ParseLogFile = ParseLogFile(log_file=wf.Shell.outputs.log)
+    wf.ParseDumpFile = ParseDumpFile(dump_file=wf.Shell.outputs.dump)
     wf.Collect = Collect(
         out_dump=wf.ParseDumpFile.outputs.dump,
         out_log=wf.ParseLogFile.outputs.log,

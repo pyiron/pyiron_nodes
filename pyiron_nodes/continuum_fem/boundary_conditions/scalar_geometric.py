@@ -3,12 +3,9 @@ from typing import Optional
 from typing import Callable
 import numpy as np
 
+
 @as_function_node("bc")
-def ScalarDirichlet1D(
-    function_space,
-    bc_function: str,
-    value: Optional[float|int]
-):
+def ScalarDirichlet1D(function_space, bc_function: str, value: Optional[float | int]):
     from dolfinx import fem, default_scalar_type
 
     lazy_evaluation = lambda x: eval(bc_function)
@@ -17,17 +14,18 @@ def ScalarDirichlet1D(
     bc = fem.dirichletbc(default_scalar_type(value), boundary_dofs, function_space)
     return bc
 
+
 @as_function_node("bc")
 def ScalarDirichlet3D(
     function_space,
     bc_function: str,
-    value_x: Optional[float|int],
-    value_y: Optional[float|int],
-    value_z: Optional[float|int]
+    value_x: Optional[float | int],
+    value_y: Optional[float | int],
+    value_z: Optional[float | int],
 ):
-    
+
     from dolfinx import fem, default_scalar_type
-    
+
     lazy_evaluation = lambda x: eval(bc_function)
     result = lazy_evaluation
     boundary_dofs = fem.locate_dofs_geometrical(function_space, result)
@@ -35,8 +33,9 @@ def ScalarDirichlet3D(
     bc = fem.dirichletbc(u_D, boundary_dofs, function_space)
     return bc
 
+
 @as_function_node("bcs_array")
-def CollectBcs(bc1 = None, bc2 = None, bc3 = None, bc4 = None, bc5 = None, bc6 = None):
+def CollectBcs(bc1=None, bc2=None, bc3=None, bc4=None, bc5=None, bc6=None):
 
     bcs = []
     if bc1 is not None:
@@ -58,6 +57,3 @@ def CollectBcs(bc1 = None, bc2 = None, bc3 = None, bc4 = None, bc5 = None, bc6 =
         bcs.append(bc6)
 
     return bcs
-        
-    
-    

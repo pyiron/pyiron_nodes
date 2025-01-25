@@ -46,7 +46,7 @@ def PlotDataFrameXY(df: pd.DataFrame, x: Optional[list | np.ndarray] = None):
 
 @as_function_node("fig")
 def Scatter(
-        x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None
+    x: Optional[list | np.ndarray] = None, y: Optional[list | np.ndarray] = None
 ):
     from matplotlib import pyplot as plt
 
@@ -72,13 +72,13 @@ def Histogram(x: Optional[list | np.ndarray], bins: int = 50):
 
 @as_function_node("figure")
 def Plot(
-        y: Optional[list | np.ndarray | pd.core.series.Series],
-        x: Optional[list | np.ndarray | pd.core.series.Series] = None,
-        axis: Optional[object] = None,
-        title: Optional[str] = "",
-        color: Optional[str] = "b",
-        symbol: Optional[str] = "o",
-        legend_label: Optional[str] = "",
+    y: Optional[list | np.ndarray | pd.core.series.Series],
+    x: Optional[list | np.ndarray | pd.core.series.Series] = None,
+    axis: Optional[object] = None,
+    title: Optional[str] = "",
+    color: Optional[str] = "b",
+    symbol: Optional[str] = "o",
+    legend_label: Optional[str] = "",
 ):
     from matplotlib import pyplot as plt
 
@@ -101,10 +101,10 @@ def Plot(
 
 @as_function_node("linspace")
 def Linspace(
-        start: Optional[int | float] = 0.0,
-        stop: Optional[int | float] = 1.0,
-        num: Optional[int] = 50,
-        endpoint: Optional[bool] = True,
+    start: Optional[int | float] = 0.0,
+    stop: Optional[int | float] = 1.0,
+    num: Optional[int] = 50,
+    endpoint: Optional[bool] = True,
 ):
     from numpy import linspace
 
@@ -118,10 +118,10 @@ def Mean(numbers: list | np.ndarray | float | int):
 
 @as_function_node("axes")
 def Subplot(
-        nrows: Optional[int] = 1,
-        ncols: Optional[int] = 1,
-        sharex: Optional[bool] = False,
-        sharey: Optional[bool] = False,
+    nrows: Optional[int] = 1,
+    ncols: Optional[int] = 1,
+    sharex: Optional[bool] = False,
+    sharey: Optional[bool] = False,
 ):
     from matplotlib import pyplot as plt
 

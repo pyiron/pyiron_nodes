@@ -75,14 +75,14 @@ class OutputElasticAnalysis:
 
 @as_macro_node
 def ElasticConstants(
-        self,
-        structure,
-        engine: Optional[OutputEngine] = None,
-        # But OutputEngine had better be holding a ase.calculators.calculator.BaseCalculator
-        # There is too much misdirection for me to track everything right now, but I think
-        # some of the "generic" stuff doesn't work
-        parameters: Optional[InputElasticTensor.dataclass] = InputElasticTensor.dataclass(),
-        # contains the default values
+    self,
+    structure,
+    engine: Optional[OutputEngine] = None,
+    # But OutputEngine had better be holding a ase.calculators.calculator.BaseCalculator
+    # There is too much misdirection for me to track everything right now, but I think
+    # some of the "generic" stuff doesn't work
+    parameters: Optional[InputElasticTensor.dataclass] = InputElasticTensor.dataclass(),
+    # contains the default values
 ) -> OutputElasticAnalysis:
     self.symmetry_analysis = SymmetryAnalysis(structure, parameters=parameters)
 
@@ -119,7 +119,7 @@ def ExtractFinalEnergy(df):
 
 @as_function_node
 def SymmetryAnalysis(
-        structure, parameters: Optional[InputElasticTensor.dataclass]
+    structure, parameters: Optional[InputElasticTensor.dataclass]
 ) -> OutputElasticSymmetryAnalysis:
     parameters = InputElasticTensor.dataclass() if parameters is None else parameters
     out = OutputElasticSymmetryAnalysis(structure)
@@ -137,9 +137,9 @@ def SymmetryAnalysis(
 
 @as_function_node("structures")
 def GenerateStructures(
-        structure,
-        analysis: OutputElasticSymmetryAnalysis,
-        parameters: Optional[InputElasticTensor.dataclass] = None,
+    structure,
+    analysis: OutputElasticSymmetryAnalysis,
+    parameters: Optional[InputElasticTensor.dataclass] = None,
 ):
     structure_dict = {}
 
@@ -201,9 +201,9 @@ def GenerateStructures(
 
 @as_function_node("structures")
 def AnalyseStructures(
-        data_df: DataStructureContainer,
-        analysis: OutputElasticSymmetryAnalysis,
-        parameters: Optional[InputElasticTensor.dataclass] = None,
+    data_df: DataStructureContainer,
+    analysis: OutputElasticSymmetryAnalysis,
+    parameters: Optional[InputElasticTensor.dataclass] = None,
 ) -> OutputElasticAnalysis:
     zero_strain_job_name = "s_e_0"
 
@@ -236,10 +236,10 @@ def calculate_modulus(out: OutputElasticAnalysis):
 
     BV = (C[0, 0] + C[1, 1] + C[2, 2] + 2 * (C[0, 1] + C[0, 2] + C[1, 2])) / 9
     GV = (
-                 (C[0, 0] + C[1, 1] + C[2, 2])
-                 - (C[0, 1] + C[0, 2] + C[1, 2])
-                 + 3 * (C[3, 3] + C[4, 4] + C[5, 5])
-         ) / 15
+        (C[0, 0] + C[1, 1] + C[2, 2])
+        - (C[0, 1] + C[0, 2] + C[1, 2])
+        + 3 * (C[3, 3] + C[4, 4] + C[5, 5])
+    ) / 15
     EV = (9 * BV * GV) / (3 * BV + GV)
     nuV = (1.5 * BV - GV) / (3 * BV + GV)
     out.BV = BV
@@ -252,9 +252,9 @@ def calculate_modulus(out: OutputElasticAnalysis):
 
         BR = 1 / (S[0, 0] + S[1, 1] + S[2, 2] + 2 * (S[0, 1] + S[0, 2] + S[1, 2]))
         GR = 15 / (
-                4 * (S[0, 0] + S[1, 1] + S[2, 2])
-                - 4 * (S[0, 1] + S[0, 2] + S[1, 2])
-                + 3 * (S[3, 3] + S[4, 4] + S[5, 5])
+            4 * (S[0, 0] + S[1, 1] + S[2, 2])
+            - 4 * (S[0, 1] + S[0, 2] + S[1, 2])
+            + 3 * (S[3, 3] + S[4, 4] + S[5, 5])
         )
         ER = (9 * BR * GR) / (3 * BR + GR)
         nuR = (1.5 * BR - GR) / (3 * BR + GR)
@@ -306,7 +306,7 @@ def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
             C[j, i] = C[i, j]
 
     CONV = (
-            1e21 / scipy.constants.physical_constants["joule-electron volt relationship"][0]
+        1e21 / scipy.constants.physical_constants["joule-electron volt relationship"][0]
     )  # From eV/Ang^3 to GPa
 
     C *= CONV
