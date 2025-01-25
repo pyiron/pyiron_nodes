@@ -1,23 +1,24 @@
 from pyiron_workflow import as_function_node
 from typing import Optional
 
+
 @as_function_node("structure")
 def create_single_species(
     crystal: Optional[str],
-    lattice_constant_a: Optional[float|int], 
-    lattice_constant_c: Optional[float|int],
-    x_indices: Optional[str|list[int]] = '1 0 0',
-    y_indices: Optional[str|list[int]] = '0 1 0',
-    z_indices: Optional[str|list[int]] = '0 0 1',
+    lattice_constant_a: Optional[float | int],
+    lattice_constant_c: Optional[float | int],
+    x_indices: Optional[str | list[int]] = "1 0 0",
+    y_indices: Optional[str | list[int]] = "0 1 0",
+    z_indices: Optional[str | list[int]] = "0 0 1",
     x_repetition: Optional[int] = 1,
     y_repetition: Optional[int] = 1,
     z_repetition: Optional[int] = 1,
-    species: Optional[str] = 'W',
+    species: Optional[str] = "W",
     x_pbc: Optional[bool] = False,
     y_pbc: Optional[bool] = False,
-    z_pbc: Optional[bool] = False
+    z_pbc: Optional[bool] = False,
 ):
-    '''
+    """
     Returns an ase atom object in the form of a simple box
 
 
@@ -28,28 +29,33 @@ def create_single_species(
             x_repetition, y_repetition, z_repetition: Supercell repetitions along the three coordinate axes
             species: desired element
             x_pbc, y_pbc, z_pbc: periodic boundaries, true or false along the three coordinate axes
-    '''
-    if (crystal == 'bcc'):
+    """
+    if crystal == "bcc":
         from ase.lattice.cubic import BodyCenteredCubic
+
         crys_txt = BodyCenteredCubic
-    if (crystal == 'fcc'):
+    if crystal == "fcc":
         from ase.lattice.cubic import FaceCenteredCubic
+
         crys_txt = FaceCenteredCubic
-    if (crystal == 'dc'):
+    if crystal == "dc":
         from ase.lattice.cubic import Diamond
+
         crys_txt = Diamond
-    if (crystal == 'hcp'):
+    if crystal == "hcp":
         from ase.lattice.hexagonal import HexagonalClosedPacked
+
         crys_txt = HexagonalClosedPacked
-    if (crystal == 'sc'):
+    if crystal == "sc":
         from ase.lattice.cubic import SimpleCubic
+
         crys_txt = SimpleCubic
-        
-    #from ase.lattice.cubic import Diamond
-    #from ase.lattice.cubic import BodyCenteredCubic
-    #from ase.lattice.cubic import FaceCenteredCubic
-    #from ase.lattice.cubic import SimpleCubic
-    #from ase.lattice.hexagonal import HexagonalClosedPacked
+
+    # from ase.lattice.cubic import Diamond
+    # from ase.lattice.cubic import BodyCenteredCubic
+    # from ase.lattice.cubic import FaceCenteredCubic
+    # from ase.lattice.cubic import SimpleCubic
+    # from ase.lattice.hexagonal import HexagonalClosedPacked
 
     if isinstance(x_indices, str):
         x_indices = [int(i) for i in x_indices.split()]
@@ -73,10 +79,18 @@ def create_single_species(
     else:
         z_pbc_int = 0
 
-    orient_dict = {'[0, 0, 0, 1]': [0, 0, 1], '[1, -1, 0, 0]': [0, 1, 0], '[-1, 1, 0, 0]': [0, -1, 0], '[1, 0, -1, 0]': [1, 0, 0],
-                   '[-1, 0, 1, 0]': [-1, 0, 0],'[2, -1, -1, 0]': [1, 0, 0],'[-2, 1, 1, 0]': [-1, 0, 0], '[1, -2, 1, 0]': [0, -1, 0],
-                   '[-1, 2, -1, 0]': [0, 1, 0]}
-    if crystal=='c14' or crystal=='hcp':
+    orient_dict = {
+        "[0, 0, 0, 1]": [0, 0, 1],
+        "[1, -1, 0, 0]": [0, 1, 0],
+        "[-1, 1, 0, 0]": [0, -1, 0],
+        "[1, 0, -1, 0]": [1, 0, 0],
+        "[-1, 0, 1, 0]": [-1, 0, 0],
+        "[2, -1, -1, 0]": [1, 0, 0],
+        "[-2, 1, 1, 0]": [-1, 0, 0],
+        "[1, -2, 1, 0]": [0, -1, 0],
+        "[-1, 2, -1, 0]": [0, 1, 0],
+    }
+    if crystal == "c14" or crystal == "hcp":
         m1 = orient_dict[str(x_indices)]
         m2 = orient_dict[str(y_indices)]
         m3 = orient_dict[str(z_indices)]
@@ -85,22 +99,21 @@ def create_single_species(
         m2 = y_indices
         m3 = z_indices
 
-    if(crystal == 'hcp'):
-        ase_atoms = crys_txt(directions = [m1, m2, m3],
-                             size=(x_repetition, y_repetition, z_repetition),
-                             symbol=species,
-                             pbc=(x_pbc,y_pbc,z_pbc),
-                             latticeconstant = (lattice_constant_a, lattice_constant_c))
+    if crystal == "hcp":
+        ase_atoms = crys_txt(
+            directions=[m1, m2, m3],
+            size=(x_repetition, y_repetition, z_repetition),
+            symbol=species,
+            pbc=(x_pbc, y_pbc, z_pbc),
+            latticeconstant=(lattice_constant_a, lattice_constant_c),
+        )
     else:
-        ase_atoms = crys_txt(directions = [m1, m2, m3], 
-                             size=(x_repetition, y_repetition, z_repetition), 
-                             symbol=species, 
-                             pbc=(x_pbc,y_pbc,z_pbc),
-                             latticeconstant = lattice_constant_a)
+        ase_atoms = crys_txt(
+            directions=[m1, m2, m3],
+            size=(x_repetition, y_repetition, z_repetition),
+            symbol=species,
+            pbc=(x_pbc, y_pbc, z_pbc),
+            latticeconstant=lattice_constant_a,
+        )
 
     return ase_atoms
-
-
-    
-
-    

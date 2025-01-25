@@ -180,8 +180,8 @@ def add_node_dict_to_db(db, inputs, name="", path=".", length=256):
 
     # Check if a node with this hash exists
     exists = (
-            session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar()
-            is not None
+        session.query(db.Node).filter_by(hash_value=new_node.hash_value).scalar()
+        is not None
     )
 
     # If the node does not exist, add it to the session
@@ -201,14 +201,14 @@ def add_node_dict_to_db(db, inputs, name="", path=".", length=256):
 
 
 def edit_node_dict_in_db(
-        db,
-        node_id,
-        inputs=None,
-        outputs=None,
-        name=None,
-        lib_path=None,
-        output_ready=None,
-        file_path=None,
+    db,
+    node_id,
+    inputs=None,
+    outputs=None,
+    name=None,
+    lib_path=None,
+    output_ready=None,
+    file_path=None,
 ):
     """
     Edits the attributes of a Node in a database.
@@ -625,7 +625,9 @@ def add_node_to_db(node, db):
     # print('add: ', node_dic)
 
     # Convert node_identifier to a path format by replacing '.' with '/'
-    path_format = get_node_storage_path(node)  # (node_dic["node_identifier"].replace(".", "/"))
+    path_format = get_node_storage_path(
+        node
+    )  # (node_dic["node_identifier"].replace(".", "/"))
 
     # Add the node's metadata to the database
     exists = add_node_dict_to_db(db, inputs=node_dic, path=path_format)
@@ -640,7 +642,7 @@ def add_node_to_db(node, db):
 
 
 def save_node(
-        node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000
+    node, db, file_output=None, db_output=None, node_pull=True, json_size_limit=1000
 ):  # , node_id):
     """
     This function stores a node by setting its storage_directory attribute to a certain path.
@@ -1145,10 +1147,10 @@ def _bracketed_split(string, delimiter, strip_brackets=False):
                 continue
         elif c in closers:
             assert (
-                    depth > 0
+                depth > 0
             ), f"You exited more brackets that we have entered in string {string}"
             assert (
-                    c == opener_to_closer[opening_bracket[depth]]
+                c == opener_to_closer[opening_bracket[depth]]
             ), f"Closing bracket {c} did not match opening bracket {opening_bracket[depth]} in string {string}"
             depth -= 1
             if strip_brackets and depth == 0:
