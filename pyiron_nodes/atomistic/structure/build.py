@@ -96,6 +96,7 @@ def HighIndexSurface(
     slab.set_pbc(True)
     return ase_to_pyiron(slab)
 
+
 @as_macro_node("structure")
 def CubicBulkCell(
     wf, element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
