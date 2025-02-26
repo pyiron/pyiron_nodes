@@ -144,8 +144,8 @@ def filter_distance_by_species(structure, RCORE=RCORE, core_overlap_tolerance=0.
     else:
         structure_copy = structure.copy()
 
-    pair = _element_wise_dist(structure_copy)
-    species_list = sorted(set([site.specie.symbol for site in structure_copy]))
+    pair = _element_wise_dist(structure)
+    species_list = sorted(set([site.specie.symbol for site in structure]))
 
     for ei, ej in combinations_with_replacement(species_list, 2):
         # Allow for overlap tolerance
