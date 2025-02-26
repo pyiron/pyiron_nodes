@@ -322,7 +322,7 @@ def run_ASSYST_on_structure(
     compress_dirs=True,
     compressed_file_in_dir=False,
     remove_calc_dirs=True,
-    train_df_filename="df.pkl"
+    train_df_filename="df_ASSYST_jobs.pkl"
 ):
     wf.ISIF_7_modded_ionicsteps_dict = get_ionic_steps_dict(incar, ionic_steps=ionic_steps)
    
@@ -332,6 +332,7 @@ def run_ASSYST_on_structure(
     )
     # This is really unpleasant, 
     wf.ISIF7_jobname = get_string(job_name + "/ISIF7")
+    # Relax cell volume w/fixed cell shape, atoms
     wf.ISIF7_job = vasp_job(
         workdir=wf.ISIF7_jobname, vasp_input=wf.ISIF7_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
@@ -342,6 +343,7 @@ def run_ASSYST_on_structure(
         potcar_paths=potcar_paths,
     )
     wf.ISIF5_jobname = get_string(job_name + "/ISIF5")
+    # Relax cell shape w/fixed atoms
     wf.ISIF5_job = vasp_job(
         workdir=wf.ISIF5_jobname, vasp_input=wf.ISIF5_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
@@ -352,21 +354,30 @@ def run_ASSYST_on_structure(
         potcar_paths=potcar_paths,
     )
     wf.ISIF2_jobname = get_string(job_name + "/ISIF2")
+    # Relaxation of atoms in fixed cell
     wf.ISIF2_job = vasp_job(
         workdir=wf.ISIF2_jobname, vasp_input=wf.ISIF2_input, command=vasp_command, compress=compress_dirs, compressed_file_in_dir=compressed_file_in_dir, remove_calc_dir=remove_calc_dirs
     )
     # Need to feed the computed outputs into a different node in the shape of a list
+    # wf.ISIF_vaspoutputs = pwf.inputs_to_list(
+    #     3,
+    #     wf.ISIF2_job.outputs.vasp_output,
+    #     wf.ISIF5_job.outputs.vasp_output,
+    #     wf.ISIF7_job.outputs.vasp_output,
+    # )
     wf.ISIF_vaspoutputs = pwf.inputs_to_list(
-        3,
+        1,
         wf.ISIF2_job.outputs.vasp_output,
-        wf.ISIF5_job.outputs.vasp_output,
-        wf.ISIF7_job.outputs.vasp_output,
     )
+    # wf.ISIF_jobnames = pwf.inputs_to_list(
+    #     3,
+    #     wf.ISIF2_jobname,
+    #     wf.ISIF5_jobname,
+    #     wf.ISIF7_jobname,
+    # )
     wf.ISIF_jobnames = pwf.inputs_to_list(
-        3,
+        1,
         wf.ISIF2_jobname,
-        wf.ISIF5_jobname,
-        wf.ISIF7_jobname,
     )
     wf.ASSYST_base_structures = collect_structures(
         df_list=wf.ISIF_vaspoutputs,
