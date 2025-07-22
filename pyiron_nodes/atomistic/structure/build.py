@@ -36,14 +36,14 @@ def Bulk(
 def HighIndexSurface(
     element: str,
     crystal_structure: str,
-    lattice_constant: float,
-    terrace_orientation: Optional[list] = None,
-    step_orientation: Optional[list] = None,
-    kink_orientation: Optional[list] = None,
-    step_down_vector: Optional[list] = None,
-    length_step: int = 0,
-    length_terrace: int = 0,
-    length_kink: int = 0,
+    lattice_constant: float | int,
+    terrace_orientation: Optional[list] = [1,1,1],
+    step_orientation: Optional[list] = [1,1,0],
+    kink_orientation: Optional[list] = [1,1,0],
+    step_down_vector: Optional[list] = [1,1,0],
+    length_step: int = 3,
+    length_terrace: int = 3,
+    length_kink: int = 1,
     layers: int = 6,
     vacuum: int = 10,
 ) -> Atoms:
@@ -72,6 +72,7 @@ def HighIndexSurface(
     from ase.build import bulk, surface
     from structuretoolkit.common.pymatgen import ase_to_pymatgen, pymatgen_to_ase
     import numpy as np
+    from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
     basis = bulk(
         name=element, crystalstructure=crystal_structure, a=lattice_constant, cubic=True
