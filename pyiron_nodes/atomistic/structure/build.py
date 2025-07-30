@@ -37,10 +37,10 @@ def HighIndexSurface(
     element: str,
     crystal_structure: str,
     lattice_constant: float | int,
-    terrace_orientation: Optional[list] = [1,1,1],
-    step_orientation: Optional[list] = [1,1,0],
-    kink_orientation: Optional[list] = [1,1,0],
-    step_down_vector: Optional[list] = [1,1,0],
+    terrace_orientation: Optional[list] = [1, 1, 1],
+    step_orientation: Optional[list] = [1, 1, 0],
+    kink_orientation: Optional[list] = [1, 1, 0],
+    step_down_vector: Optional[list] = [1, 1, 0],
     length_step: int = 3,
     length_terrace: int = 3,
     length_kink: int = 1,
@@ -113,16 +113,17 @@ def CubicBulkCell(
     wf.structure = CreateVacancy(structure=wf.cell, index=vacancy_index)
     return wf.structure
 
+
 @as_function_node("structure")
 def Surface(
     element: str,
     surface_type: str,
-    size: str='1 1 1',
-    vacuum: float=1.0,
-    center: bool=False,
-    pbc: bool=True,
-    orthogonal: bool=False,
-    ):
+    size: str = "1 1 1",
+    vacuum: float = 1.0,
+    center: bool = False,
+    pbc: bool = True,
+    orthogonal: bool = False,
+):
     """
     Generate a surface based on the ase.build.surface module.
 
@@ -148,29 +149,30 @@ def Surface(
         ase_to_pyiron,
     )
     from ase.build import (
-    add_adsorbate,
-    add_vacuum,
-    bcc100,
-    bcc110,
-    bcc111,
-    bcc111_root,
-    diamond100,
-    diamond111,
-    fcc100,
-    fcc110,
-    fcc111,
-    fcc111_root,
-    fcc211,
-    hcp0001,
-    hcp0001_root,
-    hcp10m10,
-    mx2,
-    root_surface,
-    root_surface_analysis,
+        add_adsorbate,
+        add_vacuum,
+        bcc100,
+        bcc110,
+        bcc111,
+        bcc111_root,
+        diamond100,
+        diamond111,
+        fcc100,
+        fcc110,
+        fcc111,
+        fcc111_root,
+        fcc211,
+        hcp0001,
+        hcp0001_root,
+        hcp10m10,
+        mx2,
+        root_surface,
+        root_surface_analysis,
     )
     from ase.build import (
-    surface as ase_surf,
+        surface as ase_surf,
     )
+
     # https://gitlab.com/ase/ase/blob/master/ase/lattice/surface.py
     if pbc is None:
         pbc = True
@@ -199,8 +201,8 @@ def Surface(
         if surface_type == surface_class.__name__:
             surface_type = surface_class
             break
-            
-    size = [int(x) for x in size.split(' ')]
+
+    size = [int(x) for x in size.split(" ")]
     if isinstance(surface_type, types.FunctionType):
         if center:
             surface = surface_type(

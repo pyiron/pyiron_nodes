@@ -9,8 +9,8 @@ from pyiron_workflow import (
     as_function_node,
     as_macro_node,
     for_node,
-    standard_nodes as standard,
 )
+from pyiron_workflow.nodes import standard
 
 from pyiron_nodes.atomistic.calculator.ase import Static
 from pyiron_nodes.atomistic.engine.generic import OutputEngine

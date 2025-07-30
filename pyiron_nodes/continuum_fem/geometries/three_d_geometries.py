@@ -3,8 +3,8 @@ from pyiron_workflow import (
     as_function_node,
     as_macro_node,
     for_node,
-    standard_nodes as standard,
 )
+from pyiron_workflow.nodes import standard
 from typing import Optional
 
 from pyiron_nodes.dev_tools import wf_data_class
