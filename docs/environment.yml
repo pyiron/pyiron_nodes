@@ -25,4 +25,4 @@ dependencies:
 - pymatgen =2024.8.9
 - scipy =1.14.1
 - sqlalchemy =2.0.32
-- structuretoolkit =0.0.28
+- structuretoolkit =0.0.34
