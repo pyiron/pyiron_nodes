@@ -1,34 +1,86 @@
 from __future__ import annotations
 
-from pyiron_workflow import as_function_node, as_macro_node
-from typing import Optional
+from typing import Literal, Optional
 from ase.atoms import Atoms
+from core import as_function_node, as_out_dataclass_node  # , as_macro_node
+from core.data_fields import DataArray, EmptyArrayField
+from dataclasses import dataclass
 
-# from pyiron_workflow.workflow import Workflow
+
+# @as_out_dataclass_node
+@dataclass
+class OutputAtoms:
+    symbols: DataArray = EmptyArrayField()
+    positions: DataArray = EmptyArrayField()
+    cell: DataArray = EmptyArrayField()
+    pbc: DataArray = EmptyArrayField()
+
+
+def _data_to_ase(atoms: OutputAtoms.dataclass_type):
+    return Atoms(
+        symbols=atoms.symbols, positions=atoms.positions, cell=atoms.cell, pbc=atoms.pbc
+    )
+
+
+def _ase_to_data(atoms: Atoms):
+    return OutputAtoms(
+        symbols=list(atoms.symbols),
+        positions=atoms.positions,
+        cell=atoms.cell.tolist(),
+        pbc=atoms.pbc.tolist(),
+    )
 
 
 @as_function_node("structure")
 def Bulk(
     name: str,
-    crystalstructure: Optional[str] = None,
-    a: Optional[float | int] = None,
-    c: Optional[float | int] = None,
-    c_over_a: Optional[float] | int = None,
-    u: Optional[float | int] = None,
+    crystalstructure: Optional[
+        Literal["fcc", "bcc", "hcp", "diamond", "rocksalt", "wurtzite"]
+    ] = None,
+    a: Optional[float] = None,
+    c: Optional[float] = None,
+    c_over_a: Optional[float] = None,
+    u: Optional[float] = None,
     orthorhombic: bool = False,
     cubic: bool = False,
-):
-    from pyiron_atomistics import _StructureFactory
+) -> Atoms:
+    """
+    Create a bulk crystal structure.
 
-    return _StructureFactory().bulk(
-        name,
-        crystalstructure,
-        a,
-        c,
-        c_over_a,
-        u,
-        orthorhombic,
-        cubic,
+    **Scientific purpose**
+    Generate a pristine bulk unit cell for a given element and crystal lattice
+    (e.g. fcc Al, bcc Fe, hcp Mg). This is the typical starting point for defect
+    studies, molecular‑dynamics simulations, or high‑throughput materials screening.
+
+    **Required inputs**
+    - ``name``: Chemical symbol of the element (e.g. ``"Al"``).
+    - ``crystalstructure``: One of ``"fcc"``, ``"bcc"``, ``"hcp"``, ``"diamond"``,
+      ``"rocksalt"``; if omitted the default of the underlying factory is used.
+    - ``a``, ``c``, ``c_over_a``, ``u``: Optional lattice parameters or internal
+      coordinates.
+    - ``orthorhombic`` / ``cubic``: Force the cell shape to be orthorhombic or cubic.
+
+    **Typical use‑cases**
+    * Building a bulk material before inserting vacancies, interstitials, or
+      surfaces.
+    * Preparing input structures for relaxation or MD runs.
+    * Generating a library of bulk cells for high‑throughput workflows.
+
+    Returns
+    -------
+    Node returns an Atoms object from ``pyiron_atomistics._StructureFactory().bulk`` compatible
+    with ASE/pyiron.
+    """
+    from ase.build import bulk
+
+    return bulk(
+        name=name,
+        crystalstructure=crystalstructure,
+        a=a,
+        c=c,
+        u=u,
+        orthorhombic=orthorhombic,
+        cubic=cubic,
     )
 
 
@@ -36,43 +88,55 @@ def Bulk(
 def HighIndexSurface(
     element: str,
     crystal_structure: str,
-    lattice_constant: float | int,
-    terrace_orientation: Optional[list] = [1, 1, 1],
-    step_orientation: Optional[list] = [1, 1, 0],
-    kink_orientation: Optional[list] = [1, 1, 0],
-    step_down_vector: Optional[list] = [1, 1, 0],
-    length_step: int = 3,
-    length_terrace: int = 3,
-    length_kink: int = 1,
+    lattice_constant: float,
+    terrace_orientation: Optional[list] = None,
+    step_orientation: Optional[list] = None,
+    kink_orientation: Optional[list] = None,
+    step_down_vector: Optional[list] = None,
+    length_step: int = 0,
+    length_terrace: int = 0,
+    length_kink: int = 0,
     layers: int = 6,
     vacuum: int = 10,
 ) -> Atoms:
     """
-    Gives a slab positioned at the bottom with the high index surface computed by high_index_surface_info().
-    Args:
-        element (str): The parent element eq. "N", "O", "Mg" etc.
-        crystal_structure (str): The crystal structure of the lattice
-        lattice_constant (float): The lattice constant
-        terrace_orientation (list): The miller index of the terrace. default: [1,1,1]
-        step_orientation (list): The miller index of the step. default: [1,1,0]
-        kink_orientation (list): The miller index of the kink. default: [1,1,1]
-        step_down_vector (list): The direction for stepping down from the step to next terrace. default: [1,1,0]
-        length_terrace (int): The length of the terrace along the kink direction in atoms. default: 3
-        length_step (int): The length of the step along the step direction in atoms. default: 3
-        length_kink (int): The length of the kink along the kink direction in atoms. default: 1
-        layers (int): Number of layers of the high_index_surface. default: 60
-        vacuum (float): Thickness of vacuum on the top of the slab. default:10
+    Generate a high‑index surface slab (terrace/step/kink) for surface‑science studies.
 
-    Returns:
-        slab: ase.atoms.Atoms instance Required surface
+    **Scientific purpose**
+    Construct a slab that contains a specific high‑index facet, optionally with
+    steps and kinks, which are crucial for catalytic activity, adsorption, and
+    defect formation analyses.
+
+    **Required inputs**
+    - ``element``: Chemical symbol (e.g. ``"Ni"``).
+    - ``crystal_structure``: Lattice type (e.g. ``"fcc"``, ``"hcp"``).
+    - ``lattice_constant``: Bulk lattice constant in Å.
+    - ``terrace_orientation``, ``step_orientation``, ``kink_orientation``: Miller
+      indices defining the terrace, step, and kink planes (default ``[1,1,1]``,
+      ``[1,1,0]``, ``[1,1,1]`` respectively).
+    - ``step_down_vector``: Direction vector for stepping down from the step to the
+      next terrace.
+    - ``length_step``, ``length_terrace``, ``length_kink``: Number of atoms along
+      each direction (defaults give a minimal slab).
+    - ``layers``: Number of atomic layers in the slab.
+    - ``vacuum``: Vacuum thickness (Å) added on top of the slab.
+
+    **Typical use‑cases**
+    * Preparing catalyst surface models with realistic step/kink features.
+    * Studying adsorption energetics on non‑low‑index facets.
+    * Generating input structures for DFT or classical MD surface calculations.
+
+    Returns
+    -------
+    ``ase.atoms.Atoms`` instance representing the high‑index slab (converted to a
+    pyiron structure before returning).
     """
-    from structuretoolkit.build.surface import get_high_index_surface_info
-    from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-    from pyiron import ase_to_pyiron
-    from ase.build import bulk, surface
-    from structuretoolkit.common.pymatgen import ase_to_pymatgen, pymatgen_to_ase
     import numpy as np
+    from ase.build import bulk, surface
+    from pyiron import ase_to_pyiron
     from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+    from structuretoolkit.build.surface import get_high_index_surface_info
+    from structuretoolkit.common.pymatgen import ase_to_pymatgen, pymatgen_to_ase
 
     basis = bulk(
         name=element, crystalstructure=crystal_structure, a=lattice_constant, cubic=True
@@ -98,56 +162,103 @@ def HighIndexSurface(
     return ase_to_pyiron(slab)
 
 
-@as_macro_node("structure")
-def CubicBulkCell(
-    wf, element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
-):
-    from pyiron_nodes.atomistic.structure.transform import (
-        CreateVacancy,
-        Repeat,
-    )
+# @as_macro_node("structure")
+# def CubicBulkCell(
+#     element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
+# ) -> Atoms:
+#     """
+#     Build a cubic bulk supercell and optionally introduce a single vacancy.
 
-    wf.bulk = Bulk(name=element, cubic=True)
-    wf.cell = Repeat(structure=wf.bulk, repeat_scalar=cell_size)
+#     **Scientific purpose**
+#     Produce a cubic replication of a bulk unit cell (useful for convergence tests,
+#     defect calculations, or large‑scale MD) and optionally create a vacancy at a
+#     user‑specified lattice site.
 
-    wf.structure = CreateVacancy(structure=wf.cell, index=vacancy_index)
-    return wf.structure
+#     **Required inputs**
+#     - ``element``: Chemical symbol of the bulk material (e.g. ``"Si"``).
+#     - ``cell_size``: Integer scaling factor for the cubic repeat (default ``1``).
+#     - ``vacancy_index``: Index of the atom to be removed (``None`` means no vacancy).
+
+#     **Typical use‑cases**
+#     * Generating a supercell for finite‑size scaling of defect formation energies.
+#     * Preparing a large periodic cell for classical MD simulations.
+#     * Creating a simple vacancy model for DFT relaxation studies.
+
+#     Returns
+#     -------
+#     The workflow node that contains the final structure (with or without the vacancy).
+#     """
+#     from pyiron_nodes.atomistic.structure.transform import (
+#         CreateVacancy,
+#         Repeat,
+#     )
+#     from core import Workflow
+
+#     if (
+#         vacancy_index is not None
+#         and type(vacancy_index) is not int
+#         and "va_i_" not in vacancy_index
+#     ):
+#         print("Vacancy Index: ", vacancy_index, type(vacancy_index))
+#         vacancy_index = int(vacancy_index)
+#     wf = Workflow("macro")
+
+#     wf.bulk = Bulk(name=element, cubic=True)
+#     wf.repeat = Repeat(structure=wf.bulk, repeat_scalar=cell_size)
+
+#     wf.vacancy = CreateVacancy(structure=wf.repeat, index=vacancy_index)
+#     return wf.vacancy
 
 
 @as_function_node("structure")
 def Surface(
     element: str,
-    surface_type: str,
+    surface_type: Literal[
+        "fcc111",
+        "fcc110",
+        "fcc100",
+        "bcc110",
+        "bcc100",
+        "hcp0001",
+        "rocksalt111",
+    ] = "fcc111",
     size: str = "1 1 1",
     vacuum: float = 1.0,
     center: bool = False,
     pbc: bool = True,
     orthogonal: bool = False,
-):
+) -> Atoms:
     """
-    Generate a surface based on the ase.build.surface module.
+    Generate a low‑index surface slab using ASE's built‑in surface generators.
 
-    Args:
-        element (str): Element name
-        surface_type (str): The string specifying the surface type generators available through ase (fcc111,
-        hcp0001 etc.)
-        size (tuple): Size of the surface
-        vacuum (float): Length of vacuum layer added to the surface along the z direction
-        center (bool): Tells if the surface layers have to be at the center or at one end along the z-direction
-        orthogonal (bool): Orthogonal option
-        pbc (list/numpy.ndarray): List of booleans specifying the periodic boundary conditions along all three
-                                  directions.
-        **kwargs: Additional, arguments you would normally pass to the structure generator like 'a', 'b', etc.
+    **Scientific purpose**
+    Quickly create common surface terminations (e.g. fcc111, bcc110) for adsorption,
+    catalysis, or surface‑energy calculations.
 
-    Returns:
-        pyiron_atomistics.atomistics.structure.atoms.Atoms instance: Required surface
+    **Required inputs**
+    - ``element``: Chemical symbol (e.g. ``"Cu"``).
+    - ``surface_type``: Name of the ASE surface generator (e.g. ``"fcc111"``,
+      ``"bcc110"``, ``"hcp0001"``, etc.).
+    - ``size``: Replication of the primitive surface cell expressed as three
+      integers separated by spaces (default ``"1 1 1"``).
+    - ``vacuum``: Vacuum thickness (Å) added on the top of the slab.
+    - ``center``: If ``True``, place the slab in the middle of the cell; otherwise
+      the slab sits at the bottom.
+    - ``pbc``: Periodic boundary conditions flag (default ``True``).
+    - ``orthogonal``: Force orthogonal cell vectors when ``True``.
 
+    **Typical use‑cases**
+    * Building a clean surface for DFT adsorption studies.
+    * Generating a slab for classical MD surface simulations.
+    * Creating a reference surface for surface‑energy or work‑function calculations.
+
+    Returns
+    -------
+    ``pyiron_atomistics.atomistics.structure.atoms.Atoms`` instance representing the surface.
     """
     import types
+
     import numpy as np
-    from pyiron_atomistics.atomistics.structure.atoms import (
-        ase_to_pyiron,
-    )
     from ase.build import (
         add_adsorbate,
         add_vacuum,
@@ -213,6 +324,4 @@ def Surface(
             z_max = np.max(surface.positions[:, 2])
             surface.cell[2, 2] = z_max + vacuum
         surface.pbc = pbc
-        return ase_to_pyiron(surface)
-    else:
-        raise ValueError(f"Surface type {surface_type} not recognized.")
+    return surface

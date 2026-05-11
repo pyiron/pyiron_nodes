@@ -1,16 +1,33 @@
-# from __future__ import annotations
-
 from dataclasses import field
 from typing import Optional
 
-from pyiron_nodes.dev_tools import wf_data_class, wfMetaData
-from pyiron_workflow import as_dataclass_node
+from core import as_inp_dataclass_node, as_out_dataclass_node
+from core.data_fields import DataArray, EmptyArrayField
 
 
-@wf_data_class()
-class OutputCalcStatic:
-    from ase import Atoms
+# only conceptual, not truly implemented
+def wfMetaData(log_level=0, doc=""):
+    return {"log_level": log_level, "doc": doc}
+
+
+@as_out_dataclass_node
+class OutputSEFS:
     import numpy as np
+
+    structures: Optional[np.ndarray] = field(
+        default=None, metadata=wfMetaData(log_level=10)
+    )
+    energies: Optional[float] = field(default=None, metadata=wfMetaData(log_level=0))
+    forces: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
+    stresses: Optional[np.ndarray] = field(
+        default=None, metadata=wfMetaData(log_level=10)
+    )
+
+
+@as_out_dataclass_node
+class OutputCalcStatic:
+    import numpy as np
+    from ase import Atoms
 
     energy: Optional[float] = field(default=None, metadata=wfMetaData(log_level=0))
     force: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
@@ -27,12 +44,11 @@ class OutputCalcStatic:
     )
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class OutputCalcStaticList:
-    # from ase import Atoms
     import numpy as np
 
-    energies: Optional[np.ndarray] = field(
+    energies_pot: Optional[np.ndarray] = field(
         default=None, metadata=wfMetaData(log_level=0)
     )
     forces: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
@@ -42,48 +58,49 @@ class OutputCalcStaticList:
     structures: Optional[np.ndarray] = field(
         default=None, metadata=wfMetaData(log_level=10)
     )
+    is_converged: bool = False
+    iter_steps: int = 0
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class OutputCalcMinimize:
-    # energies: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
     initial: Optional[OutputCalcStatic] = field(
-        default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
+        default_factory=lambda: OutputCalcStatic.pure_dataclass(),
+        metadata=wfMetaData(log_level=0),
     )
     final: Optional[OutputCalcStatic] = field(
-        default_factory=lambda: OutputCalcStatic(), metadata=wfMetaData(log_level=0)
+        default_factory=lambda: OutputCalcStatic.pure_dataclass(),
+        metadata=wfMetaData(log_level=0),
     )
     is_converged: bool = False
     iter_steps: int = 0
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class OutputCalcMD:
-    import numpy as np
+    cells: DataArray = EmptyArrayField()
+    energies_tot: DataArray = EmptyArrayField()
+    energies_pot: DataArray = EmptyArrayField()
+    forces: DataArray = EmptyArrayField()
+    indices: DataArray = EmptyArrayField()
+    natoms: DataArray = EmptyArrayField()
+    positions: DataArray = EmptyArrayField()
+    pressures: DataArray = EmptyArrayField()
+    steps: DataArray = EmptyArrayField()
+    temperatures: DataArray = EmptyArrayField()
+    unwrapped_positions: DataArray = EmptyArrayField()
+    velocities: DataArray = EmptyArrayField()
+    volumes: DataArray = EmptyArrayField()
+    species: DataArray = EmptyArrayField()
 
-    energies_pot: Optional[np.ndarray] = field(
-        default=None, metadata=wfMetaData(log_level=0)
-    )
-    energies_kin: Optional[np.ndarray] = field(
-        default=None, metadata=wfMetaData(log_level=0)
-    )
-    forces: Optional[np.ndarray] = field(default=None, metadata=wfMetaData(log_level=0))
-    positions: Optional[np.ndarray] = field(
-        default=None, metadata=wfMetaData(log_level=0)
-    )
-    temperatures: Optional[np.ndarray] = field(
-        default=None, metadata=wfMetaData(log_level=0)
-    )
 
-
-# @wf_data_class()
-@as_dataclass_node
+@as_inp_dataclass_node
 class InputCalcMD:
-    temperature: Optional[int | float] = 300
+    temperature: float = 300
     n_ionic_steps: int = 10_000
     n_print: int = 100
     pressure: Optional[int | float] = None
-    time_step: Optional[int | float] = 1.0
+    time_step: float = 1.0
     temperature_damping_timescale: Optional[int | float] = 100.0
     pressure_damping_timescale: Optional[int | float] = 1000.0
     seed: Optional[int] = None
@@ -94,7 +111,7 @@ class InputCalcMD:
     delta_press: Optional[float] = None
 
 
-@wf_data_class()
+@as_inp_dataclass_node
 class InputCalcMinimize:
     """
         Sets parameters required for minimization.
@@ -123,8 +140,7 @@ class InputCalcMinimize:
     style: str = "cg"
 
 
-@wf_data_class()
+@as_inp_dataclass_node
 class InputCalcStatic:
-    # keys_to_store: Optional[list] = field(default_factory=list)
     pass  # LammpsControl.calc_static takes exactly zero arguments, and currently we
     # have the input objects matching their respective LammpsControl counterparts

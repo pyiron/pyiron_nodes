@@ -1,34 +1,28 @@
-# from __future__ import annotations
-from typing import Optional
-
 from dataclasses import field
+from typing import Optional
 
 import atomistics.workflows.elastic.symmetry as sym
 import numpy as np
-from pyiron_workflow import (
+
+from core import (
+    Node,
     as_function_node,
+    as_inp_dataclass_node,
     as_macro_node,
-    for_node,
+    as_out_dataclass_node,
 )
-from pyiron_workflow.nodes import standard
-
-from pyiron_nodes.atomistic.calculator.ase import Static
-from pyiron_nodes.atomistic.engine.generic import OutputEngine
-from pyiron_nodes.dev_tools import wf_data_class
-from pyiron_workflow import as_dataclass_node
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class OutputElasticSymmetryAnalysis:
+    Lag_strain_list: list = field(default_factory=lambda: [])
+    epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
     SGN: int = 0
     v0: float = 0.0
     LC: int = 1
-    Lag_strain_list: list = field(default_factory=lambda: [])
-    epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
-@as_dataclass_node
-# @wf_data_class()
+@as_inp_dataclass_node
 class InputElasticTensor:
     num_of_point: int = 5
     eps_range: float = 0.005
@@ -36,7 +30,7 @@ class InputElasticTensor:
     fit_order: int = 2
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class DataStructureContainer:
     structure: list = field(default_factory=lambda: [])
     job_name: list = field(default_factory=lambda: [])
@@ -45,9 +39,13 @@ class DataStructureContainer:
     stress: list = field(default_factory=lambda: [])
 
 
-@wf_data_class()
+@as_out_dataclass_node
 class OutputElasticAnalysis:
-    from pyiron_nodes.development.hash_based_storage import str_to_dict
+    strain_energy: list = field(default_factory=lambda: [])
+    C: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    A2: list = field(default_factory=lambda: [])
+    C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
     BV: int | float = 0
     GV: int | float = 0
@@ -64,65 +62,35 @@ class OutputElasticAnalysis:
     nuH: int | float = 0
     AVR: int | float = 0
     energy_0: float = 0
-    strain_energy: list = field(default_factory=lambda: [])
-    C: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    A2: list = field(default_factory=lambda: [])
-    C_eigval: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    C_eigvec: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    _serialize: callable = str_to_dict  # provide optional function for serialization
+
     _skip_default_values = False
 
 
-@as_macro_node
-def ElasticConstants(
-    self,
-    structure,
-    engine: Optional[OutputEngine] = None,
-    # But OutputEngine had better be holding a ase.calculators.calculator.BaseCalculator
-    # There is too much misdirection for me to track everything right now, but I think
-    # some of the "generic" stuff doesn't work
-    parameters: Optional[InputElasticTensor.dataclass] = InputElasticTensor.dataclass(),
-    # contains the default values
-) -> OutputElasticAnalysis:
-    self.symmetry_analysis = SymmetryAnalysis(structure, parameters=parameters)
+@as_function_node  # ("structure_container")
+def AddEnergies(
+    structure_container: DataStructureContainer,
+    engine: Node,
+) -> DataStructureContainer:
+    for structure in structure_container.structure:
+        engine.inputs.structure = structure
+        out = engine.run()
+        structure_container.energy.append(out.energies_pot[-1])
 
-    self.structure_table = GenerateStructures(
-        structure, self.symmetry_analysis, parameters=parameters
-    )
-    self.gs = for_node(
-        body_node_class=Static,
-        iter_on=("structure",),
-        engine=engine,
-        structure=self.structure_table.structure,
-    )
-    self.gs_energy = ExtractFinalEnergy(self.gs)
-
-    self.liam_doesnt_like_this = standard.SetAttr(
-        self.structure_table, "energy", self.gs_energy
-    )  # This is not functional and idempotent!
-    # With phonopy we had little choice, but here we can change our own architecture
-
-    self.elastic = AnalyseStructures(
-        data_df=self.liam_doesnt_like_this,  # Merely a mutated copy of structure_table
-        analysis=self.symmetry_analysis,
-        parameters=parameters,
-    )
-
-    return self.elastic
+    return structure_container
 
 
 @as_function_node("forces")
 def ExtractFinalEnergy(df):
     # Looks an awful lot like phonons.ExtractFinalForce -- room for abstraction here
-    return [getattr(e, "energy")[-1] for e in df["out"].tolist()]
+    return [e.energy[-1] for e in df["out"].tolist()]
 
 
 @as_function_node
 def SymmetryAnalysis(
-    structure, parameters: Optional[InputElasticTensor.dataclass]
+    structure, parameters: Optional[InputElasticTensor] = None
 ) -> OutputElasticSymmetryAnalysis:
-    parameters = InputElasticTensor.dataclass() if parameters is None else parameters
-    out = OutputElasticSymmetryAnalysis(structure)
+    parameters = InputElasticTensor() if parameters is None else parameters
+    out = OutputElasticSymmetryAnalysis.pure_dataclass()  # structure)
 
     out.SGN = sym.find_symmetry_group_number(structure)
     out.v0 = structure.get_volume()
@@ -139,13 +107,15 @@ def SymmetryAnalysis(
 def GenerateStructures(
     structure,
     analysis: OutputElasticSymmetryAnalysis,
-    parameters: Optional[InputElasticTensor.dataclass] = None,
+    parameters: Optional[InputElasticTensor] = None,
 ):
     structure_dict = {}
+    structures = []
 
     zero_strain_job_name = "s_e_0"
     if 0.0 in analysis.epss:
         structure_dict[zero_strain_job_name] = structure.copy()
+        structures.append(structure.copy())
 
     for lag_strain in analysis.Lag_strain_list:
         Ls_list = sym.Ls_Dic[lag_strain]
@@ -192,26 +162,111 @@ def GenerateStructures(
 
             jobname = subjob_name(lag_strain, eps)
 
+            structures.append(struct.copy())
             structure_dict[jobname] = struct
+    job_names = list(structure_dict.keys())
+    return structures, job_names
 
-    return DataStructureContainer(
-        structure=list(structure_dict.values()), job_name=list(structure_dict.keys())
+
+@as_macro_node("elastic_constants")
+def ComputeElasticConstantsMacro(
+    structure,
+    engine,
+    calculator: Node,
+    input_elastic_tensor=None,
+):
+    """
+    Get the elastic constants of a structure using an ASE calculator.
+    """
+    input_elastic_tensor = (
+        InputElasticTensor() if input_elastic_tensor is None else input_elastic_tensor
     )
+    from pyiron_nodes.controls import Print, iterate
+    from core import Workflow
+
+    wf = Workflow("elastic_constants")
+
+    wf.calculator = calculator
+
+    wf.print = Print(f"calculator: {calculator}")
+    wf.symmetry = SymmetryAnalysis(structure=structure, parameters=input_elastic_tensor)
+    wf.structures = GenerateStructures(
+        structure=structure, analysis=wf.symmetry, parameters=input_elastic_tensor
+    )
+    wf.energies = iterate(
+        node=wf.calculator,
+        values=wf.structures.outputs.structures,
+        input_label="structure",
+    )
+
+    wf.elastic_constants = AnalyseStructures(
+        energies=wf.energies,
+        job_names=wf.structures.outputs.job_names,
+        analysis=wf.symmetry,
+        parameters=input_elastic_tensor,
+    )
+    return wf.elastic_constants
+
+
+@as_function_node
+def ComputeElasticConstants(
+    structure,
+    engine,
+    calculator: str = "StaticEnergy",
+    input_elastic_tensor: InputElasticTensor = None,
+):
+    from pyiron_nodes.atomistic.calculator.ase import StaticEnergy
+    from pyiron_nodes.atomistic.property.phonons import GetFreeEnergy
+    from pyiron_nodes.controls import iterate
+    from core import Workflow
+
+    wf = Workflow("elastic_constants")
+    if input_elastic_tensor is None:
+        input_elastic_tensor = InputElasticTensor().run()
+
+    if calculator == "StaticEnergy":
+        wf.calculator = StaticEnergy(structure=structure, engine=engine)
+    elif calculator == "GetFreeEnergy":
+        wf.calculator = GetFreeEnergy(structure=structure, engine=engine)
+    else:
+        test1, test2 = (calculator == "StaticEnergy"), (calculator == "GetFreeEnergy")
+        raise ValueError(f"Unknown calculator: '{calculator}' {test1} {test2}")
+
+    wf.symmetry = SymmetryAnalysis(structure=structure, parameters=input_elastic_tensor)
+    wf.structures = GenerateStructures(
+        structure=structure, analysis=wf.symmetry, parameters=input_elastic_tensor
+    )
+    wf.energies = iterate(
+        node=wf.calculator,
+        values=wf.structures.outputs.structures,
+        input_label="structure",
+    )
+
+    wf.elastic_constants = AnalyseStructures(
+        energies=wf.energies,
+        job_names=wf.structures.outputs.job_names,
+        analysis=wf.symmetry,
+        parameters=input_elastic_tensor,
+    )
+
+    elastic_constants = wf.elastic_constants.pull()
+    return elastic_constants
 
 
 @as_function_node("structures")
 def AnalyseStructures(
-    data_df: DataStructureContainer,
+    energies,
+    job_names,
     analysis: OutputElasticSymmetryAnalysis,
-    parameters: Optional[InputElasticTensor.dataclass] = None,
+    parameters: Optional[InputElasticTensor] = None,
 ) -> OutputElasticAnalysis:
     zero_strain_job_name = "s_e_0"
 
     epss = analysis.epss
     Lag_strain_list = analysis.Lag_strain_list
 
-    out = OutputElasticAnalysis()
-    energy_dict = {k: v for k, v in zip(data_df.job_name, data_df.energy)}
+    out = OutputElasticAnalysis.pure_dataclass()
+    energy_dict = dict(zip(job_names, energies, strict=True))
 
     if 0.0 in epss:
         out.energy_0 = energy_dict[zero_strain_job_name]

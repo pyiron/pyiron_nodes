@@ -1,67 +1,140 @@
 from ase import Atoms
-from pyiron_workflow import as_function_node
+
+from pyiron_nodes.atomistic.engine.generic import OutputEngine
+from pyiron_nodes.atomistic.structure._atoms import _resolve_atoms
+from core import as_function_node
 
 
 @as_function_node
 def Static(
-    structure: Atoms,
+    structure,
     engine=None,
 ):
+    """
+    Run a single-point static calculation.
+
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        The atomic structure to calculate.
+    engine : OutputEngine or None, optional
+        Calculator engine.  Defaults to EMT when ``None``.
+
+    Returns
+    -------
+    OutputCalcStaticList dataclass instance
+    """
     import numpy as np
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcStaticList
+
+    atoms = _resolve_atoms(structure)
 
     if engine is None:
         from ase.calculators.emt import EMT
-        from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
         engine = OutputEngine(calculator=EMT())
 
-    structure.calc = engine.calculator
+    atoms.calc = engine.calculator
 
-    out = OutputCalcStatic()
-    out.energy = np.array(
-        [float(structure.get_potential_energy())]
-    )  # TODO: originally of type np.float32 -> why??
-    out.force = np.array([structure.get_forces()])
+    out = OutputCalcStaticList.pure_dataclass()
+    out.energies_pot = np.array([float(atoms.get_potential_energy())])
+    out.forces = np.array([atoms.get_forces()])
 
     return out
 
 
-@as_function_node("out")
-def Minimize(structure=None, engine=None, fmax=0.005, log_file="tmp.log"):
-    from ase.optimize import BFGS
-    from ase.io.trajectory import Trajectory
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize
+@as_function_node
+def StaticEnergy(
+    structure,
+    engine: OutputEngine,
+):
+    """
+    Compute the potential energy of *structure*.
 
-    # import numpy as np
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        The atomic structure to calculate.
+    engine : OutputEngine
+        Calculator engine.
+
+    Returns
+    -------
+    float
+        Potential energy in eV.
+    """
+    atoms = _resolve_atoms(structure)
+    atoms.calc = engine.calculator
+    energy = atoms.get_potential_energy()
+
+    return energy
+
+
+@as_function_node("out")
+def Minimize(
+    structure=None,
+    engine=None,
+    fmax: float = 0.005,
+    log_file: str = "tmp.log",
+):
+    """
+    Minimise *structure* using the BFGS algorithm.
+
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms or None, optional
+        The atomic structure to relax.
+    engine : OutputEngine or None, optional
+        Calculator engine.  Defaults to EMT when ``None``.
+    fmax : float, optional
+        Maximum force convergence criterion (eV/Å).  Default ``0.005``.
+    log_file : str or None, optional
+        Path to the BFGS log file.  Pass ``None`` to write to stdout.
+        Default ``"tmp.log"``.
+
+    Returns
+    -------
+    OutputCalcStaticList dataclass instance
+    """
+    from ase.io.trajectory import Trajectory
+    from ase.optimize import BFGS
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcStaticList
+
+    atoms = _resolve_atoms(structure)
 
     if engine is None:
         from ase.calculators.emt import EMT
-        from pyiron_nodes.atomistic.engine.generic import OutputEngine
 
         engine = OutputEngine(calculator=EMT())
 
-    out = OutputCalcMinimize()
+    out = OutputCalcStaticList.pure_dataclass()
+    out.energies_pot = []
+    out.forces = []
+    out.structures = []
 
-    initial_structure = structure.copy()
-    initial_structure.calc = engine.calculator
-    out.initial.energy = float(initial_structure.get_potential_energy())
-    out.initial.forces = initial_structure.get_forces()
+    # Initial structure
+    out.structures.append(atoms)
+    initial = atoms.copy()
+    initial.calc = engine.calculator
+    out.energies_pot.append(float(initial.get_potential_energy()))
+    out.forces.append(initial.get_forces())
 
-    if log_file is None:  # write to standard io
+    if log_file is None:
         log_file = "-"
 
-    dyn = BFGS(initial_structure, logfile=log_file, trajectory="minimize.traj")
-    out_dyn = dyn.run(fmax=fmax)
+    dyn = BFGS(initial, logfile=log_file, trajectory="minimize.traj")
+    dyn.run(fmax=fmax)
 
     traj = Trajectory("minimize.traj")
     atoms_relaxed = traj[-1]
     atoms_relaxed.calc = engine.calculator
 
-    out.final.forces = atoms_relaxed.get_forces()
-    out.final.energy = float(atoms_relaxed.get_potential_energy())
-    atoms_relaxed.calc = None  # ase calculator is not pickable!!
-    out.final.structure = atoms_relaxed
+    out.forces.append(atoms_relaxed.get_forces())
+    out.energies_pot.append(float(atoms_relaxed.get_potential_energy()))
+
+    # ASE calculators are not picklable — detach before storing
+    atoms_relaxed.calc = None
+    out.structures.append(atoms_relaxed)
 
     out.is_converged = dyn.converged()
     out.iter_steps = dyn.nsteps

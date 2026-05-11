@@ -1,10 +1,8 @@
-from ._version import get_versions
+"""Top-level package for the pyiron_nodes workspace.
 
-__version__ = get_versions()["version"]
+This file makes the ``pyiron_nodes`` directory a proper Python package so that
+modules such as ``pyiron_nodes.electrochemistry.tb.ham`` can be imported from
+outside the repository (e.g., in user code or tests).
+"""
 
-from pyiron_nodes import (
-    atomistic,
-    databases,
-    math,
-    plotting,
-)  # , continuum_fem, large_scale_atomistic
+__all__ = []
