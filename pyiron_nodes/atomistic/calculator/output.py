@@ -1,20 +1,18 @@
-from __future__ import annotations
-
-from typing import Optional
-
-from pyiron_workflow import as_function_node
-
-from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize, OutputCalcStatic
+from pyiron_nodes.atomistic.calculator.data import (
+    OutputCalcMinimize,
+    OutputCalcStaticList,
+)
+from core import as_function_node
 
 
 @as_function_node("energy_last")
 def GetEnergyLast(
-    calculator: Optional[OutputCalcMinimize | OutputCalcStatic] = None,
+    calculator=None,
+    store: bool = False,
+    _db=None,
 ) -> float:
-    if isinstance(calculator, OutputCalcMinimize):
+    if isinstance(calculator, OutputCalcMinimize.pure_dataclass):
         energy_last = calculator.final.energy
-    elif isinstance(calculator, OutputCalcStatic):
-        energy_last = calculator.energy
+    elif isinstance(calculator, OutputCalcStaticList.pure_dataclass):
+        energy_last = calculator.energies_pot[-1]
     return energy_last
-    # print ('energy_last:', calculator.energy[-1], type(calculator.energy[-1]))
-    # return calculator.energy[-1]

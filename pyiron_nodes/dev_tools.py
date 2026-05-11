@@ -2,7 +2,11 @@
 # provide functionality, data types etc. that will be later moved to the workflow code
 from __future__ import annotations
 
-from pathlib import Path
+import pathlib
+from dataclasses import dataclass
+from typing import Optional
+
+from pyiron_base.storage.hdfio import ProjectHDFio
 
 
 class VarType:
@@ -26,9 +30,9 @@ class VarType:
 class FileObject:
     def __init__(self, path=".", directory=None):
         if directory is None:
-            self._path = Path(path)
+            self._path = pathlib.Path(path)
         else:
-            self._path = Path(directory) / Path(path)
+            self._path = pathlib.Path(directory) / pathlib.Path(path)
 
     def __repr__(self):
         return f"FileObject: {self._path} {self.is_file}"
@@ -48,7 +52,7 @@ class FileObject:
 
 
 class Replacer:
-    from pyiron_workflow.node import Node
+    from core import Node
 
     def __init__(self, node: Node):
         self.node = node
@@ -59,14 +63,16 @@ class Replacer:
         # This is just the current replacement code:
         if self.node.parent is not None:
             self.node.replace_with(other)
-            # print ('replacer called', self.node.label, other, kwargs) #, other.info, dir(other))
             self.node = self.parent[self.node_label]
             return self.node.set_input_values(**kwargs)
 
         else:
             import warnings
 
-            warnings.warn(f"Could not replace {self.node.label}, as it has no parent.")
+            warnings.warn(
+                f"Could not replace {self.node.label}, as it has no parent.",
+                stacklevel=2,
+            )
 
 
 def set_replacer(node, node_dict):
@@ -78,22 +84,18 @@ def set_replacer(node, node_dict):
     return replacer
 
 
-def register_libraries(libraries, library_path="pyiron_workflow.pyiron_nodes"):
-    import importlib
-    from pyiron_workflow.workflow import Workflow
-
-    wf = Workflow("lib")
-    for nodes in libraries:
-        module = importlib.import_module(f"{library_path}.{nodes}")
-        wf.create.register(nodes, *module.nodes)
+def register_libraries(
+    libraries, library_path="pyiron_core.pyiron_workflow.pyiron_nodes"
+):
+    raise NotImplementedError(
+        "pyiron_core.pyiron_workflow.workflow.Workflow did not exist at time of refactoring"
+    )
 
 
 # storage tools (hdf5 etc.)
 # these tools are meant only for a proof of concept, some parts may be already present in
 # the existing code, others should be moved there
 def extract_value(value):
-    # if hasattr(value, "_convert_to_dict"):
-    #     return value._convert_to_dict()
     if hasattr(value, "value"):
         val = value.value
         if hasattr(val, "_convert_to_dict"):
@@ -115,7 +117,6 @@ def nested_dict_from_keys(dictionary):
                 raise ValueError(
                     f"Argument name {k} is used internally. Rename function argument!"
                 )
-        # print ('keys: ', keys, keys[:-1], len(keys), current_dict, current_dict is None)
 
         if current_dict is not None:
             current_dict[keys[-1]] = extract_value(value)
@@ -157,10 +158,6 @@ class MiniProject:
         return new
 
 
-from pyiron_base.storage.hdfio import ProjectHDFio
-import pathlib
-
-
 class DataStore:
     def __init__(self, path="."):
         self._path = path
@@ -176,7 +173,6 @@ class DataStore:
         if path is None:
             path = self._path
         p = pathlib.Path(path, f"{node_label}.h5")
-        # print (p, p.is_file())
         if p.is_file():
             p.unlink()
             print(f"node {node_label} has been removed from store")
@@ -199,9 +195,6 @@ class DataStore:
         return new_node
 
 
-from dataclasses import dataclass
-
-
 def filter_internals(input_list):
     return [
         string
@@ -211,9 +204,8 @@ def filter_internals(input_list):
 
 
 def wf_data_class(*args, doc_func=None, **kwargs):
-    # def wf_data_class(*args, doc_func=None, keys_to_store=None, **kwargs):
     """
-    Extension of the python default dataclass to include methods and functionality needed for pyiron_workflows
+    Extension of the python default dataclass to include methods and functionality needed for pyiron_core.pyiron_workflows
 
     :param args: pass to dataclass decorator
     :param doc_func: function from which to copy docstring
@@ -248,22 +240,15 @@ def wf_data_class(*args, doc_func=None, **kwargs):
                 keys_to_store = self.keys()  # cls._keys_to_store
             return {k: self[k] for k in keys_to_store}
 
-        setattr(cls, "keys", keys)
-        setattr(cls, "items", items)
-        setattr(cls, "__getitem__", __getitem__)
-        setattr(cls, "__setitem__", __setitem__)
-        setattr(cls, "select", select)
-
-        # if keys_to_store is None:
-        #     cls._keys_to_store = filter_internals(keys(cls))
-        #     # TODO: remove added new functions
+        cls.keys = keys
+        cls.items = items
+        cls.__getitem__ = __getitem__
+        cls.__setitem__ = __setitem__
+        cls.select = select
 
         return cls
 
     return wrapper
-
-
-from typing import Optional
 
 
 @wf_data_class()

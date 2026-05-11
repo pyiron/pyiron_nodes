@@ -1,83 +1,47 @@
 [build-system]
 requires = [
-	"ase",
-	"atomistics",
-	"matgl",
-	"matplotlib",
-	"nglview",
-	"numpy",
-	"pandas",
-	"phonopy",
-	"pyiron_atomistics",
-	"pyiron_base",
-	"pyiron_contrib",
-	"pyiron_workflow",
-	"pymatgen",
-	"scipy",
-	"sqlalchemy",
-	"structuretoolkit",
-    "setuptools",
-    "versioneer[toml]==0.29",
+    "hatchling==1.28.0",
 ]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
 
 [project]
 name = "pyiron_nodes"
-description = "pyiron_nodes - Nodes for `pyiron_workflows` with a focus on atomistic workflows."
-readme = "docs/README.md"
-keywords = [ "pyiron",]
-requires-python = ">=3.11, <3.13"
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: BSD License",
-    "Intended Audience :: Science/Research",
-    "Operating System :: Unix",  # Because of Lammps dependency -- can change in the future
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
-dependencies = [
-    "ase==3.23.0",
-	"atomistics==0.1.32",
-	"lammps==2024.06.27",
-	"matgl==1.1.3",
-	"matplotlib==3.9.2",
-	"nglview==3.1.2",
-	"numpy==1.26.4",
-	"pandas==2.2.2",
-	"phonopy==2.26.6",
-	"pyiron_atomistics==0.6.11",
-	"pyiron_base==0.9.12",
-	"pyiron_contrib==0.1.18",
-  	"pyiron_workflow==0.10.2",
-	"pymatgen==2024.8.9",
-	"scipy==1.14.1",
-	"sqlalchemy==2.0.32",
-	"structuretoolkit==0.0.28",
-]
-dynamic = [ "version",]
+description = "pyiron nodes"
 authors = [
-    { name = "Joerg Neugebauer"},
-    { name = "Liam Huber", email = "liamhuber@greyhavensolutions.com" },
+    { name = "Jörg Neugebauer", email = "neugebauer@mpi-susmat.de" },
+]
+copyright = "© 2025 Jörg Neugebauer"
+requires-python = ">3.9"
+dependencies = [
+    "numpy",
+    "ase",
+    "matgl",
+    "pandas",
+    "matplotlib",
+    "structuretoolkit",
+    "tqdm",
+    "tensorpotential",
+    "pyiron_atomistics",
+    "pyiron_snippets",
+    "pymatgen",
+    "pyiron_lammps",
+    "calphy",
+    "atomistics",
+    "scipy",
+]
+version = "0.0.1"
+
+[tool.hatch.build]
+include = [
+    "pyiron_nodes"
 ]
 
-[project.license]
-file = "LICENSE"
+[tool.hatch.build.targets.sdist]
+include = [
+    "pyiron_nodes"
+]
 
-[project.urls]
-Homepage = "https://pyiron.org/"
-Documentation = "https://pyiron_nodes.readthedocs.io"
-Repository = "https://github.com/pyiron/pyiron_nodes"
-
-[tool.versioneer]
-VCS = "git"
-style = "pep440-pre"
-versionfile_source = "pyiron_nodes/_version.py"
-parentdir_prefix = "pyiron_nodes"
-tag_prefix = "pyiron_nodes-"
-
-[tool.setuptools.packages.find]
-include = [ "pyiron_nodes*",]
-
-[tool.setuptools.dynamic.version]
-attr = "pyiron_nodes.__version__"
+[tool.hatch.build.targets.wheel]
+packages = [
+    "pyiron_nodes"
+]
