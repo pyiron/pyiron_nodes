@@ -96,15 +96,15 @@ class OutputCalcMD:
 
 @as_inp_dataclass_node
 class InputCalcMD:
-    temperature: float = 300
+    temperature: float = 300 # in K, we need more than one temperature field to support rescaling, but this is the default/initial temperature
     n_ionic_steps: int = 10_000
     n_print: int = 100
-    pressure: Optional[int | float] = None
+    pressure: Optional[float] = None
     time_step: float = 1.0
     temperature_damping_timescale: Optional[int | float] = 100.0
     pressure_damping_timescale: Optional[int | float] = 1000.0
-    seed: Optional[int] = None
-    tloop: Optional[float] = None
+    seed: int = 42
+    tloop: Optional[int] = None # number of steps to loop over for temperature rescaling, if applicable, should be int???
     initial_temperature: Optional[float] = None
     langevin: bool = False
     delta_temp: Optional[float] = None
