@@ -111,8 +111,8 @@ class InputCalcMD:
     )
     initial_temperature: Optional[float] = None  # FIXME
     langevin: bool = False
-    delta_temp: Optional[float] = None
-    delta_press: Optional[float] = None
+    delta_temp: Optional[int | float] = None
+    delta_press: Optional[int | float] = None
 
 
 @as_inp_dataclass_node
