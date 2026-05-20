@@ -105,10 +105,10 @@ class InputCalcMD:
     pressure_damping_timescale: Optional[int | float] = 1000.0
     seed: int = 42
     tloop: Optional[int] = None # number of steps to loop over for temperature rescaling, if applicable, should be int???
-    initial_temperature: Optional[float] = None
+    initial_temperature: Optional[float] = None # FIXME
     langevin: bool = False
-    delta_temp: Optional[float] = None
-    delta_press: Optional[float] = None
+    delta_temp: Optional[int | float] = None
+    delta_press: Optional[int | float] = None
 
 
 @as_inp_dataclass_node
