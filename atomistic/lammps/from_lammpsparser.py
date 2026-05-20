@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import asdict
@@ -118,7 +119,6 @@ def CreateLammpsMDInput(
     #         raise TypeError(
     #             "calc_dataclass must be an instance of InputCalcMD"
     #         )
-
     calc_kwargs = asdict(calc_dataclass)
 
     # if lmp_command is None:
@@ -132,8 +132,9 @@ def CreateLammpsMDInput(
         potential=input_resources.potential, resource_path=input_resources.resource_path
     )
 
-    read_restart_file = read_restart_filename is not None
-    write_restart_file = write_restart_filename is not None
+    # FIXME - temporary fix, should ideally use `read_restart_filename is not None`
+    read_restart_file = bool(read_restart_filename)
+    write_restart_file = bool(write_restart_filename)
 
     lmp_str_lst = []
     atom_type = "atomic"
@@ -173,6 +174,7 @@ def CreateLammpsMDInput(
         n_ionic_steps = 1
     if read_restart_file:
         calc_kwargs["initial_temperature"] = 0.0
+
     calc_kwargs["units"] = input_resources.units
     lmp_str_lst += calc_md(**calc_kwargs)
 
