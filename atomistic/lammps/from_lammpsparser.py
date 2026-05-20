@@ -233,13 +233,26 @@ def RunLammpsCalculation(
                 os.getenv("ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {cores} --oversubscribe lmp_mpi")
                 + f" -in {input_resources.lammps_input_filename}"
             )
-        output = subprocess.check_output(
+        result = subprocess.run(
                 lmp_command,
                 cwd=input_resources.working_directory,
                 shell=True,
                 universal_newlines=True,
                 env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
+        if result.returncode != 0:
+            error_path = os.path.join(input_resources.working_directory, "error.msg")
+            with open(error_path, "w") as f:
+                f.write(result.stdout)
+                if result.stderr:
+                    f.write(result.stderr)
+            raise RuntimeError(
+                f"LAMMPS exited with code {result.returncode}. "
+                f"{result.stdout}"
+            )
+        output = result.stdout
     else:
         output = input_resources.working_directory
     
