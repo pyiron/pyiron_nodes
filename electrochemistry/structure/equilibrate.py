@@ -157,7 +157,23 @@ def WaterPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+            "O": {
+                "O-H": {
+                    "max_bond_num" : 2,
+                    "neighbor_type": "H",
+                    "cutoff"       : 1.2,
+                },
+                "H-O-H": {
+                    "max_angle_num": 1,
+                    "neighbor_type": "H",
+                    "cutoff"       : 1.2,
+                },
+            }
+        }
+
+    return water_potential, bond_dict
+
 
 
 @as_function_node
@@ -296,7 +312,22 @@ def IonPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+        "O": {
+            "O-H": {
+                "max_bond_num" : 2,
+                "neighbor_type": "H",
+                "cutoff"       : 1.2,
+            },
+            "H-O-H": {
+                "max_angle_num": 1,
+                "neighbor_type": "H",
+                "cutoff"       : 1.2,
+            },
+        }
+    }
+
+    return water_potential, bond_dict
 
 
 @as_function_node("Ion_density")
