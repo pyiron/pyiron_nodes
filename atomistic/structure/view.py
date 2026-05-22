@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Literal, Optional
 
+import nglview
 import numpy as np
 from ase import Atoms as _Atoms
 
@@ -65,6 +66,39 @@ def Plot3d(
         distance_from_camera=distance_from_camera,
     )
 
+@as_function_node("view")
+def AnimateAse(
+            ase_trajectory: list,
+            gui: bool = False,
+            spacefill: bool = True,
+            show_cell: bool = True,
+            particle_size: float = 0.5,
+            camera: str = "orthographic"
+):
+        """
+        Animate a list of ASE Atoms frames using nglview.
+
+        Parameters
+        ----------
+        ase_trajectory : list of ase.Atoms
+        Frames to animate, as returned by ParseLammpsOutput.
+        gui : bool, default=False
+        Whether to show the nglview GUI controls panel.
+        """
+        import nglview
+
+        animation = nglview.show_asetraj(ase_trajectory, gui=gui)
+        if spacefill:
+            animation.add_spacefill(radius_type="vdw", scale=0.5, radius=particle_size)
+            animation.remove_ball_and_stick()
+        else:
+            animation.add_ball_and_stick()
+        if show_cell:
+            animation.add_unitcell()
+        animation.camera = camera
+        return animation
+
+        #return nglview.show_asetraj(ase_trajectory, gui=gui)
 
 @as_function_node("animate")
 def Animate(

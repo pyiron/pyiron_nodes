@@ -181,12 +181,6 @@ def CreateLammpsMDInput(
         'dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"',
     ]
 
-    lmp_str_lst += [
-        k + " " + v
-        for k, v in set_selective_dynamics(
-            structure=input_resources.structure, calc_md=True
-        ).items()
-    ]
     if "n_ionic_steps" in calc_kwargs.keys():
         n_ionic_steps = int(calc_kwargs.pop("n_ionic_steps"))
     else:
@@ -196,6 +190,13 @@ def CreateLammpsMDInput(
 
     calc_kwargs["units"] = input_resources.units
     lmp_str_lst += calc_md(**calc_kwargs)
+
+    lmp_str_lst += [
+        k + " " + v
+        for k, v in set_selective_dynamics(
+            structure=input_resources.structure, calc_md=True
+        ).items()
+    ]
 
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
@@ -303,7 +304,26 @@ def ParseLammpsOutput(
     out.volumes=output["generic"].get('volume')
     out.species=output["generic"].get('species')
     
-    return out
+    ase_trajectory = None
+
+    if out.positions is not None:
+        ase_trajectory = []
+
+        # Get symbols once from initial structure
+        all_symbols = input_resources.structure.get_chemical_symbols()
+
+        for frame_idx in range(len(out.positions)):
+            
+            cell = out.cells[frame_idx] if out.cells is not None else None
+            frame = Atoms(
+                symbols=all_symbols,
+                positions=out.positions[frame_idx],
+                cell=cell,
+                pbc=cell is not None,
+            )
+            ase_trajectory.append(frame)
+
+    return out, ase_trajectory
 
 
 # temporary here, should be included in LammpsStructure?
