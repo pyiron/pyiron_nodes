@@ -30,6 +30,8 @@ class LammpsInputResources:
     lammps_input_filename: str = 'lmp.in'
     lammps_structure_string: str = ''
     lammps_structure_filename: str = 'lammps.data'
+    lammps_potential_string: str = ''
+    lammps_potential_filename: str = 'potential.inp'
     read_restart_filename: Optional[str] = None
     write_restart_filename: Optional[str] = None
     units: str = 'metal'
@@ -167,11 +169,8 @@ def CreateLammpsMDInput(
 
     # Handle potential: write to file if DataFrame, else inline
     if isinstance(input_resources.potential, pd.DataFrame):
-        potential_filename = "potential.inp"
-        potential_filepath = os.path.join(input_resources.working_directory, potential_filename)
-        with open(potential_filepath, "w") as f:
-            f.writelines(potential_lst)
-        lmp_str_lst += [f"include {potential_filename}\n"]
+        lmp_str_lst += [f"include {input_resources.lammps_potential_filename}\n"]
+        input_resources.lammps_potential_string = "".join(potential_lst)
     else:
         lmp_str_lst += potential_lst
 
@@ -230,6 +229,10 @@ def RunLammpsCalculation(
 
     with open(os.path.join(input_resources.working_directory, input_resources.lammps_structure_filename), "w") as f:
         f.write(input_resources.lammps_structure_string)
+
+    if isinstance(input_resources.potential, pd.DataFrame):
+        with open(os.path.join(input_resources.working_directory, input_resources.lammps_potential_filename), "w") as f:
+            f.write(input_resources.lammps_potential_string)
 
     #Running
     if not debug:

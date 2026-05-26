@@ -133,6 +133,172 @@ def RotateAxisAngle(
 
 
 @as_function_node
+def FixAtoms(
+    structure: Atoms,
+    fix_xyz: str = "1 1 1",
+    fixed_species: Optional[str] = None,
+    fix_z_coordinate: Optional[float] = None,
+    fix_z_tolerance: Optional[float] = 0.5,
+    fix_atom_indices: Optional[str] = None,
+) -> Atoms:
+    """
+    Return a copy of *structure* with constraints applied to the requested
+    atoms (by species, z-coordinate, or atom indices) and degrees of freedom.
+
+    Parameters
+    ----------
+    structure : ase.Atoms
+        Atomic configuration to be copied and (optionally) constrained.
+
+    fixed_species : None or str, optional
+        * ``None``        – no atoms are fixed by species.
+        * ``"Cu"``        – all copper atoms are fixed.
+        * ``'["O", "H"]'``– all oxygen and hydrogen atoms are fixed.
+
+    fix_xyz : str, optional
+        Which Cartesian degrees of freedom to fix, given as three
+        space-separated 1/0 flags for x, y, z respectively.
+        Default is ``"1 1 1"`` (fix all directions).
+
+        Examples
+        --------
+        * ``"1 1 1"`` – fix x, y, and z  (default)
+        * ``"1 1 0"`` – fix x and y,  free z
+        * ``"0 0 1"`` – fix z only,   free x and y
+
+    fix_z_coordinate : float or None, optional
+        Fix all atoms within ``fix_z_tolerance`` Å of this z-coordinate.
+        * ``None`` – no atoms are fixed by z-coordinate (default).
+        * ``5.0``  – fix all atoms with z in [4.5, 5.5] Å.
+
+    fix_z_tolerance : float, optional
+        Tolerance in Å around ``fix_z_coordinate``. Default is 0.5 Å.
+        Only used when ``fix_z_coordinate`` is not None.
+
+    fix_atom_indices : None or list[int], optional
+        Fix specific atoms by index.
+        * ``None``        – no atoms fixed by index (default).
+        * ``"0"``         – fix atom 0.
+        * ``'[0, 1, 2]'`` – fix atoms 0, 1, and 2.
+
+    Returns
+    -------
+    ase.Atoms
+        A copy of *structure* with the appropriate constraints attached.
+    """
+    import ast
+    from ase.constraints import FixAtoms, FixCartesian
+
+    # ------------------------------------------------------------------
+    #     Parse ``fix_xyz`` → boolean mask [fix_x, fix_y, fix_z]
+    #     Accepts "1 1 1", "1 0 0", "0 0 1", etc.
+    # ------------------------------------------------------------------
+    try:
+        flags = [int(v) for v in fix_xyz.strip().split()]
+    except ValueError:
+        raise ValueError(
+            f"fix_xyz must be three space-separated 1/0 values, e.g. '1 1 0'. Got: '{fix_xyz}'"
+        )
+
+    if len(flags) != 3:
+        raise ValueError(
+            f"fix_xyz must contain exactly three values (x y z). Got {len(flags)}: '{fix_xyz}'"
+        )
+
+    if not all(f in (0, 1) for f in flags):
+        raise ValueError(
+            f"fix_xyz values must be 0 or 1. Got: '{fix_xyz}'"
+        )
+
+    dof_mask = [bool(f) for f in flags]   # [fix_x, fix_y, fix_z]
+
+    # Use FixAtoms (simpler) when all three directions are fixed
+    use_fix_atoms = all(dof_mask)
+
+    # No directions fixed at all → nothing to constrain
+    if not any(dof_mask):
+        return structure.copy()
+
+    # ------------------------------------------------------------------
+    #   Normalise ``fixed_species`` → set of element symbols
+    # ------------------------------------------------------------------
+    species_set: Set[str] = set()
+
+    if fixed_species is not None:
+        try:
+            parsed_species = ast.literal_eval(fixed_species)
+        except (SyntaxError, ValueError):
+            parsed_species = fixed_species
+
+        if isinstance(parsed_species, str):
+            species_set = set(item.strip() for item in parsed_species.split(','))
+        elif isinstance(parsed_species, (list, tuple, set)):
+            if not all(isinstance(item, str) for item in parsed_species):
+                raise ValueError("All entries in the element list must be strings.")
+            species_set = set(parsed_species)
+        else:
+            raise ValueError(
+                "fixed_species must be None, a single element symbol, "
+                "or a string representation of a list/tuple of symbols."
+            )
+
+    # ------------------------------------------------------------------
+    #   Parse ``fix_atom_indices`` → set of integer indices
+    # ------------------------------------------------------------------
+    index_set: Set[int] = set()
+
+    if fix_atom_indices is not None:
+        try:
+            parsed_indices = ast.literal_eval(fix_atom_indices)
+        except (SyntaxError, ValueError):
+            parsed_indices = fix_atom_indices
+
+        if isinstance(parsed_indices, int):
+            index_set = {parsed_indices}
+        elif isinstance(parsed_indices, (list, tuple, set)):
+            if not all(isinstance(item, int) for item in parsed_indices):
+                raise ValueError("All entries in the index list must be integers.")
+            index_set = set(parsed_indices)
+
+    # ------------------------------------------------------------------
+    #     Build the boolean mask combining all three selection methods.
+    #     An atom is fixed if it satisfies ANY of the criteria.
+    # ------------------------------------------------------------------
+    mask: List[bool] = []
+
+    for i, atom in enumerate(structure):
+        fix_by_species = atom.symbol in species_set
+        fix_by_index   = i in index_set
+        fix_by_z       = (
+            fix_z_coordinate is not None and fix_z_coordinate != ''
+            and abs(atom.position[2] - fix_z_coordinate) <= fix_z_tolerance
+        )
+        mask.append(fix_by_species or fix_by_index or fix_by_z)
+
+    # ------------------------------------------------------------------
+    #   Create a copy and attach the constraint (if any atom is fixed).
+    # ------------------------------------------------------------------
+    new_structure = structure.copy()
+
+    if any(mask):
+        fixed_indices = [i for i, fixed in enumerate(mask) if fixed]
+
+        if use_fix_atoms:
+            # All three directions fixed → FixAtoms (simpler, more efficient)
+            constraint = FixAtoms(mask=mask)
+        else:
+            # Partial directions fixed → FixCartesian
+            constraint = FixCartesian(
+                a=fixed_indices,
+                mask=dof_mask,   # [fix_x, fix_y, fix_z]
+            )
+
+        new_structure.set_constraint(constraint)
+
+    return new_structure
+
+
+@as_function_node
 def FixSpecies(
     structure: Atoms,
     fixed_species: Optional[str] = None,
