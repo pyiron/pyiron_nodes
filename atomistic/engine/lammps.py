@@ -22,7 +22,7 @@ from core import as_function_node
 from dataclasses import dataclass
 
 @dataclass
-class LammpsInputResources:
+class LammpsIOBundle:
     structure: Atoms
     potential: str | pd.DataFrame
     working_directory: str = "."
@@ -60,11 +60,11 @@ def CreateLammpsStructure(
     atom_type: Literal["atomic", "amoeba", "angle", "apip", "atomic", "body", "bond", "charge", "dielectric", "dipole", "dpd", "edpd", "electron", "ellipsoid", "full", "line", "mdpd", "molecular", "oxdna", "peri", "smd", "sph", "sphere", "bpm/sphere", "spin", "tdpd", "tri", "template", "hybrid"] = "atomic",
     bond_dict: Optional[dict] = None,
     resource_path: Optional[str] = None
-) -> LammpsInputResources:
+) -> LammpsIOBundle:
     from lammpsparser.compatibility.file import _get_potential
 
     print('units:', units)
-    input_resources = LammpsInputResources(
+    io_bundle = LammpsIOBundle(
         structure=structure,
         potential=potential,
         working_directory=working_directory,
@@ -84,9 +84,9 @@ def CreateLammpsStructure(
     lammps_str.el_eam_lst = potential_elements
     lammps_str.structure = structure
 
-    input_resources.lammps_structure_string = lammps_str._string_input
+    io_bundle.lammps_structure_string = lammps_str._string_input
 
-    return input_resources
+    return io_bundle
 
 # TODO Make a separate function in case a full lammps input file is provided.
 # Part of the move to make a separate node for a provided full lammps input file!!!
@@ -98,24 +98,23 @@ def CreateLammpsStructure(
     #     lmp_str_lst=lmp_str_lst,
     # )
 
-
 @as_function_node
 def CreateLammpsMDInput(
-    input_resources: LammpsInputResources,
+    io_bundle: LammpsIOBundle,
     calc_dataclass: InputCalcMD,
     read_restart_filename: Optional[str] = None,
     write_restart_filename: Optional[str] = None,
 ):
     from lammpsparser.compatibility.file import lammps_file_initialization, _get_potential
 
-    input_resources.read_restart_filename = read_restart_filename
-    input_resources.write_restart_filename = write_restart_filename
+    io_bundle.read_restart_filename = read_restart_filename
+    io_bundle.write_restart_filename = write_restart_filename
 
     calc_kwargs = asdict(calc_dataclass)
 
-    os.makedirs(input_resources.working_directory, exist_ok=True)
+    os.makedirs(io_bundle.working_directory, exist_ok=True)
     potential_lst, potential_replace, _ = _get_potential(
-        potential=input_resources.potential, resource_path=input_resources.resource_path
+        potential=io_bundle.potential, resource_path=io_bundle.resource_path
     )
 
     # FIXME - temporary fix, should ideally use `read_restart_filename is not None`
@@ -125,8 +124,8 @@ def CreateLammpsMDInput(
 
     lmp_str_lst = []
     for l in lammps_file_initialization(
-        structure=input_resources.structure,
-        units=input_resources.units,
+        structure=io_bundle.structure,
+        units=io_bundle.units,
         read_restart_file=read_restart_file,
         restart_file=read_restart_filename,
     ):
@@ -150,7 +149,7 @@ def CreateLammpsMDInput(
     lmp_str_lst += [
         k + " " + v
         for k, v in set_selective_dynamics(
-            structure=input_resources.structure, calc_md=True
+            structure=io_bundle.structure, calc_md=True
         ).items()
     ]
     if "n_ionic_steps" in calc_kwargs.keys():
@@ -160,7 +159,7 @@ def CreateLammpsMDInput(
     if read_restart_file:
         calc_kwargs["initial_temperature"] = 0.0
 
-    calc_kwargs["units"] = input_resources.units
+    calc_kwargs["units"] = io_bundle.units
     lmp_str_lst += calc_md(**calc_kwargs)
 
     if read_restart_file:
@@ -171,41 +170,41 @@ def CreateLammpsMDInput(
     if read_restart_file:
         shutil.copyfile(
             os.path.abspath(read_restart_filename),
-            os.path.join(input_resources.working_directory, os.path.basename(read_restart_filename)),
+            os.path.join(io_bundle.working_directory, os.path.basename(read_restart_filename)),
         )
 
     if write_restart_file:
         lmp_str_lst.append(f"write_restart {os.path.basename(write_restart_filename)}")
 
-    input_resources.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
 
-    return input_resources
+    return io_bundle
 
 @as_function_node
 def RunLammpsCalculation(
-    input_resources: LammpsInputResources,
+    io_bundle: LammpsIOBundle,
     lmp_command: Optional[str] = None,
     cores: int = 1,
     debug: bool = False
 ):
     #Writing
-    os.makedirs(input_resources.working_directory, exist_ok=True)
-    with open(os.path.join(input_resources.working_directory, input_resources.lammps_input_filename), "w") as f:
-        f.write(input_resources.lammps_input_string)
+    os.makedirs(io_bundle.working_directory, exist_ok=True)
+    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w") as f:
+        f.write(io_bundle.lammps_input_string)
 
-    with open(os.path.join(input_resources.working_directory, input_resources.lammps_structure_filename), "w") as f:
-        f.write(input_resources.lammps_structure_string)
+    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_structure_filename), "w") as f:
+        f.write(io_bundle.lammps_structure_string)
 
     #Running
     if not debug:
         if lmp_command is None:
             lmp_command = (
                 os.getenv("ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {cores} --oversubscribe lmp_mpi")
-                + f" -in {input_resources.lammps_input_filename}"
+                + f" -in {io_bundle.lammps_input_filename}"
             )
         result = subprocess.run(
                 lmp_command,
-                cwd=input_resources.working_directory,
+                cwd=io_bundle.working_directory,
                 shell=True,
                 universal_newlines=True,
                 env=os.environ.copy(),
@@ -213,7 +212,7 @@ def RunLammpsCalculation(
                 stderr=subprocess.PIPE,
             )
         if result.returncode != 0:
-            error_path = os.path.join(input_resources.working_directory, "error.msg")
+            error_path = os.path.join(io_bundle.working_directory, "error.msg")
             with open(error_path, "w") as f:
                 f.write(result.stdout)
                 if result.stderr:
@@ -224,13 +223,13 @@ def RunLammpsCalculation(
             )
         output = result.stdout
     else:
-        output = input_resources.working_directory
+        output = io_bundle.working_directory
     
-    return input_resources, output
+    return io_bundle, output
 
 @as_function_node
 def ParseLammpsOutput(
-    input_resources: LammpsInputResources,
+    io_bundle: LammpsIOBundle,
     dump_h5_file_name: str = "dump.h5",
     dump_out_file_name: str = "dump.out",
     log_lammps_file_name: str = "log.lammps",
@@ -238,13 +237,13 @@ def ParseLammpsOutput(
     from lammpsparser.compatibility.file import _get_potential
 
     _, _, species = _get_potential(
-        potential=input_resources.potential, resource_path=input_resources.resource_path
+        potential=io_bundle.potential, resource_path=io_bundle.resource_path
     )
     output = parse_lammps_output(
-            working_directory=input_resources.working_directory,
-            structure=input_resources.structure,
+            working_directory=io_bundle.working_directory,
+            structure=io_bundle.structure,
             potential_elements=species,
-            units=input_resources.units,
+            units=io_bundle.units,
             prism=None,
             dump_h5_file_name=dump_h5_file_name,
             dump_out_file_name=dump_out_file_name,
