@@ -1,12 +1,13 @@
 from __future__ import annotations
 from typing import Literal, Optional
 
-import nglview
 import numpy as np
 from ase import Atoms as _Atoms
 
 from core import as_function_node
+from pyiron_nodes.atomistic.engine.lammps import LammpsInputResources
 from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase
+from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 
 
 @as_function_node("plot")
@@ -68,7 +69,8 @@ def Plot3d(
 
 @as_function_node("view")
 def AnimateAse(
-            ase_trajectory: list,
+            data: OutputCalcMD,
+            IOBundle: LammpsInputResources,
             gui: bool = False,
             spacefill: bool = True,
             show_cell: bool = True,
@@ -87,7 +89,27 @@ def AnimateAse(
         """
         import nglview
 
+        ase_trajectory = None
+
+        if data.positions is not None:
+            ase_trajectory = []
+
+            # Get symbols once from initial structure
+            all_symbols = IOBundle.structure.get_chemical_symbols()
+
+            for frame_idx in range(len(data.positions)):
+                
+                cell = data.cells[frame_idx] if data.cells is not None else None
+                frame = _Atoms(
+                    symbols=all_symbols,
+                    positions=data.positions[frame_idx],
+                    cell=cell,
+                    pbc=cell is not None,
+                )
+                ase_trajectory.append(frame)
+
         animation = nglview.show_asetraj(ase_trajectory, gui=gui)
+
         if spacefill:
             animation.add_spacefill(radius_type="vdw", scale=0.5, radius=particle_size)
             animation.remove_ball_and_stick()
@@ -96,9 +118,68 @@ def AnimateAse(
         if show_cell:
             animation.add_unitcell()
         animation.camera = camera
+
         return animation
 
-        #return nglview.show_asetraj(ase_trajectory, gui=gui)
+
+@as_function_node("fig")
+def VisualizeMultipleStructures(
+    ase_structure_list: list,
+    columns: int = 3,
+    figure_size: float = 4.0,
+    rotation: str = "0x,0y,0z"
+):
+    import matplotlib.pyplot as plt
+    import matplotlib.image as mpimg
+    from ase.io import write
+    import tempfile
+    import os
+    import math
+
+    # Suppress any intermediate plots
+    plt.ioff()  # turn off interactive mode
+
+    columns = int(columns)
+    figure_size = float(figure_size)
+
+    n = len(ase_structure_list)
+    rows = math.ceil(n / columns)
+
+    fig, axes = plt.subplots(rows, columns, figsize=(figure_size * columns, figure_size * rows))
+    
+    # Make axes always 2D array for consistent indexing
+    if rows == 1 and columns == 1:
+        axes = [[axes]]
+    elif rows == 1:
+        axes = [axes]
+    elif columns == 1:
+        axes = [[ax] for ax in axes]
+
+    for i, struct in enumerate(ase_structure_list):
+        row, col = divmod(i, columns)
+        
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            tmp_path = f.name
+        
+        try:
+            write(tmp_path, struct, rotation=rotation)
+            plt.close('all')  # close any figures ASE opened internally
+            img = mpimg.imread(tmp_path)
+            axes[row][col].imshow(img)
+            axes[row][col].set_title(f"Structure {i}")
+            axes[row][col].axis("off")
+        finally:
+            os.unlink(tmp_path)
+    
+    # Hide unused axes
+    for i in range(n, rows * columns):
+        row, col = divmod(i, columns)
+        axes[row][col].axis("off")
+
+    plt.tight_layout()
+    plt.ion()  # turn interactive mode back on
+    return fig
+
 
 @as_function_node("animate")
 def Animate(
