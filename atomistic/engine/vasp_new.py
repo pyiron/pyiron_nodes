@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ import pandas as pd
 from ase import Atoms
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.vasp.inputs import Incar, Kpoints
+from pymatgen.io.vasp.outputs import Vasprun
 
 from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStatic
@@ -63,9 +65,8 @@ _POTCAR_CSV = {
 class VaspInputResources:
     structure: Atoms        # ASE Atoms — compatible with Bulk and other structure nodes
     calc: InputCalcDFT
-    working_directory: str = "."
-    functional: str = field(default_factory=lambda: _default_functional)            # "PBE" or "LDA"
     potcar_lib_path: str = field(default_factory=lambda: _default_potcar_lib_path)  # base path to POTCAR folders
+    working_directory: Optional[str] = None
     potcar_symbols: Optional[list[str]] = None  # override default CSV symbol selection
     extra_incar: Optional[dict] = None          # additional INCAR tags beyond InputCalcDFT
 
@@ -92,12 +93,31 @@ def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]
 
 
 def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
+    
+    if not calc.ionic_relaxation:
+        ibrion = -1
+    else:
+        match calc.ionic_update_algorithm:
+            case "MolecularDynamics":
+                ibrion = 0
+            case "RMM-DIIS": 
+                ibrion = 1
+            case "ConjugateGradient":
+                ibrion = 2
+            case "DampedMolecularDynamics":
+                ibrion = 3
+            case _:
+                raise ValueError(
+                    f"ionic_update_algorithm must be set when ionic_relaxation is True, "
+                    f"got: {calc.ionic_update_algorithm!r}"
+                )
+    
     tags = {
-        "ENCUT": calc.encut,
-        "EDIFF": calc.ediff,
-        "EDIFFG": calc.ediffg,
-        "NSW": calc.nsw,
-        "IBRION": calc.ibrion,
+        "ENCUT": calc.energy_cutoff,
+        "EDIFF": calc.electronic_convergence,
+        "EDIFFG": calc.ionic_convergence,
+        "NSW": calc.max_ionic_steps,
+        "IBRION": ibrion,
         "ISIF": calc.isif,
         "ISMEAR": calc.ismear,
         "SIGMA": calc.sigma,
@@ -110,6 +130,44 @@ def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
         tags.update(extra)
     return Incar(tags)
 
+def _generate_hash(input_resources: VaspInputResources) -> str:
+    atoms = input_resources.structure
+    calc = input_resources.calc
+
+    flat_positions = [round(x, 6) for row in atoms.get_positions().tolist() for x in row]
+    flat_cell = [round(x, 6) for row in atoms.get_cell().array.tolist() for x in row]
+
+    parts = [
+        atoms.get_chemical_formula(),
+        str(flat_positions),
+        str(flat_cell),
+        str(calc.energy_cutoff),
+        str(calc.electronic_convergence),
+        str(calc.ionic_convergence),
+        str(calc.max_ionic_steps),
+        str(calc.ionic_relaxation),
+        str(calc.ionic_update_algorithm),
+        str(calc.isif),
+        str(calc.ismear),
+        str(calc.sigma),
+        str(calc.ispin),
+        str(calc.algo),
+        str(calc.prec),
+        str(calc.ncore),
+        str(calc.kpoints_mesh),
+        str(calc.functional),
+        input_resources.potcar_lib_path,
+    ]
+
+    if input_resources.potcar_symbols:
+        parts.append(str(input_resources.potcar_symbols))
+
+    if input_resources.extra_incar:
+        for k, v in sorted(input_resources.extra_incar.items()):
+            parts.append(f"{k}={v}")
+
+    hash_string = "|".join(parts)
+    return hashlib.sha256(hash_string.encode()).hexdigest()[:8]
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
@@ -117,9 +175,8 @@ def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
 def CreateVaspInputResources(
     structure: Atoms,
     calc: InputCalcDFT,
-    working_directory: str = ".",
-    functional: str = "PBE",
     potcar_lib_path: str = _default_potcar_lib_path,
+    working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
     extra_incar: Optional[dict] = None,
 ) -> VaspInputResources:
@@ -127,7 +184,6 @@ def CreateVaspInputResources(
         structure=structure,
         calc=calc,
         working_directory=working_directory,
-        functional=functional,
         potcar_lib_path=potcar_lib_path,
         potcar_symbols=potcar_symbols,
         extra_incar=extra_incar,
@@ -137,7 +193,14 @@ def CreateVaspInputResources(
 
 @as_function_node
 def WriteVaspInputSet(input_resources: VaspInputResources) -> VaspInputResources:
-    workdir = input_resources.working_directory
+    print("writing_input")
+    print("working dir: ", input_resources.working_directory )
+    if input_resources.working_directory is not None:
+        workdir = input_resources.working_directory
+    else:
+        workdir = _generate_hash(input_resources)
+        print("giving the hash name:", workdir)
+    input_resources.working_directory = workdir
     os.makedirs(workdir, exist_ok=True)
 
     # POSCAR
@@ -152,7 +215,7 @@ def WriteVaspInputSet(input_resources: VaspInputResources) -> VaspInputResources
     potcar_paths = (
         [os.path.join(input_resources.potcar_lib_path, s, "POTCAR") for s in input_resources.potcar_symbols]
         if input_resources.potcar_symbols is not None
-        else _get_potcar_paths(input_resources.structure, input_resources.functional, input_resources.potcar_lib_path)
+        else _get_potcar_paths(input_resources.structure, input_resources.calc.functional, input_resources.potcar_lib_path)
     )
     with open(os.path.join(workdir, "POTCAR"), "wb") as wfd:
         for p in potcar_paths:
@@ -161,7 +224,8 @@ def WriteVaspInputSet(input_resources: VaspInputResources) -> VaspInputResources
 
     # KPOINTS
     kpoints_path = os.path.join(workdir, "KPOINTS")
-    mesh = input_resources.calc.kpoints_mesh
+    kpoint_string = input_resources.calc.kpoints_mesh
+    mesh = [int(k) for k in kpoint_string.split()]
     if mesh is not None:
         kpoints = Kpoints.gamma_automatic(mesh)
         kpoints.write_file(kpoints_path)
@@ -180,7 +244,7 @@ def RunVaspCalculation(
     debug: bool = False,
 ):
     if not vasp_command:
-        vasp_command = f"mpiexec -n {cores} vasp_std"
+        vasp_command = f"module load vasp && mpiexec -n {cores} vasp_std"
 
     if debug:
         stdout = input_resources.working_directory
@@ -215,18 +279,21 @@ def ParseVaspOutput(
     input_resources: VaspInputResources,
     vasprun_filename: str = "vasprun.xml",
 ):
-    from ase.io import read
+    from pymatgen.io.vasp.outputs import Vasprun
 
     vasprun_path = os.path.join(input_resources.working_directory, vasprun_filename)
-    trajectory = read(vasprun_path, index=":")
+    vr = Vasprun(filename=vasprun_path, parse_dos=False, parse_projected_eigen=False)
+
+    trajectory = [AseAtomsAdaptor.get_atoms(s) for s in vr.structures]
 
     final = trajectory[-1]
+    last_step = vr.ionic_steps[-1]
 
     out = OutputCalcStatic.pure_dataclass()
-    out.energy = final.get_potential_energy()
-    out.force = final.get_forces()
-    out.stress = final.get_stress(voigt=False) if final.calc.results.get("stress") is not None else None
+    out.energy = last_step["e_wo_entrp"]
+    out.force = last_step["forces"]
+    out.stress = last_step.get("stress")
     out.structure = final
 
-    converged = len(trajectory) > 0
+    converged = vr.converged
     return out, trajectory, converged
