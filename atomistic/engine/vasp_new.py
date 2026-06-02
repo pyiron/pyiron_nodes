@@ -188,13 +188,10 @@ def CreateVaspInputResources(
         potcar_symbols=potcar_symbols,
         extra_incar=extra_incar,
     )
-    return input_resources
 
-
-@as_function_node
-def WriteVaspInputSet(input_resources: VaspInputResources) -> VaspInputResources:
     print("writing_input")
     print("working dir: ", input_resources.working_directory )
+    
     if input_resources.working_directory is not None:
         workdir = input_resources.working_directory
     else:
