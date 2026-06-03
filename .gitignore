@@ -14,3 +14,11 @@ core.*
 /notebooks/pyiron_nodes/
 /notebooks/Sin/
 /tests/integration/test_notebooks.py
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.cache/
+dist/
+build/
