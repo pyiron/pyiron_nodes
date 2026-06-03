@@ -69,13 +69,12 @@ def Plot3d(
 
 @as_function_node("view")
 def AnimateAse(
-            data: OutputCalcMD,
-            IOBundle: LammpsInputResources,
-            gui: bool = False,
-            spacefill: bool = True,
-            show_cell: bool = True,
-            particle_size: float = 0.5,
-            camera: str = "orthographic"
+    ase_trajectory: list,
+    gui: bool = False,
+    spacefill: bool = True,
+    show_cell: bool = True,
+    particle_size: float = 0.5,
+    camera: str = "orthographic"
 ):
         """
         Animate a list of ASE Atoms frames using nglview.
@@ -88,25 +87,6 @@ def AnimateAse(
         Whether to show the nglview GUI controls panel.
         """
         import nglview
-
-        ase_trajectory = None
-
-        if data.positions is not None:
-            ase_trajectory = []
-
-            # Get symbols once from initial structure
-            all_symbols = IOBundle.structure.get_chemical_symbols()
-
-            for frame_idx in range(len(data.positions)):
-                
-                cell = data.cells[frame_idx] if data.cells is not None else None
-                frame = _Atoms(
-                    symbols=all_symbols,
-                    positions=data.positions[frame_idx],
-                    cell=cell,
-                    pbc=cell is not None,
-                )
-                ase_trajectory.append(frame)
 
         animation = nglview.show_asetraj(ase_trajectory, gui=gui)
 

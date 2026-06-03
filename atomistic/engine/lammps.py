@@ -307,7 +307,26 @@ def ParseLammpsOutput(
     out.volumes=output["generic"].get('volume')
     out.species=output["generic"].get('species')
 
-    return out
+    ase_trajectory = None
+
+    if out.positions is not None:
+        ase_trajectory = []
+
+        # Get symbols once from initial structure
+        all_symbols = input_resources.structure.get_chemical_symbols()
+
+        for frame_idx in range(len(out.positions)):
+            
+            cell = out.cells[frame_idx] if out.cells is not None else None
+            frame = Atoms(
+                symbols=all_symbols,
+                positions=out.positions[frame_idx],
+                cell=cell,
+                pbc=cell is not None,
+            )
+            ase_trajectory.append(frame)
+
+    return out, ase_trajectory
 
 
 # temporary here, should be included in LammpsStructure?
