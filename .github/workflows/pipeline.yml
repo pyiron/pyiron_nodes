@@ -18,7 +18,7 @@ jobs:
       - name: Install pre-commit
         run: python -m pip install --upgrade pip && pip install pre-commit
       - name: Run pre-commit (ruff)
-        run: pre-commit run --files tests/test_smoke.py
+        run: pre-commit run --all-files
 
   black:
     needs: [ruff]
@@ -42,7 +42,7 @@ jobs:
       - name: Install mypy
         run: python -m pip install --upgrade pip && pip install mypy
       - name: Run mypy
-        run: mypy --ignore-missing-imports tests
+        run: mypy --ignore-missing-imports pyiron_nodes
 
   minimal:
     needs: [black]
@@ -63,4 +63,4 @@ jobs:
       - name: Test
         shell: bash -l {0}
         run: |
-          pytest tests/test_smoke.py
+          python -m unittest discover pyiron_nodes/tests
