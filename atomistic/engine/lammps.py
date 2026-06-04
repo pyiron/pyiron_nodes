@@ -266,6 +266,6 @@ def ParseLammpsOutput(
     out.unwrapped_positions=output["generic"].get('unwrapped_positions')
     out.velocities=output["generic"].get('velocities')
     out.volumes=output["generic"].get('volume')
-    out.species=output["generic"].get('species')
+    out.species=io_bundle.structure.get_chemical_symbols()
     
     return out

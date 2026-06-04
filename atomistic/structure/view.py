@@ -55,6 +55,7 @@ def Plot3d(
         structure = _data_to_ase(structure)
 
     from structuretoolkit.visualize import plot3d
+
     return plot3d(
         structure,
         camera=camera,
@@ -66,65 +67,58 @@ def Plot3d(
     )
 
 
-@as_function_node("animate")
+@as_function_node("view")
 def Animate(
     trajectory,
-    initial_structure,
+    gui: bool = False,
     spacefill: bool = True,
     show_cell: bool = True,
-    center_of_mass: bool = False,
     particle_size: float = 0.5,
     camera: str = "orthographic",
 ):
     """
-    Animate a series of atomic structures.
-
-    Task
-    ----
-    Create an animation of a trajectory of structures, for example to
-    visualise the time evolution of a molecular dynamics run, monitor defect
-    migration, or generate a presentation of structural changes. This node is
-    useful when the user needs a dynamic view of multiple frames rather than a
-    single static plot.
+    Animate a list of ASE Atoms frames using nglview.
 
     Parameters
     ----------
-    trajectory : Trajectory‑like object
-        An object that provides ``positions`` (e.g. a pyiron ``Trajectory``
-        or any object with a ``positions`` attribute).
-    initial_structure : Structure‑like object
-        The reference structure that defines the atomic species,
-        lattice vectors, etc.
-    spacefill : bool, default=True
-        If ``True`` the atoms are visualised in *space‑fill* style
-        (large spheres whose radius is proportional to the atomic
-        number).  If ``False`` a ball‑and‑stick representation is used.
-    show_cell : bool, default=True
-        Show the unit‑cell boundaries of the structure.
-    center_of_mass : bool, default=False
-        If ``True`` the atomic coordinates are shifted so that the
-        centre‑of‑mass of each frame is at the origin.  If ``False``
-        the coordinates are taken as‑is.
-    particle_size : float, default=0.5
-        Scaling factor for the spheres that represent the atoms.
-        The actual radius is ``particle_size * atomic_number``.
-    camera : {{'orthographic', 'perspective'}}, default='orthographic'
-        Camera perspective to be used for the animation.
+    ase_trajectory : list of ase.Atoms
+    Frames to animate, as returned by ParseLammpsOutput.
+    gui : bool, default=False
+    Whether to show the nglview GUI controls panel.
     """
-    from pyiron_atomistics.atomistics.job.atomistic import Trajectory
+    import nglview
+    from ase import Atoms
 
-    # ------------------------------------------------------------------
-    # Build a pyiron Trajectory object from the supplied data
-    # ------------------------------------------------------------------
-    traj = Trajectory(positions=trajectory.positions, structure=initial_structure)
+    ase_trajectory = []
 
-    # ------------------------------------------------------------------
-    # Forward the animation options to the underlying pyiron method
-    # ------------------------------------------------------------------
-    return traj.animate_structures(
-        spacefill=spacefill,
-        show_cell=show_cell,
-        center_of_mass=center_of_mass,
-        particle_size=particle_size,
-        camera=camera,
-    )
+    all_symbols = trajectory.species
+    for frame_idx in range(len(trajectory.positions)):
+
+        if hasattr(trajectory, "unwrapped_positions"):
+            positions = trajectory.unwrapped_positions
+        else:
+            positions = trajectory.positions
+
+        cell = trajectory.cells[frame_idx] if trajectory.cells is not None else None
+        frame = Atoms(
+            symbols=all_symbols,
+            positions=positions[frame_idx],
+            cell=cell,
+            pbc=cell is not None,
+        )
+        ase_trajectory.append(frame)
+
+    animation = nglview.show_asetraj(ase_trajectory, gui=gui)
+
+    if spacefill:
+        animation.add_spacefill(radius_type="vdw", scale=0.5, radius=particle_size)
+        animation.remove_ball_and_stick()
+    else:
+        animation.add_ball_and_stick()
+    if show_cell:
+        animation.add_unitcell()
+    animation.camera = camera
+
+    return animation
+
+
