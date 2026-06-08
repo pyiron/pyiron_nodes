@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Check out the PR head so we can commit back to the branch
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.DEPENDABOT_WORKFLOW_TOKEN }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: format black
@@ -54,7 +54,7 @@ jobs:
       - name: push
         uses: ad-m/github-push-action@master
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.DEPENDABOT_WORKFLOW_TOKEN }}
           branch: ${{ github.event.pull_request.head.ref }}
 
   mypy:
