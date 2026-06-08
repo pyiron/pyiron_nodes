@@ -124,6 +124,7 @@ class M3gnetConfig(AseCalculatorConfig):
     def get_calculator(self, use_symmetry=True):
         from matgl import load_model
         from matgl.ext.ase import M3GNetCalculator
+
         return M3GNetCalculator(
             load_model(self.model), compute_stress=True, stress_weight=GPA2EVA3
         )
