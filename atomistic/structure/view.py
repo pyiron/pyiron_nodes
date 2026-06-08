@@ -120,5 +120,3 @@ def Animate(
     animation.camera = camera
 
     return animation
-
-

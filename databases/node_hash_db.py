@@ -4,14 +4,16 @@ import getpass
 USERNAME = getpass.getuser()
 
 from typing import Literal
+
+
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
     password: str = "none",
     host: str = "130.183.217.189",
     port: int = 5432,
-    database: str = 'pyiron',
-    table_name: Literal['test_nodes_cmmc',"nodes_cmmc"] = "test_nodes_cmmc",
+    database: str = "pyiron",
+    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",
 ):
     import pyiron_database
 
