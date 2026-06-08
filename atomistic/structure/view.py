@@ -55,6 +55,7 @@ def Plot3d(
         structure = _data_to_ase(structure)
 
     from structuretoolkit.visualize import plot3d
+
     return plot3d(
         structure,
         camera=camera,

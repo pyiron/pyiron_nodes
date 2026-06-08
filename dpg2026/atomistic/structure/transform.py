@@ -30,10 +30,7 @@ def RattleAndStrech(structure: Atoms, sigma: float, samples: int) -> list[Atoms]
     if len(structure) > 1:
         for _ in range(samples):
             structures.append(
-                    stretch(
-                        rattle(structure.copy(), sigma),
-                        hydro=0.05, shear=0.005
-                    )
+                stretch(rattle(structure.copy(), sigma), hydro=0.05, shear=0.005)
             )
     return structures
 
@@ -56,9 +53,7 @@ def Rattle(structure, seed: int = 42, stdev: float = 0.1):
 
 
 @as_function_node
-def RattleLoop(
-        structures: list[Atoms], sigma: float, samples: int
-) -> list[Atoms]:
+def RattleLoop(structures: list[Atoms], sigma: float, samples: int) -> list[Atoms]:
     rattled_structures = []
     for structure in structures:
         rattled_structures += RattleAndStrech(structure, sigma, samples).pull()
@@ -67,8 +62,11 @@ def RattleLoop(
 
 @as_function_node
 def Stretch(
-        structure: Atoms, hydro: float, shear: float, samples: int,
-        hydro_shear_ratio: float = 0.7
+    structure: Atoms,
+    hydro: float,
+    shear: float,
+    samples: int,
+    hydro_shear_ratio: float = 0.7,
 ) -> list[Atoms]:
     structures = []
     for _ in range(samples):
@@ -76,21 +74,22 @@ def Stretch(
             ihydro, ishear = hydro, 0.05
         else:
             ihydro, ishear = 0.05, shear
-        structures.append(
-                stretch(structure.copy(), hydro=ihydro, shear=ishear)
-        )
+        structures.append(stretch(structure.copy(), hydro=ihydro, shear=ishear))
     return structures
 
 
 @as_function_node
 def StretchLoop(
-        structures: list[Atoms], hydro: float, shear: float, samples: int,
-        hydro_shear_ratio: float = 0.7
+    structures: list[Atoms],
+    hydro: float,
+    shear: float,
+    samples: int,
+    hydro_shear_ratio: float = 0.7,
 ) -> list[Atoms]:
     stretched_structures = []
     for structure in structures:
         stretched_structures += Stretch(
-                structure, hydro, shear, samples, hydro_shear_ratio
+            structure, hydro, shear, samples, hydro_shear_ratio
         ).pull()
     return stretched_structures
 

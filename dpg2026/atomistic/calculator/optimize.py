@@ -8,7 +8,11 @@ from core import as_function_node, Node, as_inp_dataclass_node, as_out_dataclass
 from core.data_fields import DataArray, EmptyArrayField
 from typing import Literal, List, Optional
 import pandas
-from pyiron_nodes.atomistic.structure.build import _ase_to_data, _data_to_ase, OutputAtoms
+from pyiron_nodes.atomistic.structure.build import (
+    _ase_to_data,
+    _data_to_ase,
+    OutputAtoms,
+)
 
 """Utility nodes for atomistic calculations using ASE within the pyiron workflow framework.
 
@@ -28,6 +32,7 @@ class GenericOptimizerSettings:
     force_tolerance : float
         Convergence criterion for the maximum force (in eV/Å).
     """
+
     max_steps: int = 10
     force_tolerance: float = 1e-2
 
@@ -38,6 +43,7 @@ class OutputCalcOpt:
 
     Holds the relaxed structure and associated physical quantities.
     """
+
     structure: Optional[List] = field(default=None)
     energy: float = 0
     forces: Optional[np.ndarray] = field(default=None)
@@ -53,8 +59,10 @@ class RelaxMode(Enum):
     def apply_filter_and_constraints(self, structure):
         match self:
             case RelaxMode.VOLUME:
-                structure.set_constraint(FixAtoms(np.ones(len(structure),dtype=bool)))
-                return FrechetCellFilter(structure, constant_volume=True) # hydrostatic_strain=True, 
+                structure.set_constraint(FixAtoms(np.ones(len(structure), dtype=bool)))
+                return FrechetCellFilter(
+                    structure, constant_volume=True
+                )  # hydrostatic_strain=True,
             case RelaxMode.INTERNAL:
                 return structure
             case RelaxMode.FULL:
@@ -65,13 +73,13 @@ class RelaxMode(Enum):
 
 @as_function_node
 def MapCalculatorOnStructures(
-        structures,
-        calculator: Node,
-        store: bool = False,
-        t_forces: bool = False,
-        t_stress: bool = False,
-        t_volume: bool = False,
-        store_structures: bool = False,
+    structures,
+    calculator: Node,
+    store: bool = False,
+    t_forces: bool = False,
+    t_stress: bool = False,
+    t_volume: bool = False,
+    store_structures: bool = False,
 ):
     """Map a calculator over a collection of structures.
 
@@ -97,26 +105,25 @@ def MapCalculatorOnStructures(
     import pandas as pd
 
     if hasattr(structures, "structure"):
-         atoms_list = structures.structure
+        atoms_list = structures.structure
     elif isinstance(structures, (list, np.ndarray)):
-         atoms_list = structures
+        atoms_list = structures
     else:
         raise ValueError("Unknown data type for structures")
-         
+
     relaxed_structures, energies, forces, stresses, volumes = [], [], [], [], []
     for structure in atoms_list:
         if isinstance(structure, OutputAtoms):
-             structure = _data_to_ase(structure)
+            structure = _data_to_ase(structure)
         calculator.inputs.structure = structure
         out = calculator.pull()["out"]
         # print("out: ", out)
         relaxed_structures.append(_ase_to_data(out.structure))
         energies.append(out.energy)
         if t_forces:
-             forces.append(out.forces)
+            forces.append(out.forces)
         if t_stress:
-             stresses.append(out.stress)
-
+            stresses.append(out.stress)
 
     if isinstance(structures, pd.DataFrame):
         df = structures.copy()
@@ -124,25 +131,25 @@ def MapCalculatorOnStructures(
     else:
         df = pd.DataFrame({"structure": relaxed_structures, "energy": energies})
 
-    df["energy"] = energies 
+    df["energy"] = energies
     if t_forces:
-         df["forces"] = forces
+        df["forces"] = forces
     if t_stress:
-         df["stress"] = stresses    
+        df["stress"] = stresses
     if not store_structures:
         del df["structure"]
 
-    return df   
+    return df
 
 
 @as_function_node
 def Relax(
-        structure: Atoms,
-        engine,
-        opt_parameters: GenericOptimizerSettings = GenericOptimizerSettings(), 
-        opt_mode: Literal["volume", "full"] = "volume",
-        store: bool = False
-        ) -> Atoms:
+    structure: Atoms,
+    engine,
+    opt_parameters: GenericOptimizerSettings = GenericOptimizerSettings(),
+    opt_mode: Literal["volume", "full"] = "volume",
+    store: bool = False,
+) -> Atoms:
     """Relax a structure using the specified engine and optimizer settings.
 
     Parameters
@@ -176,24 +183,28 @@ def Relax(
 
     # FIXME: meh
     if opt_mode == "full":
-            # calculator.inputs.use_symmetry = True
-            structure.calc = calculator
+        # calculator.inputs.use_symmetry = True
+        structure.calc = calculator
     elif opt_mode == "volume":
-            # calculator.inputs.use_symmetry = False
-            structure.calc = calculator
+        # calculator.inputs.use_symmetry = False
+        structure.calc = calculator
     else:
         raise ValueError("Unknown optimization mode")
 
     filtered_structure = mode.apply_filter_and_constraints(structure)
     lbfgs = LBFGS(filtered_structure, logfile="/dev/null")
-    lbfgs.run(fmax=opt_parameters.force_tolerance, 
-              steps=opt_parameters.max_steps)
+    lbfgs.run(fmax=opt_parameters.force_tolerance, steps=opt_parameters.max_steps)
     calc = structure.calc
-    
+
     # Convert Atoms to OutputAtoms for storage compatibility
     structure_data = _ase_to_data(structure)
-    
-    out = OutputCalcOpt.pure_dataclass(structure=structure_data, energy=calc.get_potential_energy(), forces=calc.get_forces(), stress=calc.get_stress())
+
+    out = OutputCalcOpt.pure_dataclass(
+        structure=structure_data,
+        energy=calc.get_potential_energy(),
+        forces=calc.get_forces(),
+        stress=calc.get_stress(),
+    )
 
     structure.constraints.clear()
     return out
@@ -201,10 +212,10 @@ def Relax(
 
 @as_function_node
 def Static(
-        structure: Atoms,
-        engine,
-        store: bool = False,
-        ) -> Atoms:
+    structure: Atoms,
+    engine,
+    store: bool = False,
+) -> Atoms:
     """Perform a static (single‑point) calculation on a structure.
 
     This node evaluates a single‑point ASE calculation using the provided
@@ -234,9 +245,11 @@ def Static(
     # Convert Atoms to OutputAtoms for storage compatibility
     structure_data = _ase_to_data(structure)
 
-    out = OutputCalcOpt.pure_dataclass(structure=structure_data, 
-                                       energy=structure.get_potential_energy(), 
-                                       forces=structure.get_forces(), 
-                                       stress=structure.get_stress())
+    out = OutputCalcOpt.pure_dataclass(
+        structure=structure_data,
+        energy=structure.get_potential_energy(),
+        forces=structure.get_forces(),
+        stress=structure.get_stress(),
+    )
 
     return out

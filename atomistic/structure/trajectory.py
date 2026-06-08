@@ -3,6 +3,7 @@ from pyiron_core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 from ase.atoms import Atoms
 
+
 @as_function_node
 def structure_to_calc_md(structure: Atoms) -> OutputCalcMD.dataclass_type:
     import numpy as np

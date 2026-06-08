@@ -5,28 +5,28 @@ from core import as_function_node
 
 @as_function_node
 def CombineStructures(
-        spacegroups: list[Atoms] | None,
-        volume_relax: list[Atoms] | None,
-        full_relax: list[Atoms] | None,
-        rattle: list[Atoms] | None,
-        stretch: list[Atoms] | None,
-        store: bool = True,
+    spacegroups: list[Atoms] | None,
+    volume_relax: list[Atoms] | None,
+    full_relax: list[Atoms] | None,
+    rattle: list[Atoms] | None,
+    stretch: list[Atoms] | None,
+    store: bool = True,
 ):
     """Combine individual structure sets into a full training set."""
     from functools import reduce
+
     structures = [spacegroups, volume_relax, full_relax, rattle, stretch]
     structures = reduce(list.__add__, (s or [] for s in structures), [])
     if len(structures) == 0:
-        logging.warn("Either no inputs given or all inputs are empty. "
-                     "Returning the empty list!")
+        logging.warn(
+            "Either no inputs given or all inputs are empty. "
+            "Returning the empty list!"
+        )
     return structures
 
 
 @as_function_node
-def SaveStructures(
-        structures: list[Atoms],
-        filename: str
-):
+def SaveStructures(structures: list[Atoms], filename: str):
     """Save list of structures into a pickled dataframe.
 
     Columns are:
@@ -42,11 +42,17 @@ def SaveStructures(
     """
     import pandas as pd
     import os.path
-    df = pd.DataFrame([
-        {'name': s.info.get('label', f'structure_{i}'),
-         'ase_atoms': s,
-         'number_of_atoms': len(s),
-         } for i, s in enumerate(structures)])
+
+    df = pd.DataFrame(
+        [
+            {
+                "name": s.info.get("label", f"structure_{i}"),
+                "ase_atoms": s,
+                "number_of_atoms": len(s),
+            }
+            for i, s in enumerate(structures)
+        ]
+    )
     if not filename.endswith("pckl.gz"):
         filename += ".pckl.gz"
     dirname = os.path.dirname(filename)

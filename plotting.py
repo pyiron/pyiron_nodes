@@ -11,6 +11,7 @@ import pandas as pd
 
 from core import as_function_node, as_inp_dataclass_node
 
+
 @as_inp_dataclass_node
 class InputPlotOptions:
     title: Optional[str] = ""
@@ -59,7 +60,7 @@ class InputPlotOptions:
     ] = "o"
     legend_label: Optional[str] = ""
     log_x: bool = False
-    log_y: bool = False 
+    log_y: bool = False
 
 
 @as_function_node("fig")
@@ -222,7 +223,13 @@ def Scatter(
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
-    ax.scatter(x, y, color=options.color, marker=options.symbol, label=options.legend_label if options.legend_label else None)
+    ax.scatter(
+        x,
+        y,
+        color=options.color,
+        marker=options.symbol,
+        label=options.legend_label if options.legend_label else None,
+    )
     # Apply options
     if options.title:
         ax.set_title(options.title)
@@ -359,9 +366,13 @@ def Plot(
 
     # Plot data
     if x is None:
-        ax.plot(y, color=options.color, marker=options.symbol, label=options.legend_label)
+        ax.plot(
+            y, color=options.color, marker=options.symbol, label=options.legend_label
+        )
     else:
-        ax.plot(x, y, color=options.color, marker=options.symbol, label=options.legend_label)
+        ax.plot(
+            x, y, color=options.color, marker=options.symbol, label=options.legend_label
+        )
 
     # Log scales if needed
     if options.log_x:
@@ -416,7 +427,13 @@ def MultiPlot(
             )
     else:
         xx = np.arange(len(y)) if x is None else x
-        ax.plot(xx, y, color=options.color, marker=options.symbol, label=options.legend_label)
+        ax.plot(
+            xx,
+            y,
+            color=options.color,
+            marker=options.symbol,
+            label=options.legend_label,
+        )
 
     # Log scales if needed
     if options.log_x:
