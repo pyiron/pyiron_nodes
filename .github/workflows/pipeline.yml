@@ -1,9 +1,7 @@
 name: Pipeline
 
 on:
-  push:
-    branches:
-      - main
+  push: {}
   pull_request: {}
 
 jobs:
@@ -18,7 +16,7 @@ jobs:
       - name: Install ruff
         run: python -m pip install --upgrade pip && pip install ruff
       - name: Run ruff (non-mutating)
-        run: ruff check --config .ruff.toml pyiron_nodes
+        run: ruff check --config .ruff.toml .
 
   black:
     needs: [ruff]
@@ -69,7 +67,7 @@ jobs:
       - name: Install mypy
         run: python -m pip install --upgrade pip && pip install mypy
       - name: Run mypy
-        run: mypy --config-file mypy.ini pyiron_nodes
+        run: mypy --config-file mypy.ini .
 
   minimal:
     needs: [black]
@@ -90,4 +88,4 @@ jobs:
       - name: Test
         shell: bash -l {0}
         run: |
-          python -m unittest discover pyiron_nodes/tests
+          python -m unittest discover tests
