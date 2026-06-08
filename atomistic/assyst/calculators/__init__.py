@@ -7,8 +7,6 @@ from ase import Atoms
 from ase.calculators.calculator import Calculator
 from ase.constraints import FixAtoms
 from ase.filters import FrechetCellFilter
-from matgl import load_model
-from matgl.ext.ase import M3GNetCalculator
 
 from core import Workflow
 
@@ -124,6 +122,8 @@ class M3gnetConfig(AseCalculatorConfig):
     model: str = "M3GNet-MP-2021.2.8-PES"
 
     def get_calculator(self, use_symmetry=True):
+        from matgl import load_model
+        from matgl.ext.ase import M3GNetCalculator
         return M3GNetCalculator(
             load_model(self.model), compute_stress=True, stress_weight=GPA2EVA3
         )
