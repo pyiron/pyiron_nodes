@@ -30,7 +30,9 @@ def CalculateEVCurve(
     from ase.optimize import BFGS
     from ase.filters import ExpCellFilter
 
-    volume_factors = np.linspace((1 - vol_range)**(1/3), (1.0 + vol_range)**(1/3), num_of_points)
+    volume_factors = np.linspace(
+        (1 - vol_range) ** (1 / 3), (1.0 + vol_range) ** (1 / 3), num_of_points
+    )
 
     structure = structure.copy()
 
@@ -43,7 +45,7 @@ def CalculateEVCurve(
     structure.calc = calculator.pull()
     initial_volume = structure.get_volume()
 
-    data = {"volume": [], "energy": [], "ase_atoms":[]}
+    data = {"volume": [], "energy": [], "ase_atoms": []}
 
     for factor in volume_factors:
         scaled_structure = structure.copy()
@@ -59,8 +61,8 @@ def CalculateEVCurve(
         energy = scaled_structure.get_potential_energy()
         volume = scaled_structure.get_volume()
 
-        data["volume"].append(volume/nd)
-        data["energy"].append(energy/nd)
+        data["volume"].append(volume / nd)
+        data["energy"].append(energy / nd)
         data["ase_atoms"].append(scaled_structure)
 
     df = pd.DataFrame(data)
@@ -71,8 +73,11 @@ def birch_murnaghan(vol, E0, V0, B0, BP):
     """
     Birch-Murnaghan EOS.
     """
-    E = E0 + (9.0*V0*B0)/16.0 * ( ((V0/vol)**(2.0/3.0)-1.0)**3.0 *BP +
-        ((V0/vol)**(2.0/3.0)-1.0)**2.0 * (6.0-4.0*(V0/vol)**(2.0/3.0)))
+    E = E0 + (9.0 * V0 * B0) / 16.0 * (
+        ((V0 / vol) ** (2.0 / 3.0) - 1.0) ** 3.0 * BP
+        + ((V0 / vol) ** (2.0 / 3.0) - 1.0) ** 2.0
+        * (6.0 - 4.0 * (V0 / vol) ** (2.0 / 3.0))
+    )
     return E
 
 
@@ -93,7 +98,9 @@ def FitBirchMurnaghanEOS(ev_curve_df: pd.DataFrame) -> tuple[float, float, float
     B0_guess = 1.0  # in eV/Å³
     B1_guess = 4.0
 
-    popt, _ = curve_fit(birch_murnaghan, volumes, energies, p0=[E0_guess, V0_guess, B0_guess, B1_guess])
+    popt, _ = curve_fit(
+        birch_murnaghan, volumes, energies, p0=[E0_guess, V0_guess, B0_guess, B1_guess]
+    )
     E0, V0, B0, B1 = popt
     B0_GPa = B0 * 160.21766208  # Conversion factor
 
@@ -106,7 +113,7 @@ def PlotEVCurve(
     xlabel: str = "Volume (Å³)",
     ylabel: str = "Energy (eV)",
     title: str = "Energy vs Volume Curve",
-    fontsize: int = 12
+    fontsize: int = 12,
 ):
     """
     Plots the Energy vs. Volume (EV) curve from a computed EV dataset.
@@ -122,7 +129,13 @@ def PlotEVCurve(
         fig, ax: The matplotlib figure and axis objects.
     """
     fig, ax = plt.subplots()
-    ax.plot(ev_curve_df['volume'], ev_curve_df['energy'], marker='o', linestyle='-', color='b')
+    ax.plot(
+        ev_curve_df["volume"],
+        ev_curve_df["energy"],
+        marker="o",
+        linestyle="-",
+        color="b",
+    )
     ax.set_xlabel(xlabel, fontsize=fontsize)
     ax.set_ylabel(ylabel, fontsize=fontsize)
     ax.set_title(title, fontsize=fontsize)

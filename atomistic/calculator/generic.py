@@ -20,7 +20,7 @@ def Static(structure=None, engine=None):  # , keys_to_store=None):
 @as_function_node
 def ApplyEngine(
     sefs_container: OutputSEFS = None,
-    engine = None,
+    engine=None,
     energies: bool = True,
     forces: bool = False,
     stresses: bool = False,

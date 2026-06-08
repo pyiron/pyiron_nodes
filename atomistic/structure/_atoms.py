@@ -61,7 +61,6 @@ from typing import Union
 from ase.atoms import Atoms
 from core.data_fields import DataArray, EmptyArrayField
 
-
 # ---------------------------------------------------------------------------
 # OutputAtoms dataclass
 # ---------------------------------------------------------------------------

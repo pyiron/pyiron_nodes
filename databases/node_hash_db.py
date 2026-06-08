@@ -94,21 +94,21 @@ def GetHash(node: Node):
 def GetUpstreamGraph(db, node_id: int):
     """
     Get the upstream workflow containing the node with id *node_id* from the database.
-    
+
     This function restores the complete upstream workflow including the specified node
     and all nodes it depends on (connected via input edges). This is useful for
     understanding the full computation graph that feeds into a particular node.
-    
+
     Unlike GetNode which shows only the single node, GetUpstreamGraph recursively
     restores all upstream nodes connected through input dependencies.
-    
+
     The returned Graph object will automatically be opened as a new workflow tab
     in the GUI.
-    
+
     Args:
         db: InstanceDatabase connection
         node_id: Integer ID/index of the node in the database table
-    
+
     Returns:
         Graph: The complete upstream workflow ready for display in a new tab
     """
@@ -125,12 +125,10 @@ def GetUpstreamGraph(db, node_id: int):
     session.close()
 
     node_hash = df.hash.iloc[node_id]
-    
+
     # Restore the node - this recursively restores upstream connected nodes
-    _, graph = pyiron_database.restore_node_from_database(
-        db=db, node_hash=node_hash
-    )
-    
+    _, graph = pyiron_database.restore_node_from_database(db=db, node_hash=node_hash)
+
     # Set a meaningful label for the graph based on the node_id
     # This ensures the tab shows a proper name when the graph is opened
     if graph.label is None or graph.label == "":

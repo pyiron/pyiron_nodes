@@ -10,22 +10,21 @@ from ase.neighborlist import neighbor_list
 from typing import Tuple, Dict, List, Literal, Optional
 from core import as_function_node
 
+
 # -------------------------------------------------------------------------
 def _pair_key(el1: str, el2: str) -> Tuple[str, str]:
     """Order‑independent dict key for a pair of elements."""
     return tuple(sorted((el1, el2)))
 
 
-def _sk_matrix(l: float, m: float, n: float,
-               Vssσ: float, Vspσ: float,
-               Vppσ: float, Vppπ: float) -> np.ndarray:
+def _sk_matrix(
+    l: float, m: float, n: float, Vssσ: float, Vspσ: float, Vppσ: float, Vppπ: float
+) -> np.ndarray:
     """4×4 (s,px,py,pz) Slater‑Koster hopping block."""
     Hss = Vssσ
-    Hsp = np.array([Vspσ * l,
-                    Vspσ * m,
-                    Vspσ * n])                     # s ↔ p
+    Hsp = np.array([Vspσ * l, Vspσ * m, Vspσ * n])  # s ↔ p
     dir_vec = np.array([l, m, n])
-    outer = np.outer(dir_vec, dir_vec)          # l_i l_j
+    outer = np.outer(dir_vec, dir_vec)  # l_i l_j
     delta = np.eye(3)
     Hpp = Vppσ * outer + Vppπ * (delta - outer)  # p‑p block
 
@@ -38,16 +37,18 @@ def _sk_matrix(l: float, m: float, n: float,
 
 
 @as_function_node
-def tbHamilton(atoms: Atoms,
-                rcut: float = 5.0,
-                onsite: Dict[str, Tuple[float, float, float, float]] | None = None,
-                hoppings: Dict[Tuple[str, str], Tuple[float, float, float, float]] | None = None,
-                scaling: Literal["harrison", "none"] = "harrison",
-                H_format: Literal["sparse", "full"] = "full",
-                verbose: bool = False,
-                charges: np.ndarray | None = None,
-                chi: np.ndarray | None = None,
-                U: np.ndarray | None = None) -> Tuple[csr_matrix, List[Tuple[int, str]]]:
+def tbHamilton(
+    atoms: Atoms,
+    rcut: float = 5.0,
+    onsite: Dict[str, Tuple[float, float, float, float]] | None = None,
+    hoppings: Dict[Tuple[str, str], Tuple[float, float, float, float]] | None = None,
+    scaling: Literal["harrison", "none"] = "harrison",
+    H_format: Literal["sparse", "full"] = "full",
+    verbose: bool = False,
+    charges: np.ndarray | None = None,
+    chi: np.ndarray | None = None,
+    U: np.ndarray | None = None,
+) -> Tuple[csr_matrix, List[Tuple[int, str]]]:
     """
     Convert an ASE Atoms object (any composition) into a real‑space sp‑TB Hamiltonian.
 
@@ -122,12 +123,12 @@ def tbHamilton(atoms: Atoms,
     # -----------------------------------------------------------------
     if hoppings is None:
         hoppings = {
-            _pair_key('H', 'H'): (-2.0,  2.5,  3.0, -1.0),
-            _pair_key('H', 'O'): (-1.5,  2.2,  2.8, -0.9),
-            _pair_key('O', 'O'): (-1.2,  2.0,  2.5, -0.8),
-            _pair_key('Pt','Pt'): (-3.0,  3.5,  4.0, -1.2),
-            _pair_key('Pt','H'):  (-2.5,  3.0,  3.5, -1.0),
-            _pair_key('Pt','O'):  (-2.2,  2.8,  3.2, -0.9),
+            _pair_key("H", "H"): (-2.0, 2.5, 3.0, -1.0),
+            _pair_key("H", "O"): (-1.5, 2.2, 2.8, -0.9),
+            _pair_key("O", "O"): (-1.2, 2.0, 2.5, -0.8),
+            _pair_key("Pt", "Pt"): (-3.0, 3.5, 4.0, -1.2),
+            _pair_key("Pt", "H"): (-2.5, 3.0, 3.5, -1.0),
+            _pair_key("Pt", "O"): (-2.2, 2.8, 3.2, -0.9),
         }
 
     # -----------------------------------------------------------------
@@ -147,7 +148,9 @@ def tbHamilton(atoms: Atoms,
         Es, Epx, Epy, Epz = onsite[elem]
         for orb, val in enumerate([Es, Epx, Epy, Epz]):
             ii = gid(a_idx, orb)
-            rows.append(ii); cols.append(ii); data.append(val)
+            rows.append(ii)
+            cols.append(ii)
+            data.append(val)
 
     # -----------------------------------------------------------------
     # 5b. Hopping blocks
@@ -156,7 +159,7 @@ def tbHamilton(atoms: Atoms,
         if d < 1e-3:  # skip spurious intra‑atomic pairs
             continue
 
-        l, m, n = vec / d                     # direction cosines
+        l, m, n = vec / d  # direction cosines
 
         elem_i = atoms[i].symbol
         elem_j = atoms[j].symbol
@@ -168,9 +171,11 @@ def tbHamilton(atoms: Atoms,
         Vssσ, Vspσ, Vppσ, Vppπ = hoppings[key]
 
         if scaling == "harrison":
-            scale = (1.0 / d) ** 2            # V ∝ 1/d²
-            Vssσ *= scale; Vspσ *= scale
-            Vppσ *= scale; Vppπ *= scale
+            scale = (1.0 / d) ** 2  # V ∝ 1/d²
+            Vssσ *= scale
+            Vspσ *= scale
+            Vppσ *= scale
+            Vppπ *= scale
         elif scaling != "none":
             raise ValueError("`scaling` must be 'harrison' or 'none'")
 
@@ -183,8 +188,12 @@ def tbHamilton(atoms: Atoms,
                 jj = gid(j, orb_j)
                 val = block[orb_i, orb_j]
 
-                rows.append(ii); cols.append(jj); data.append(val)
-                rows.append(jj); cols.append(ii); data.append(val)
+                rows.append(ii)
+                cols.append(jj)
+                data.append(val)
+                rows.append(jj)
+                cols.append(ii)
+                data.append(val)
 
     # -----------------------------------------------------------------
     # 6. Assemble CSR matrix
@@ -215,7 +224,7 @@ def tbHamilton(atoms: Atoms,
                 U = U_default
 
         # --- compute shifted diagonal --------------------------------------
-        eps0 = H.diagonal()                     # shape (dim,)
+        eps0 = H.diagonal()  # shape (dim,)
         shifted_diag = ShiftDiagonal(eps0, charges, chi, U).run()  # also (dim,)
 
         # --- replace the diagonal (CSR) ------------------------------------
@@ -226,9 +235,9 @@ def tbHamilton(atoms: Atoms,
     # 8. Orbital map (optional)
     # -----------------------------------------------------------------
     orb_labels = ["s", "px", "py", "pz"]
-    orbital_map = [(atom_idx, orb_labels[orb])
-                   for atom_idx in range(N)
-                   for orb in range(4)]
+    orbital_map = [
+        (atom_idx, orb_labels[orb]) for atom_idx in range(N) for orb in range(4)
+    ]
 
     # -----------------------------------------------------------------
     # 9. Verbose output
@@ -240,8 +249,10 @@ def tbHamilton(atoms: Atoms,
         print(f"  Non‑zero entries: {H.nnz}")
         print("  On‑site energies (eV):")
         for el, vals in onsite.items():
-            print(f"    {el:>2}:  s={vals[0]:6.3f},  px={vals[1]:6.3f}, "
-                  f"py={vals[2]:6.3f},  pz={vals[3]:6.3f}")
+            print(
+                f"    {el:>2}:  s={vals[0]:6.3f},  px={vals[1]:6.3f}, "
+                f"py={vals[2]:6.3f},  pz={vals[3]:6.3f}"
+            )
 
     if H_format == "full":
         H = H.todense()
@@ -252,9 +263,9 @@ def tbHamilton(atoms: Atoms,
 @as_function_node
 def OnsiteData():
     onsite_elements = {
-        'Pt': (-5.5, -2.5, -2.5, -2.5),
-        'O' : (-7.0, -3.0, -3.0, -3.0),
-        'H' : (-13.6, -5.0, -5.0, -5.0)    
+        "Pt": (-5.5, -2.5, -2.5, -2.5),
+        "O": (-7.0, -3.0, -3.0, -3.0),
+        "H": (-13.6, -5.0, -5.0, -5.0),
     }
     return onsite_elements
 
@@ -268,12 +279,12 @@ def Hopping(scale: float = 1):
     adjust the strength of all hopping terms.
     """
     base_hopping_elements = {
-        _pair_key('Pt','Pt'): (-2.8,  3.2,  3.8, -1.1),
-        _pair_key('Pt','O') : (-2.0,  2.6,  3.0, -0.9),
-        _pair_key('Pt','H') : (-1.8,  2.4,  2.8, -0.8),
-        _pair_key('O','O')  : (-1.1,  2.0,  2.4, -0.7),
-        _pair_key('O','H')  : (-1.0,  1.9,  2.3, -0.6),
-        _pair_key('H','H')  : (-0.9,  1.8,  2.2, -0.5),
+        _pair_key("Pt", "Pt"): (-2.8, 3.2, 3.8, -1.1),
+        _pair_key("Pt", "O"): (-2.0, 2.6, 3.0, -0.9),
+        _pair_key("Pt", "H"): (-1.8, 2.4, 2.8, -0.8),
+        _pair_key("O", "O"): (-1.1, 2.0, 2.4, -0.7),
+        _pair_key("O", "H"): (-1.0, 1.9, 2.3, -0.6),
+        _pair_key("H", "H"): (-0.9, 1.8, 2.2, -0.5),
     }
 
     # Apply scaling factor to each tuple of hopping parameters
@@ -285,10 +296,12 @@ def Hopping(scale: float = 1):
 
 
 @as_function_node
-def FermiOccupations(eigenvalues: np.ndarray,
-                     eigenvectors: np.ndarray,
-                     electronic_temperature: float,
-                     n_electrons: float) -> Tuple[np.ndarray, np.ndarray]:
+def FermiOccupations(
+    eigenvalues: np.ndarray,
+    eigenvectors: np.ndarray,
+    electronic_temperature: float,
+    n_electrons: float,
+) -> Tuple[np.ndarray, np.ndarray]:
     """Calculate Fermi occupations and orbital‑resolved DOS.
 
     Parameters
@@ -326,7 +339,7 @@ def FermiOccupations(eigenvalues: np.ndarray,
         # Zero‑temperature: occupy the lowest‑energy states
         sorted_idx = np.argsort(eigenvalues)
         occupations = np.zeros_like(eigenvalues)
-        occupations[sorted_idx[:int(round(n_electrons))]] = 1.0
+        occupations[sorted_idx[: int(round(n_electrons))]] = 1.0
         mu = eigenvalues[sorted_idx[int(round(n_electrons)) - 1]]
     else:
         # Use Boltzmann constant in eV/K
@@ -365,8 +378,7 @@ def FermiOccupations(eigenvalues: np.ndarray,
 
 
 @as_function_node
-def AtomCharges(
-                orbital_dos: np.ndarray) -> np.ndarray:
+def AtomCharges(orbital_dos: np.ndarray) -> np.ndarray:
     """Compute the net charge (electron count) on each atom.
 
     The ``orbital_dos`` array returned by :func:`FermiOccupations` already
@@ -393,7 +405,9 @@ def AtomCharges(
 
     # Determine number of atoms assuming 4 orbitals per atom
     if orbital_population.size % 4 != 0:
-        raise ValueError("orbital_dos size is not a multiple of 4; cannot infer atom count")
+        raise ValueError(
+            "orbital_dos size is not a multiple of 4; cannot infer atom count"
+        )
     n_atoms = orbital_population.size // 4
 
     # Reshape to (n_atoms, 4) and sum over the four orbitals per atom
@@ -402,8 +416,9 @@ def AtomCharges(
 
 
 @as_function_node
-def ChargeEquilibration(charges: np.ndarray,
-                        target_total_charge: float = 0.0) -> np.ndarray:
+def ChargeEquilibration(
+    charges: np.ndarray, target_total_charge: float = 0.0
+) -> np.ndarray:
     """Uniformly shift atomic charges to achieve a target total charge.
 
     In many tight‑binding workflows the raw atomic charges (electron
@@ -436,10 +451,9 @@ def ChargeEquilibration(charges: np.ndarray,
 
 
 @as_function_node
-def ShiftDiagonal(eps0: np.ndarray,
-                  charges: np.ndarray,
-                  chi: np.ndarray,
-                  U: np.ndarray) -> np.ndarray:
+def ShiftDiagonal(
+    eps0: np.ndarray, charges: np.ndarray, chi: np.ndarray, U: np.ndarray
+) -> np.ndarray:
     """Compute shifted diagonal on‑site elements with atom‑specific coefficients.
 
     In charge‑equilibrated tight‑binding the diagonal (on‑site) energy ``eps0``
@@ -479,7 +493,9 @@ def ShiftDiagonal(eps0: np.ndarray,
         raise ValueError("eps0 size must be a multiple of 4 (4 orbitals per atom)")
     n_atoms = eps0.size // 4
     if charges.size != n_atoms:
-        raise ValueError("Length of charges does not match number of atoms inferred from eps0")
+        raise ValueError(
+            "Length of charges does not match number of atoms inferred from eps0"
+        )
     if chi.shape != (n_atoms,):
         raise ValueError("chi must be a vector of length equal to the number of atoms")
     if U.shape != (n_atoms,):
@@ -490,14 +506,16 @@ def ShiftDiagonal(eps0: np.ndarray,
     chi_per_orb = np.repeat(chi, 4)
     U_per_orb = np.repeat(U, 4)
 
-    shifted = eps0 + chi_per_orb * charge_per_orb + U_per_orb * charge_per_orb ** 2
+    shifted = eps0 + chi_per_orb * charge_per_orb + U_per_orb * charge_per_orb**2
     return shifted
 
 
 @as_function_node(["chi", "U"])
-def ChiUData(atoms: Atoms,
-             chi_params: Dict[str, float] | None = None,
-             U_params: Dict[str, float] | None = None) -> Tuple[np.ndarray, np.ndarray]:
+def ChiUData(
+    atoms: Atoms,
+    chi_params: Dict[str, float] | None = None,
+    U_params: Dict[str, float] | None = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """Generate atom‑specific ``chi`` and ``U`` arrays from the atomic structure.
 
     The function mirrors the style of :func:`OnsiteData` by providing a simple
@@ -528,14 +546,14 @@ def ChiUData(atoms: Atoms,
     """
     # Default parameter tables – extend as needed for additional species
     default_chi = {
-        'Pt': 0.5,
-        'O': 0.3,
-        'H': 0.1,
+        "Pt": 0.5,
+        "O": 0.3,
+        "H": 0.1,
     }
     default_U = {
-        'Pt': 5.0,
-        'O': 3.0,
-        'H': 2.0,
+        "Pt": 5.0,
+        "O": 3.0,
+        "H": 2.0,
     }
 
     chi_lookup = chi_params if chi_params is not None else default_chi
@@ -556,9 +574,9 @@ def ChiUData(atoms: Atoms,
 
 
 @as_function_node("chi_dict")
-def ChiData(chi_Pt: float = 0.5,
-            chi_O: float = 0.3,
-            chi_H: float = 0.1) -> Dict[str, float]:
+def ChiData(
+    chi_Pt: float = 0.5, chi_O: float = 0.3, chi_H: float = 0.1
+) -> Dict[str, float]:
     """Return a dictionary of ``chi`` parameters for supported elements.
 
     This helper node mirrors the style of :func:`OnsiteData` and provides a
@@ -582,16 +600,14 @@ def ChiData(chi_Pt: float = 0.5,
         Mapping from element symbol to the provided ``chi`` value.
     """
     return {
-        'Pt': chi_Pt,
-        'O': chi_O,
-        'H': chi_H,
+        "Pt": chi_Pt,
+        "O": chi_O,
+        "H": chi_H,
     }
 
 
 @as_function_node("u_dict")
-def UData(U_Pt: float = 5.0,
-          U_O: float = 3.0,
-          U_H: float = 2.0) -> Dict[str, float]:
+def UData(U_Pt: float = 5.0, U_O: float = 3.0, U_H: float = 2.0) -> Dict[str, float]:
     """Return a dictionary of ``U`` parameters for supported elements.
 
     Mirrors :func:`ChiData` but for the quadratic stiffness coefficients ``U``.
@@ -613,9 +629,9 @@ def UData(U_Pt: float = 5.0,
         Mapping from element symbol to the provided ``U`` value.
     """
     return {
-        'Pt': U_Pt,
-        'O': U_O,
-        'H': U_H,
+        "Pt": U_Pt,
+        "O": U_O,
+        "H": U_H,
     }
 
 
@@ -624,29 +640,28 @@ def UData(U_Pt: float = 5.0,
 # --------------------------------------------------------------
 try:
     # Newer ASE versions (≥ 3.22) provide this dictionary.
-    from ase.data import valence_electrons as _VALENCE_ELECTRONS   # type: ignore
-except Exception:   # pragma: no cover
+    from ase.data import valence_electrons as _VALENCE_ELECTRONS  # type: ignore
+except Exception:  # pragma: no cover
     # Very small fallback that is sufficient for the elements that appear
     # in the present TB parametrisation.  Keys are atomic numbers.
     _VALENCE_ELECTRONS = {
-        1:  1,   # H
-        8:  6,   # O (group 16 → 6 valence electrons)
+        1: 1,  # H
+        8: 6,  # O (group 16 → 6 valence electrons)
         78: 4,  # Pt (group 10 → 10 valence electrons) (for sp only Hamilton))
     }
 
     # expose the name used later in the code
-    valence_electrons = _VALENCE_ELECTRONS   # noqa: N816
+    valence_electrons = _VALENCE_ELECTRONS  # noqa: N816
 else:
     # If the import succeeded we just re‑export the name.
-    valence_electrons = _VALENCE_ELECTRONS    # noqa: N816
+    valence_electrons = _VALENCE_ELECTRONS  # noqa: N816
 
 
 # --------------------------------------------------------------
 # NEW NODE: initial charge density generator (robust)
 # --------------------------------------------------------------
 @as_function_node
-def InitialChargeDensity(atoms: Atoms,
-                         total_charge: float = 0.0) -> np.ndarray:
+def InitialChargeDensity(atoms: Atoms, total_charge: float = 0.0) -> np.ndarray:
     """Return a simple first‑guess per‑atom charge (electron count).
 
     The default guess is the neutral valence‑electron count taken from
@@ -681,8 +696,7 @@ def InitialChargeDensity(atoms: Atoms,
     # If an element is missing we raise a clear error – the user can extend the
     # fallback dictionary above or supply a custom charge density.
     neutral = np.array(
-        [valence_electrons.get(atom.number,
-                               None) for atom in atoms],
+        [valence_electrons.get(atom.number, None) for atom in atoms],
         dtype=float,
     )
     if None in neutral:
@@ -707,24 +721,26 @@ def InitialChargeDensity(atoms: Atoms,
 
     return neutral
 
+
 # ---------------------------------------------------------------
 # NEW NODE: self‑consistent charge (SCC) SCF loop
 # ---------------------------------------------------------------
 @as_function_node
-def SCC_SCF(atoms: Atoms,
-            rcut: float = 5.0,
-            onsite: Dict[str, Tuple[float, float, float, float]] | None = None,
-            hoppings: Dict[Tuple[str, str],
-                          Tuple[float, float, float, float]] | None = None,
-            scaling: Literal["harrison", "none"] = "harrison",
-            H_format: Literal["sparse", "full"] = "full",
-            max_iter: int = 20,
-            mixing: float = 0.3,
-            mixing_scheme: Literal["linear", "anderson", "broyden"] = "linear",
-            tol: float = 1e-6,
-            electronic_temperature: float = 300.0,
-            total_charge: float = 0.0,
-            verbose: bool = False) -> Tuple[csr_matrix, np.ndarray, np.ndarray, list, float]:
+def SCC_SCF(
+    atoms: Atoms,
+    rcut: float = 5.0,
+    onsite: Dict[str, Tuple[float, float, float, float]] | None = None,
+    hoppings: Dict[Tuple[str, str], Tuple[float, float, float, float]] | None = None,
+    scaling: Literal["harrison", "none"] = "harrison",
+    H_format: Literal["sparse", "full"] = "full",
+    max_iter: int = 20,
+    mixing: float = 0.3,
+    mixing_scheme: Literal["linear", "anderson", "broyden"] = "linear",
+    tol: float = 1e-6,
+    electronic_temperature: float = 300.0,
+    total_charge: float = 0.0,
+    verbose: bool = False,
+) -> Tuple[csr_matrix, np.ndarray, np.ndarray, list, float]:
     """
     Perform a simple self‑consistent charge (SCC) SCF loop.
 
@@ -746,10 +762,10 @@ def SCC_SCF(atoms: Atoms,
     max_iter
         Maximum number of SCF iterations.
     mixing
-        Linear mixing factor ``0 < mixing ≤ 1``.  
-        The updated charge density is  
+        Linear mixing factor ``0 < mixing ≤ 1``.
+        The updated charge density is
 
-        ``q = (1‑mixing) * q_old + mixing * q_new``.  
+        ``q = (1‑mixing) * q_old + mixing * q_new``.
         Typical values are 0.2–0.5.
     tol
         Convergence tolerance for the charge density (absolute difference).
@@ -772,7 +788,7 @@ def SCC_SCF(atoms: Atoms,
     # 1. Initial charge guess (neutral valence distribution shifted by total_charge)
     # -----------------------------------------------------------
     q = InitialChargeDensity(atoms, total_charge=total_charge).run()
-    total_electrons = q.sum()                     # keep this number constant
+    total_electrons = q.sum()  # keep this number constant
 
     # ---------------------------------------------------------------------
     # 2. Mixing helpers (Anderson / Broyden)
@@ -789,14 +805,16 @@ def SCC_SCF(atoms: Atoms,
         # -------------------------------------------------------
         # 2. Build Hamiltonian with the current charge density
         # -------------------------------------------------------
-        H, _ = tbHamilton(atoms,
-                          rcut=rcut,
-                          onsite=onsite,
-                          hoppings=hoppings,
-                          scaling=scaling,
-                          H_format=H_format,
-                          verbose=verbose,
-                          charges=q).run()          # <-- charge‑dependent diagonal
+        H, _ = tbHamilton(
+            atoms,
+            rcut=rcut,
+            onsite=onsite,
+            hoppings=hoppings,
+            scaling=scaling,
+            H_format=H_format,
+            verbose=verbose,
+            charges=q,
+        ).run()  # <-- charge‑dependent diagonal
 
         # -------------------------------------------------------
         # 3. Diagonalise (dense matrix required for eigh)
@@ -811,10 +829,12 @@ def SCC_SCF(atoms: Atoms,
         # -------------------------------------------------------
         # 4. Fermi occupations (finite‑temperature smearing)
         # -------------------------------------------------------
-        occ, dos, e_Fermi = FermiOccupations(eps,
-                                    vecs,
-                                    electronic_temperature=electronic_temperature,
-                                    n_electrons=total_electrons).run()
+        occ, dos, e_Fermi = FermiOccupations(
+            eps,
+            vecs,
+            electronic_temperature=electronic_temperature,
+            n_electrons=total_electrons,
+        ).run()
 
         # -------------------------------------------------------
         # 5. Extract new atomic charges from the DOS
@@ -896,7 +916,9 @@ def SCC_SCF(atoms: Atoms,
         diff = np.linalg.norm(q - q_new)
         diff_list.append(diff)
         if verbose:
-            print(f"SCC iteration {it+1:2d}: charge change = {diff:.3e} (scheme={mixing_scheme})")
+            print(
+                f"SCC iteration {it+1:2d}: charge change = {diff:.3e} (scheme={mixing_scheme})"
+            )
 
     else:
         print(f"Warning: SCC did not converge within {max_iter} iterations.")
@@ -904,22 +926,31 @@ def SCC_SCF(atoms: Atoms,
     # -----------------------------------------------------------
     # 9. Final Hamiltonian (built with the converged charge density)
     # -----------------------------------------------------------
-    H_final, _ = tbHamilton(atoms,
-                           rcut=rcut,
-                           onsite=onsite,
-                           hoppings=hoppings,
-                           scaling=scaling,
-                           H_format=H_format,
-                           verbose=verbose,
-                           charges=q).run()
-    
+    H_final, _ = tbHamilton(
+        atoms,
+        rcut=rcut,
+        onsite=onsite,
+        hoppings=hoppings,
+        scaling=scaling,
+        H_format=H_format,
+        verbose=verbose,
+        charges=q,
+    ).run()
+
     print("scf iterations: ", it, max_iter)
 
     return H_final, q, eps, diff_list, e_Fermi
 
 
 @as_function_node
-def ShiftAtom(structure: Atoms, species: Optional[str]=None, atomic_index: int=0, x: float=0, y: float=0, z: float=0):
+def ShiftAtom(
+    structure: Atoms,
+    species: Optional[str] = None,
+    atomic_index: int = 0,
+    x: float = 0,
+    y: float = 0,
+    z: float = 0,
+):
     structure.positions[atomic_index] += np.array([x, y, z])
     if species is not None:
         structure.symbols[atomic_index] = species
@@ -930,8 +961,8 @@ def ShiftAtom(structure: Atoms, species: Optional[str]=None, atomic_index: int=0
 def PlotDos(
     x: Optional[list | np.ndarray],
     bins: int = 50,
-    e_Fermi: Optional[float] = None, 
-    color: str = "b"
+    e_Fermi: Optional[float] = None,
+    color: str = "b",
 ):
     """
     Plot a histogram.
@@ -941,7 +972,6 @@ def PlotDos(
     fig, ax = plt.subplots()
     ax.hist(x, bins=bins, color=color)
     if e_Fermi is not None:
-        ax.axvline(e_Fermi, color='k', linestyle="--")
-
+        ax.axvline(e_Fermi, color="k", linestyle="--")
 
     return fig

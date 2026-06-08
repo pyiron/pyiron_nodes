@@ -4,6 +4,7 @@ from core import as_function_node
 
 # ── Local node definitions ──────────────────────
 
+
 @as_function_node
 def report(report_label: str, value: float):
     """Print a labelled result."""
@@ -40,6 +41,7 @@ def compute_mean(data: list):
 
 # ── Group node factories ─────────────────────────────
 
+
 @group_node("mean")
 def preprocessing(path):
     inner_wf = Workflow("preprocessing")
@@ -48,10 +50,9 @@ def preprocessing(path):
     inner_wf.mean = compute_mean(data=inner_wf.sqrt.outputs.result)
     return inner_wf.mean
 
+
 wf = Workflow("ml_pipeline")
 
-wf.preprocessing = preprocessing(path='data.csv')
+wf.preprocessing = preprocessing(path="data.csv")
 
-wf.report = report(report_label='result', value=wf.preprocessing.outputs.mean)
-
-
+wf.report = report(report_label="result", value=wf.preprocessing.outputs.mean)
