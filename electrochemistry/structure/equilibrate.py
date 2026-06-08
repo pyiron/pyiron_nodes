@@ -8,99 +8,6 @@ ANION = "F"
 
 
 @as_function_node
-def Equilibrate(
-    solvated_electrode,
-    water_potential,
-    parameters=None,
-    store: bool = True,
-) -> OutputCalcMD:
-    """
-    Run a LAMMPS molecular‑dynamics equilibration of a water‑electrolyte systems.
-
-    The routine creates a temporary *pyiron* project called ``equilibrate``,
-    builds a LAMMPS job named ``water_equilibration`` and runs it with the
-    supplied structure and water potential.  Selective dynamics are applied so
-    that only the water atoms (O and H) are allowed to move while the electrode
-    atoms remain fixed.  After the job finishes, the most relevant MD output
-    (positions, velocities, energies, forces, …) is collected into an
-    :class:`OutputCalcMD` dataclass that can be passed downstream to analysis
-    or further simulation nodes.
-
-    Parameters
-    ----------
-    solvated_electrode : pyiron_atomistics.Atoms
-        The electrode structure that already contains a water slab.  The object
-        must support the ``add_tag`` and ``selective_dynamics`` attributes used
-        by pyiron to freeze the electrode atoms.
-    water_potential : pandas.DataFrame
-        A DataFrame describing the LAMMPS potential for water (and optionally
-        metal / neon species).  It is passed unchanged to the LAMMPS job via
-        ``j.potential``.
-    parameters : InputCalcMD, optional
-        A dataclass (or any object that can be converted to a ``dict``) that
-        contains the MD control parameters (time step, temperature, ensemble,
-        number of steps, etc.).  If ``None`` the function creates a default
-        ``InputCalcMD`` instance by calling ``InputCalcMD().run()``.
-    store : bool, optional
-        If ``True`` the generated ``OutputCalcMD`` instance is stored in the
-        pyiron job’s output folder (default).  The current implementation does
-        not make use of this flag, but it is kept for API compatibility with
-        other nodes.
-
-    Returns
-    -------
-    OutputCalcMD
-        A dataclass containing the full MD trajectory and thermodynamic data
-        produced by LAMMPS.
-    """
-    parameters = InputCalcMD().run() if parameters is None else parameters
-
-    from dataclasses import asdict
-    from pyiron_atomistics import Project
-
-    # Create a job for LAMMPS equilibration
-    pr = Project("equilibrate")
-    j = pr.create.job.Lammps("water_equilibration", delete_existing_job=True)
-
-    solvated_electrode.add_tag(selective_dynamics=[False, False, False])
-    solvated_electrode.selective_dynamics[
-        solvated_electrode.select_index(["O", "H", "Na", ANION])
-    ] = [
-        True,
-        True,
-        True,
-    ]
-
-    j.structure = solvated_electrode
-    j.potential = water_potential
-    j.calc_md(**asdict(parameters))
-
-    j.run(delete_existing_job=True)
-    job_out = j["output/generic"]
-
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
-
-    out = OutputCalcMD.pure_dataclass()
-    out.cells = job_out["cells"]
-    out.energies_pot = job_out["energy_pot"]
-    out.energies_tot = job_out["energy_tot"]
-    out.forces = job_out["forces"]
-    out.indices = job_out["indices"]
-    out.natoms = job_out["natoms"]
-    out.positions = job_out["positions"]
-    out.pressures = job_out["pressures"]
-    out.steps = job_out["steps"]
-    out.temperatures = job_out["temperature"]
-    out.unwrapped_positions = job_out["unwrapped_positions"]
-    out.velocities = job_out["velocities"]
-    out.volumes = job_out["volume"]
-    out.species = [e.Abbreviation for e in solvated_electrode.species]
-    # solvated_electrode.get_species_symbols()
-
-    return out
-
-
-@as_function_node
 def WaterPotential(
     metal: str = "Al",
     metal_charge: float = 0.0,
@@ -157,7 +64,22 @@ def WaterPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+        "O": {
+            "O-H": {
+                "max_bond_num": 2,
+                "neighbor_type": "H",
+                "cutoff": 1.2,
+            },
+            "H-O-H": {
+                "max_angle_num": 1,
+                "neighbor_type": "H",
+                "cutoff": 1.2,
+            },
+        }
+    }
+
+    return water_potential, bond_dict
 
 
 @as_function_node
@@ -296,7 +218,22 @@ def IonPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+        "O": {
+            "O-H": {
+                "max_bond_num": 2,
+                "neighbor_type": "H",
+                "cutoff": 1.2,
+            },
+            "H-O-H": {
+                "max_angle_num": 1,
+                "neighbor_type": "H",
+                "cutoff": 1.2,
+            },
+        }
+    }
+
+    return water_potential, bond_dict
 
 
 @as_function_node("Ion_density")
@@ -328,8 +265,6 @@ def element_density(trajectory, initial_structure, initial_step: int = 0):
 
     slab_bot = np.max(electrolyte.positions[ind_Al, 2])
     slab_top = np.max(electrolyte.positions[ind_Ne, 2])
-
-    from pyiron_atomistics.atomistics.job.atomistic import Trajectory
 
     positions = trajectory.positions[initial_step:]
 
@@ -363,6 +298,8 @@ def Ion_density(trajectory, initial_structure):
     Returns
 
     """
+    import numpy as np
+
     electrolyte = initial_structure.copy()
 
     ind_O = electrolyte.select_index("O")
@@ -374,8 +311,6 @@ def Ion_density(trajectory, initial_structure):
 
     slab_bot = np.max(electrolyte.positions[ind_Al, 2])
     slab_top = np.max(electrolyte.positions[ind_Ne, 2])
-
-    from pyiron_atomistics.atomistics.job.atomistic import Trajectory
 
     positions = trajectory.positions
 

@@ -5,6 +5,7 @@ from typing import Optional, Union, List, Iterable, Set
 from ase import Atoms
 
 from core import as_function_node
+from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase
 
 
 @as_function_node("structure")
@@ -30,7 +31,41 @@ def Repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
     from a primitive cell (e.g., "create a 2×2×2 bulk supercell"). Create a supercell 
     by repeating the input structure. Expand to a nxnxn supercell.
     """
+    # Convert structure to ASE Atoms if necessary
+    structure = _data_to_ase(structure)
     return structure.repeat(int(repeat_scalar))
+
+
+@as_function_node("structure")
+def RepeatXYZ(
+    structure: Atoms,
+    repeat_x: int = 1,
+    repeat_y: int = 1,
+    repeat_z: int = 1,
+) -> Atoms:
+    """
+    Repeat a crystal structure with independent repetition counts along each
+    lattice vector.
+
+    Parameters
+    ----------
+    structure : Atoms
+        The ASE ``Atoms`` object to be repeated.
+    repeat_x : int, optional
+        Repetitions along the first lattice vector (default ``1``).
+    repeat_y : int, optional
+        Repetitions along the second lattice vector (default ``1``).
+    repeat_z : int, optional
+        Repetitions along the third lattice vector (default ``1``).
+
+    Returns
+    -------
+    Atoms
+        A new ``Atoms`` object containing the repeated supercell.
+    """
+    # Convert structure to ASE Atoms if necessary
+    structure = _data_to_ase(structure)    
+    return structure.repeat([int(repeat_x), int(repeat_y), int(repeat_z)])
 
 
 @as_function_node("structure")
@@ -56,6 +91,8 @@ def ApplyStrain(structure: Optional[Atoms] = None, strain: Union[float] = 0) -> 
     Suitable for tasks such as "apply 5 % tensile strain to a bulk cell"
     or "compress a slab by 2 % before relaxation".
     """
+    # Convert structure to ASE Atoms if necessary
+    structure = _data_to_ase(structure)
     struct = structure.copy()
     struct.apply_strain(strain)
     return struct
@@ -84,6 +121,8 @@ def CreateVacancy(structure, index: Optional[int] = None) -> Atoms:
     Use when the scientific goal is "introduce a vacancy at site 5"
     or "generate a defect structure for defect formation energy calculations".
     """
+    # Convert OutputAtomsstructure to ASE Atoms if necessary
+    structure = _data_to_ase(structure)
     structure = structure.copy()
     if index is not None:
         del structure[int(index)]
@@ -126,10 +165,178 @@ def RotateAxisAngle(
     "apply a 45° tilt to a grain boundary", or any situation where a
     specific crystallographic orientation is required.
     """
+    # Convert structure to ASE Atoms if necessary
+    structure = _data_to_ase(structure)
 
     structure_rotated = structure.copy()
     structure_rotated.rotate(a=angle, v=axis, center=center, rotate_cell=rotate_cell)
     return structure_rotated
+
+
+@as_function_node
+def FixAtoms(
+    structure: Atoms,
+    fix_xyz: str = "1 1 1",
+    fixed_species: Optional[str] = None,
+    fix_z_coordinate: Optional[float] = None,
+    fix_z_tolerance: Optional[float] = 0.5,
+    fix_atom_indices: Optional[str] = None,
+) -> Atoms:
+    """
+    Return a copy of *structure* with constraints applied to the requested
+    atoms (by species, z-coordinate, or atom indices) and degrees of freedom.
+
+    Parameters
+    ----------
+    structure : ase.Atoms
+        Atomic configuration to be copied and (optionally) constrained.
+
+    fixed_species : None or str, optional
+        * ``None``        – no atoms are fixed by species.
+        * ``"Cu"``        – all copper atoms are fixed.
+        * ``'["O", "H"]'``– all oxygen and hydrogen atoms are fixed.
+
+    fix_xyz : str, optional
+        Which Cartesian degrees of freedom to fix, given as three
+        space-separated 1/0 flags for x, y, z respectively.
+        Default is ``"1 1 1"`` (fix all directions).
+
+        Examples
+        --------
+        * ``"1 1 1"`` – fix x, y, and z  (default)
+        * ``"1 1 0"`` – fix x and y,  free z
+        * ``"0 0 1"`` – fix z only,   free x and y
+
+    fix_z_coordinate : float or None, optional
+        Fix all atoms within ``fix_z_tolerance`` Å of this z-coordinate.
+        * ``None`` – no atoms are fixed by z-coordinate (default).
+        * ``5.0``  – fix all atoms with z in [4.5, 5.5] Å.
+
+    fix_z_tolerance : float, optional
+        Tolerance in Å around ``fix_z_coordinate``. Default is 0.5 Å.
+        Only used when ``fix_z_coordinate`` is not None.
+
+    fix_atom_indices : None or list[int], optional
+        Fix specific atoms by index.
+        * ``None``        – no atoms fixed by index (default).
+        * ``"0"``         – fix atom 0.
+        * ``'[0, 1, 2]'`` – fix atoms 0, 1, and 2.
+
+    Returns
+    -------
+    ase.Atoms
+        A copy of *structure* with the appropriate constraints attached.
+    """
+    import ast
+    from ase.constraints import FixAtoms, FixCartesian
+
+    # ------------------------------------------------------------------
+    #     Parse ``fix_xyz`` → boolean mask [fix_x, fix_y, fix_z]
+    #     Accepts "1 1 1", "1 0 0", "0 0 1", etc.
+    # ------------------------------------------------------------------
+    try:
+        flags = [int(v) for v in fix_xyz.strip().split()]
+    except ValueError:
+        raise ValueError(
+            f"fix_xyz must be three space-separated 1/0 values, e.g. '1 1 0'. Got: '{fix_xyz}'"
+        )
+
+    if len(flags) != 3:
+        raise ValueError(
+            f"fix_xyz must contain exactly three values (x y z). Got {len(flags)}: '{fix_xyz}'"
+        )
+
+    if not all(f in (0, 1) for f in flags):
+        raise ValueError(
+            f"fix_xyz values must be 0 or 1. Got: '{fix_xyz}'"
+        )
+
+    dof_mask = [bool(f) for f in flags]   # [fix_x, fix_y, fix_z]
+
+    # Use FixAtoms (simpler) when all three directions are fixed
+    use_fix_atoms = all(dof_mask)
+
+    # No directions fixed at all → nothing to constrain
+    if not any(dof_mask):
+        return structure.copy()
+
+    # ------------------------------------------------------------------
+    #   Normalise ``fixed_species`` → set of element symbols
+    # ------------------------------------------------------------------
+    species_set: Set[str] = set()
+
+    if fixed_species is not None:
+        try:
+            parsed_species = ast.literal_eval(fixed_species)
+        except (SyntaxError, ValueError):
+            parsed_species = fixed_species
+
+        if isinstance(parsed_species, str):
+            species_set = set(item.strip() for item in parsed_species.split(','))
+        elif isinstance(parsed_species, (list, tuple, set)):
+            if not all(isinstance(item, str) for item in parsed_species):
+                raise ValueError("All entries in the element list must be strings.")
+            species_set = set(parsed_species)
+        else:
+            raise ValueError(
+                "fixed_species must be None, a single element symbol, "
+                "or a string representation of a list/tuple of symbols."
+            )
+
+    # ------------------------------------------------------------------
+    #   Parse ``fix_atom_indices`` → set of integer indices
+    # ------------------------------------------------------------------
+    index_set: Set[int] = set()
+
+    if fix_atom_indices is not None:
+        try:
+            parsed_indices = ast.literal_eval(fix_atom_indices)
+        except (SyntaxError, ValueError):
+            parsed_indices = fix_atom_indices
+
+        if isinstance(parsed_indices, int):
+            index_set = {parsed_indices}
+        elif isinstance(parsed_indices, (list, tuple, set)):
+            if not all(isinstance(item, int) for item in parsed_indices):
+                raise ValueError("All entries in the index list must be integers.")
+            index_set = set(parsed_indices)
+
+    # ------------------------------------------------------------------
+    #     Build the boolean mask combining all three selection methods.
+    #     An atom is fixed if it satisfies ANY of the criteria.
+    # ------------------------------------------------------------------
+    mask: List[bool] = []
+
+    for i, atom in enumerate(structure):
+        fix_by_species = atom.symbol in species_set
+        fix_by_index   = i in index_set
+        fix_by_z       = (
+            fix_z_coordinate is not None and fix_z_coordinate != ''
+            and abs(atom.position[2] - fix_z_coordinate) <= fix_z_tolerance
+        )
+        mask.append(fix_by_species or fix_by_index or fix_by_z)
+
+    # ------------------------------------------------------------------
+    #   Create a copy and attach the constraint (if any atom is fixed).
+    # ------------------------------------------------------------------
+    new_structure = structure.copy()
+
+    if any(mask):
+        fixed_indices = [i for i, fixed in enumerate(mask) if fixed]
+
+        if use_fix_atoms:
+            # All three directions fixed → FixAtoms (simpler, more efficient)
+            constraint = FixAtoms(mask=mask)
+        else:
+            # Partial directions fixed → FixCartesian
+            constraint = FixCartesian(
+                a=fixed_indices,
+                mask=dof_mask,   # [fix_x, fix_y, fix_z]
+            )
+
+        new_structure.set_constraint(constraint)
+
+    return new_structure
 
 
 @as_function_node
@@ -290,3 +497,37 @@ def LayerShift(
     # Step 6: Return modified structure
     # ASE's PBC handling automatically wraps atoms that move beyond cell boundaries
     return new_structure
+
+
+@as_function_node("structure")
+def Stack(
+    bottom: Atoms,
+    top: Atoms,
+    axis: int = 2,
+    distance: Optional[float] = None,
+    reorder: bool = False,
+) -> Atoms:
+    """
+    Stack two structures on top of each other along a lattice axis.
+
+    Parameters
+    ----------
+    bottom : Atoms
+        The lower grain (placed first along the stacking axis).
+    top : Atoms
+        The upper grain (placed on top of ``bottom``).
+    axis : int, optional
+        Lattice axis along which to stack (0, 1, or 2; default ``2`` = z).
+    distance : float or None, optional
+        Gap between the two grains in Å. ``None`` uses ASE's default
+        (interface distance inferred from the cell).
+    reorder : bool, optional
+        If ``True``, reorder atoms so that species are grouped together.
+
+    Returns
+    -------
+    Atoms
+        The combined bicrystal structure.
+    """
+    from ase.build import stack as ase_stack
+    return ase_stack(bottom, top, axis=axis, distance=distance, reorder=reorder)

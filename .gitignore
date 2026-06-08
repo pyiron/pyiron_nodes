@@ -14,3 +14,4 @@ core.*
 /notebooks/pyiron_nodes/
 /notebooks/Sin/
 /tests/integration/test_notebooks.py
+pyiron_nodes_old/

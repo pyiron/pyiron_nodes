@@ -7,28 +7,28 @@ from core.data_fields import DataArray, EmptyArrayField
 from dataclasses import dataclass
 
 
-# @as_out_dataclass_node
-@dataclass
-class OutputAtoms:
-    symbols: DataArray = EmptyArrayField()
-    positions: DataArray = EmptyArrayField()
-    cell: DataArray = EmptyArrayField()
-    pbc: DataArray = EmptyArrayField()
+# # @as_out_dataclass_node
+# @dataclass
+# class OutputAtoms:
+#     symbols: DataArray = EmptyArrayField()
+#     positions: DataArray = EmptyArrayField()
+#     cell: DataArray = EmptyArrayField()
+#     pbc: DataArray = EmptyArrayField()
 
 
-def _data_to_ase(atoms: OutputAtoms.dataclass_type):
-    return Atoms(
-        symbols=atoms.symbols, positions=atoms.positions, cell=atoms.cell, pbc=atoms.pbc
-    )
+# def _data_to_ase(atoms: OutputAtoms.dataclass_type):
+#     return Atoms(
+#         symbols=atoms.symbols, positions=atoms.positions, cell=atoms.cell, pbc=atoms.pbc
+#     )
 
 
-def _ase_to_data(atoms: Atoms):
-    return OutputAtoms(
-        symbols=list(atoms.symbols),
-        positions=atoms.positions,
-        cell=atoms.cell.tolist(),
-        pbc=atoms.pbc.tolist(),
-    )
+# def _ase_to_data(atoms: Atoms):
+#     return OutputAtoms(
+#         symbols=list(atoms.symbols),
+#         positions=atoms.positions,
+#         cell=atoms.cell.tolist(),
+#         pbc=atoms.pbc.tolist(),
+# )
 
 
 @as_function_node("structure")

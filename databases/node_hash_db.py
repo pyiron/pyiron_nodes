@@ -4,14 +4,16 @@ import getpass
 USERNAME = getpass.getuser()
 
 from typing import Literal
+
+
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
     password: str = "none",
     host: str = "130.183.217.189",
     port: int = 5432,
-    database: str = 'pyiron',
-    table_name: Literal['test_nodes_cmmc',"nodes_cmmc"] = "test_nodes_cmmc",
+    database: str = "pyiron",
+    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",
 ):
     import pyiron_database
 
@@ -29,13 +31,39 @@ def CreateDB(
 
 
 @as_function_node
-def DeleteDB(db):
+def DeleteDB(db, reinitialize: bool = False, delete_hash_files: bool = False):
     """
     Delete the database and all its contents!
-    """
 
+    Args:
+        db: Database instance
+        reinitialize: If True, reinitialize the database after deletion (default: False)
+        delete_hash_files: If True, also delete hash files stored in
+                          ~/pyiron_core_data/.storage (default: False)
+    """
     db.drop()
-    db.init()
+
+    # Delete hash files if requested
+    if delete_hash_files:
+        import pathlib
+        import shutil
+        from core.config import paths as _cfg_paths
+
+        # Get the storage path from config
+        # storage_path = pathlib.Path(_cfg_paths.DATA_STORAGE)
+
+        # if storage_path.exists():
+        #     print(f"[DeleteDB] Removing hash files from: {storage_path}")
+        #     # Remove the entire storage directory
+        #     shutil.rmtree(storage_path)
+        #     # Recreate the empty directory
+        #     storage_path.mkdir(parents=True, exist_ok=True)
+        #     print(f"[DeleteDB] Hash files deleted and directory recreated")
+    if delete_hash_files:
+        db.cleanup_storage()
+
+    if reinitialize:
+        db.init()
     return db
 
 
@@ -97,21 +125,21 @@ def GetHash(node: Node):
 def GetUpstreamGraph(db, node_id: int):
     """
     Get the upstream workflow containing the node with id *node_id* from the database.
-    
+
     This function restores the complete upstream workflow including the specified node
     and all nodes it depends on (connected via input edges). This is useful for
     understanding the full computation graph that feeds into a particular node.
-    
+
     Unlike GetNode which shows only the single node, GetUpstreamGraph recursively
     restores all upstream nodes connected through input dependencies.
-    
+
     The returned Graph object will automatically be opened as a new workflow tab
     in the GUI.
-    
+
     Args:
         db: InstanceDatabase connection
         node_id: Integer ID/index of the node in the database table
-    
+
     Returns:
         Graph: The complete upstream workflow ready for display in a new tab
     """
@@ -128,12 +156,10 @@ def GetUpstreamGraph(db, node_id: int):
     session.close()
 
     node_hash = df.hash.iloc[node_id]
-    
+
     # Restore the node - this recursively restores upstream connected nodes
-    _, graph = pyiron_database.restore_node_from_database(
-        db=db, node_hash=node_hash
-    )
-    
+    _, graph = pyiron_database.restore_node_from_database(db=db, node_hash=node_hash)
+
     # Set a meaningful label for the graph based on the node_id
     # This ensures the tab shows a proper name when the graph is opened
     if graph.label is None or graph.label == "":

@@ -8,7 +8,7 @@ from core import as_function_node, Node, as_inp_dataclass_node, as_out_dataclass
 from core.data_fields import DataArray, EmptyArrayField
 from typing import Literal, List, Optional
 import pandas
-from pyiron_nodes.atomistic.structure.build import _ase_to_data, _data_to_ase, OutputAtoms
+from pyiron_nodes.atomistic.structure._atoms import _ase_to_data, _data_to_ase, OutputAtoms
 
 """Utility nodes for atomistic calculations using ASE within the pyiron workflow framework.
 

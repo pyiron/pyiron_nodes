@@ -828,3 +828,162 @@ def PlotDefectFormationEnergy(
 
     fig.tight_layout()
     return fig
+
+
+@as_function_node("fig")
+def PlotConvexHull(
+    formation_energies: dict,
+    mu_label: str = "μ (eV)",
+    ef_label: str = "Formation energy (eV)",
+    title: str = "Convex hull",
+    exclude_pristine: bool = False,
+) -> object:
+    """
+    Plot the lower convex hull (minimum formation energy envelope) of a
+    defect phase diagram.
+
+    For each chemical-potential value the most stable (lowest-E_f) structure
+    is identified.  The resulting piecewise envelope is drawn as a thick black
+    line; all individual curves are shown semi-transparently in the background.
+    Phase-transition boundaries (μ values where the ground state changes) are
+    marked with vertical dashed lines.
+
+    Parameters
+    ----------
+    formation_energies : dict
+        Output of :func:`ComputeDefectFormationEnergy`.
+    mu_label : str
+        x-axis label.
+    ef_label : str
+        y-axis label.
+    title : str
+        Plot title.
+    exclude_pristine : bool
+        If True, exclude the pristine (zero-energy reference) curve from the
+        hull computation.  Default False.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    import matplotlib.pyplot as plt
+
+    if "mu_values" not in formation_energies:
+        raise KeyError(
+            "'mu_values' key not found in formation_energies. "
+            "Use the output of ComputeDefectFormationEnergy."
+        )
+
+    mu_arr = np.atleast_1d(np.asarray(formation_energies["mu_values"], dtype=float))
+    reserved = {"mu_values"}
+    if exclude_pristine:
+        reserved.add("pristine")
+
+    phase_keys = [k for k in formation_energies if k not in reserved]
+    if not phase_keys:
+        raise ValueError("No plottable entries found in formation_energies.")
+
+    ef_matrix = np.array([
+        np.atleast_1d(np.asarray(formation_energies[k], dtype=float))
+        for k in phase_keys
+    ])  # (n_phases, n_mu)
+
+    hull_ef = np.min(ef_matrix, axis=0)
+    hull_idx = np.argmin(ef_matrix, axis=0)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    cmap = plt.colormaps["tab10"]
+
+    for i, key in enumerate(phase_keys):
+        ls = "--" if key == "pristine" else "-"
+        ax.plot(mu_arr, ef_matrix[i], color=cmap(i % 10),
+                lw=1.0, alpha=0.35, ls=ls, label=key)
+
+    ax.plot(mu_arr, hull_ef, color="black", lw=2.5, zorder=5, label="convex hull")
+
+    transitions = np.where(np.diff(hull_idx))[0]
+    for t in transitions:
+        ax.axvline(0.5 * (mu_arr[t] + mu_arr[t + 1]),
+                   color="crimson", lw=1.2, ls="--", alpha=0.8)
+
+    i = 0
+    while i < len(mu_arr):
+        p = int(hull_idx[i])
+        j = i
+        while j < len(mu_arr) and int(hull_idx[j]) == p:
+            j += 1
+        mid = (i + j) // 2
+        ax.text(mu_arr[mid], hull_ef[mid], phase_keys[p],
+                fontsize=7, ha="center", va="bottom", color=cmap(p % 10))
+        i = j
+
+    ax.axhline(0.0, color="gray", lw=0.8, ls=":")
+    ax.set_xlabel(mu_label, fontsize=13)
+    ax.set_ylabel(ef_label, fontsize=13)
+    ax.set_title(title, fontsize=14)
+    ax.legend(fontsize=8, framealpha=0.9, ncol=2)
+    ax.grid(True, linestyle="--", alpha=0.4)
+    fig.tight_layout()
+    return fig
+
+
+@as_function_node("df")
+def SelectStableStructures(
+    formation_energies: dict,
+) -> pd.DataFrame:
+    """
+    Identify the thermodynamically most stable structure at each
+    chemical-potential value and return a summary of stable-phase regions.
+
+    For each contiguous interval of μ over which a single defect
+    configuration minimises the formation energy, one row is added to the
+    output DataFrame.  The rows are sorted by ascending formation energy
+    (most stable first).
+
+    Parameters
+    ----------
+    formation_energies : dict
+        Output of :func:`ComputeDefectFormationEnergy`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns:
+
+        * ``stable_phase``         – label of the lowest-energy configuration
+        * ``mu_min``               – lower bound of the μ-interval (eV)
+        * ``mu_max``               – upper bound of the μ-interval (eV)
+        * ``min_formation_energy`` – most negative E_f in the interval (eV)
+    """
+    if "mu_values" not in formation_energies:
+        raise KeyError(
+            "'mu_values' key not found in formation_energies. "
+            "Use the output of ComputeDefectFormationEnergy."
+        )
+
+    mu_arr = np.atleast_1d(np.asarray(formation_energies["mu_values"], dtype=float))
+    phases = [k for k in formation_energies if k != "mu_values"]
+
+    ef = np.array([
+        np.atleast_1d(np.asarray(formation_energies[k], dtype=float))
+        for k in phases
+    ])  # (n_phases, n_mu)
+
+    best_idx = np.argmin(ef, axis=0)
+
+    rows = []
+    i = 0
+    while i < len(mu_arr):
+        p = int(best_idx[i])
+        j = i
+        while j < len(mu_arr) and int(best_idx[j]) == p:
+            j += 1
+        rows.append({
+            "stable_phase":         phases[p],
+            "mu_min":               float(mu_arr[i]),
+            "mu_max":               float(mu_arr[j - 1]),
+            "min_formation_energy": float(np.min(ef[p, i:j])),
+        })
+        i = j
+
+    return pd.DataFrame(rows).sort_values("min_formation_energy").reset_index(drop=True)
