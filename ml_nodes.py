@@ -3,6 +3,7 @@ Elementary ML nodes.
 
 This module contains nodes for for machine learning workflows using sk-learn models.
 """
+
 import pandas as pd
 import numpy as np
 
@@ -21,7 +22,7 @@ def MLDataSplitter(
     train_fraction: float = 0.70,
     validation_fraction: float = 0.15,
     test_fraction: float = 0.15,
-    random_state: int = 42
+    random_state: int = 42,
 ):
     """
     Splits dataframe into train, validation, and test sets. This node prevents data leakage when connected correctly.
@@ -61,10 +62,7 @@ def MLDataSplitter(
     temp_fraction = validation_fraction + test_fraction
 
     X_train, X_temp, y_train, y_temp = train_test_split(
-        X_numeric,
-        y,
-        test_size=temp_fraction,
-        random_state=random_state
+        X_numeric, y, test_size=temp_fraction, random_state=random_state
     )
 
     # -----------------------------
@@ -77,32 +75,29 @@ def MLDataSplitter(
         X_temp,
         y_temp,
         test_size=(1 - validation_size_adjusted),
-        random_state=random_state
+        random_state=random_state,
     )
 
     return X_train, X_validation, X_test, y_train, y_validation, y_test
 
 
-
 @as_function_node
-def train_regressor(X_train:pd.DataFrame, y_train:pd.DataFrame, r_type: str = None):
+def train_regressor(X_train: pd.DataFrame, y_train: pd.DataFrame, r_type: str = None):
     """
     trains a regressor
     """
-    if r_type!= None:
-        if r_type=="linear":
+    if r_type != None:
+        if r_type == "linear":
             reg = LinearRegression().fit(X_train, y_train)
-        if r_type=="tree":
+        if r_type == "tree":
             reg = RandomForestRegressor().fit(X_train, y_train)
     return reg
-
-
-
 
 
 # =========================================================
 # 2) MODEL EVALUATION FUNCTION
 # =========================================================
+
 
 @as_function_node
 def EvaluateRegressionModel(model, X_test, y_test):
@@ -122,11 +117,7 @@ def EvaluateRegressionModel(model, X_test, y_test):
     r2 = r2_score(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
-    out = {
-        "R2": r2,
-        "MSE": mse,
-        "MAE": mae
-    }
+    out = {"R2": r2, "MSE": mse, "MAE": mae}
     return out
 
 
@@ -135,13 +126,8 @@ def EvaluateRegressionModel(model, X_test, y_test):
 # =========================================================
 
 
-@as_function_node    
-def ChooseBestModel(
-    model_1,
-    model_2,
-    X_validation,
-    y_validation
-):
+@as_function_node
+def ChooseBestModel(model_1, model_2, X_validation, y_validation):
     """
     Compares two regression models on VALIDATION DATA.
 
@@ -189,14 +175,8 @@ def ChooseBestModel(
             best_model = model_2
 
     results = {
-        "model_1": {
-            "R2": r2_1,
-            "RMSE": rmse_1
-        },
-        "model_2": {
-            "R2": r2_2,
-            "RMSE": rmse_2
-        }
+        "model_1": {"R2": r2_1, "RMSE": rmse_1},
+        "model_2": {"R2": r2_2, "RMSE": rmse_2},
     }
 
     return best_model, results

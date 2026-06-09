@@ -18,27 +18,40 @@ import pandas as pd
 import numpy as np
 
 from sklearn.linear_model import (
-    LinearRegression, Ridge, Lasso, ElasticNet, LogisticRegression
+    LinearRegression,
+    Ridge,
+    Lasso,
+    ElasticNet,
+    LogisticRegression,
 )
 from sklearn.ensemble import (
-    RandomForestRegressor, RandomForestClassifier,
-    GradientBoostingRegressor, GradientBoostingClassifier,
-    AdaBoostRegressor, AdaBoostClassifier
+    RandomForestRegressor,
+    RandomForestClassifier,
+    GradientBoostingRegressor,
+    GradientBoostingClassifier,
+    AdaBoostRegressor,
+    AdaBoostClassifier,
 )
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
 from sklearn.svm import SVC, SVR
 from sklearn.metrics import (
-    r2_score, mean_squared_error, mean_absolute_error,
-    accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+    r2_score,
+    mean_squared_error,
+    mean_absolute_error,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
 )
 
 from core import as_function_node
 
-
 # =============================================================================
 # LINEAR REGRESSION MODELS
 # =============================================================================
+
 
 @as_function_node("model")
 def LinearRegressionNode(
@@ -46,7 +59,7 @@ def LinearRegressionNode(
     y_train: pd.Series,
     fit_intercept: bool = True,
     copy_X: bool = True,
-    n_jobs: Optional[int] = None
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Linear Regression model.
@@ -64,17 +77,13 @@ def LinearRegressionNode(
     Returns:
         Dictionary containing the fitted model and metadata
     """
-    model = LinearRegression(
-        fit_intercept=fit_intercept,
-        copy_X=copy_X,
-        n_jobs=n_jobs
-    )
+    model = LinearRegression(fit_intercept=fit_intercept, copy_X=copy_X, n_jobs=n_jobs)
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "LinearRegression",
         "coefficients": model.coef_,
-        "intercept": model.intercept_
+        "intercept": model.intercept_,
     }
 
 
@@ -86,7 +95,7 @@ def RidgeRegressionNode(
     fit_intercept: bool = True,
     max_iter: Optional[int] = None,
     tol: float = 1e-4,
-    solver: str = "auto"
+    solver: str = "auto",
 ) -> Dict[str, Any]:
     """
     Trains a Ridge Regression model.
@@ -111,7 +120,7 @@ def RidgeRegressionNode(
         fit_intercept=fit_intercept,
         max_iter=max_iter,
         tol=tol,
-        solver=solver
+        solver=solver,
     )
     model.fit(X_train, y_train)
     return {
@@ -119,7 +128,7 @@ def RidgeRegressionNode(
         "model_type": "Ridge",
         "alpha": alpha,
         "coefficients": model.coef_,
-        "intercept": model.intercept_
+        "intercept": model.intercept_,
     }
 
 
@@ -131,7 +140,7 @@ def LassoRegressionNode(
     fit_intercept: bool = True,
     max_iter: int = 1000,
     tol: float = 1e-4,
-    warm_start: bool = False
+    warm_start: bool = False,
 ) -> Dict[str, Any]:
     """
     Trains a Lasso Regression model.
@@ -156,7 +165,7 @@ def LassoRegressionNode(
         fit_intercept=fit_intercept,
         max_iter=max_iter,
         tol=tol,
-        warm_start=warm_start
+        warm_start=warm_start,
     )
     model.fit(X_train, y_train)
     return {
@@ -165,7 +174,7 @@ def LassoRegressionNode(
         "alpha": alpha,
         "coefficients": model.coef_,
         "intercept": model.intercept_,
-        "n_iter": model.n_iter_
+        "n_iter": model.n_iter_,
     }
 
 
@@ -177,7 +186,7 @@ def ElasticNetRegressionNode(
     l1_ratio: float = 0.5,
     fit_intercept: bool = True,
     max_iter: int = 1000,
-    tol: float = 1e-4
+    tol: float = 1e-4,
 ) -> Dict[str, Any]:
     """
     Trains an ElasticNet Regression model.
@@ -202,7 +211,7 @@ def ElasticNetRegressionNode(
         l1_ratio=l1_ratio,
         fit_intercept=fit_intercept,
         max_iter=max_iter,
-        tol=tol
+        tol=tol,
     )
     model.fit(X_train, y_train)
     return {
@@ -212,7 +221,7 @@ def ElasticNetRegressionNode(
         "l1_ratio": l1_ratio,
         "coefficients": model.coef_,
         "intercept": model.intercept_,
-        "n_iter": model.n_iter_
+        "n_iter": model.n_iter_,
     }
 
 
@@ -226,7 +235,7 @@ def LogisticRegressionNode(
     max_iter: int = 100,
     solver: str = "lbfgs",
     multi_class: str = "auto",
-    class_weight: Optional[str] = None
+    class_weight: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Logistic Regression model for classification.
@@ -255,7 +264,7 @@ def LogisticRegressionNode(
         max_iter=max_iter,
         solver=solver,
         multi_class=multi_class,
-        class_weight=class_weight
+        class_weight=class_weight,
     )
     model.fit(X_train, y_train)
     return {
@@ -264,13 +273,14 @@ def LogisticRegressionNode(
         "coefficients": model.coef_,
         "intercept": model.intercept_,
         "classes": model.classes_,
-        "n_iter": model.n_iter_
+        "n_iter": model.n_iter_,
     }
 
 
 # =============================================================================
 # TREE-BASED MODELS
 # =============================================================================
+
 
 @as_function_node("model")
 def DecisionTreeRegressorNode(
@@ -281,7 +291,7 @@ def DecisionTreeRegressorNode(
     max_depth: Optional[int] = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Decision Tree Regressor.
@@ -308,7 +318,7 @@ def DecisionTreeRegressorNode(
         max_depth=max_depth,
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
@@ -316,7 +326,7 @@ def DecisionTreeRegressorNode(
         "model_type": "DecisionTreeRegressor",
         "feature_importances": model.feature_importances_,
         "tree_depth": model.get_depth(),
-        "n_leaves": model.get_n_leaves()
+        "n_leaves": model.get_n_leaves(),
     }
 
 
@@ -330,7 +340,7 @@ def DecisionTreeClassifierNode(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     random_state: Optional[int] = None,
-    class_weight: Optional[str] = None
+    class_weight: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Decision Tree Classifier.
@@ -359,7 +369,7 @@ def DecisionTreeClassifierNode(
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
         random_state=random_state,
-        class_weight=class_weight
+        class_weight=class_weight,
     )
     model.fit(X_train, y_train)
     return {
@@ -368,13 +378,14 @@ def DecisionTreeClassifierNode(
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
         "tree_depth": model.get_depth(),
-        "n_leaves": model.get_n_leaves()
+        "n_leaves": model.get_n_leaves(),
     }
 
 
 # =============================================================================
 # ENSEMBLE MODELS - RANDOM FOREST
 # =============================================================================
+
 
 @as_function_node("model")
 def RandomForestRegressorNode(
@@ -386,7 +397,7 @@ def RandomForestRegressorNode(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     random_state: Optional[int] = None,
-    n_jobs: Optional[int] = None
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Random Forest Regressor.
@@ -415,14 +426,14 @@ def RandomForestRegressorNode(
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
         random_state=random_state,
-        n_jobs=n_jobs
+        n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "RandomForestRegressor",
         "feature_importances": model.feature_importances_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
@@ -437,7 +448,7 @@ def RandomForestClassifierNode(
     min_samples_leaf: int = 1,
     random_state: Optional[int] = None,
     n_jobs: Optional[int] = None,
-    class_weight: Optional[str] = None
+    class_weight: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Random Forest Classifier.
@@ -468,7 +479,7 @@ def RandomForestClassifierNode(
         min_samples_leaf=min_samples_leaf,
         random_state=random_state,
         n_jobs=n_jobs,
-        class_weight=class_weight
+        class_weight=class_weight,
     )
     model.fit(X_train, y_train)
     return {
@@ -476,13 +487,14 @@ def RandomForestClassifierNode(
         "model_type": "RandomForestClassifier",
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
 # =============================================================================
 # ENSEMBLE MODELS - GRADIENT BOOSTING
 # =============================================================================
+
 
 @as_function_node("model")
 def GradientBoostingRegressorNode(
@@ -494,7 +506,7 @@ def GradientBoostingRegressorNode(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     subsample: float = 1.0,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Gradient Boosting Regressor.
@@ -523,7 +535,7 @@ def GradientBoostingRegressorNode(
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
         subsample=subsample,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
@@ -531,7 +543,7 @@ def GradientBoostingRegressorNode(
         "model_type": "GradientBoostingRegressor",
         "feature_importances": model.feature_importances_,
         "train_score": model.train_score_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
@@ -545,7 +557,7 @@ def GradientBoostingClassifierNode(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     subsample: float = 1.0,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Gradient Boosting Classifier.
@@ -574,7 +586,7 @@ def GradientBoostingClassifierNode(
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
         subsample=subsample,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
@@ -583,13 +595,14 @@ def GradientBoostingClassifierNode(
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
         "train_score": model.train_score_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
 # =============================================================================
 # ENSEMBLE MODELS - ADABOOST
 # =============================================================================
+
 
 @as_function_node("model")
 def AdaBoostRegressorNode(
@@ -598,7 +611,7 @@ def AdaBoostRegressorNode(
     n_estimators: int = 50,
     learning_rate: float = 1.0,
     loss: str = "linear",
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains an AdaBoost Regressor.
@@ -621,14 +634,14 @@ def AdaBoostRegressorNode(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
         loss=loss,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "AdaBoostRegressor",
         "feature_importances": model.feature_importances_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
@@ -639,7 +652,7 @@ def AdaBoostClassifierNode(
     n_estimators: int = 50,
     learning_rate: float = 1.0,
     algorithm: str = "SAMME.R",
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains an AdaBoost Classifier.
@@ -662,7 +675,7 @@ def AdaBoostClassifierNode(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
         algorithm=algorithm,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
@@ -670,13 +683,14 @@ def AdaBoostClassifierNode(
         "model_type": "AdaBoostClassifier",
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
-        "n_estimators": n_estimators
+        "n_estimators": n_estimators,
     }
 
 
 # =============================================================================
 # NEIGHBOR-BASED MODELS
 # =============================================================================
+
 
 @as_function_node("model")
 def KNeighborsRegressorNode(
@@ -688,7 +702,7 @@ def KNeighborsRegressorNode(
     leaf_size: int = 30,
     p: float = 2,
     metric: str = "minkowski",
-    n_jobs: Optional[int] = None
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a K-Neighbors Regressor.
@@ -717,13 +731,13 @@ def KNeighborsRegressorNode(
         leaf_size=leaf_size,
         p=p,
         metric=metric,
-        n_jobs=n_jobs
+        n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "KNeighborsRegressor",
-        "n_neighbors": n_neighbors
+        "n_neighbors": n_neighbors,
     }
 
 
@@ -737,7 +751,7 @@ def KNeighborsClassifierNode(
     leaf_size: int = 30,
     p: float = 2,
     metric: str = "minkowski",
-    n_jobs: Optional[int] = None
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a K-Neighbors Classifier.
@@ -766,20 +780,21 @@ def KNeighborsClassifierNode(
         leaf_size=leaf_size,
         p=p,
         metric=metric,
-        n_jobs=n_jobs
+        n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "KNeighborsClassifier",
         "classes": model.classes_,
-        "n_neighbors": n_neighbors
+        "n_neighbors": n_neighbors,
     }
 
 
 # =============================================================================
 # SUPPORT VECTOR MACHINES
 # =============================================================================
+
 
 @as_function_node("model")
 def SupportVectorClassifierNode(
@@ -790,7 +805,7 @@ def SupportVectorClassifierNode(
     gamma: str = "scale",
     degree: int = 3,
     probability: bool = False,
-    random_state: Optional[int] = None
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Trains a Support Vector Classifier (SVC).
@@ -817,7 +832,7 @@ def SupportVectorClassifierNode(
         gamma=gamma,
         degree=degree,
         probability=probability,
-        random_state=random_state
+        random_state=random_state,
     )
     model.fit(X_train, y_train)
     return {
@@ -825,7 +840,7 @@ def SupportVectorClassifierNode(
         "model_type": "SVC",
         "classes": model.classes_,
         "n_support": model.n_support_,
-        "kernel": kernel
+        "kernel": kernel,
     }
 
 
@@ -837,7 +852,7 @@ def SupportVectorRegressorNode(
     C: float = 1.0,
     gamma: str = "scale",
     degree: int = 3,
-    epsilon: float = 0.1
+    epsilon: float = 0.1,
 ) -> Dict[str, Any]:
     """
     Trains a Support Vector Regressor (SVR).
@@ -857,19 +872,13 @@ def SupportVectorRegressorNode(
     Returns:
         Dictionary containing the fitted model and metadata
     """
-    model = SVR(
-        kernel=kernel,
-        C=C,
-        gamma=gamma,
-        degree=degree,
-        epsilon=epsilon
-    )
+    model = SVR(kernel=kernel, C=C, gamma=gamma, degree=degree, epsilon=epsilon)
     model.fit(X_train, y_train)
     return {
         "model": model,
         "model_type": "SVR",
         "n_support": model.n_support_,
-        "kernel": kernel
+        "kernel": kernel,
     }
 
 
@@ -877,11 +886,10 @@ def SupportVectorRegressorNode(
 # MODEL EVALUATION NODES
 # =============================================================================
 
+
 @as_function_node("metrics")
 def EvaluateRegressionModelSklearn(
-    model: Dict,
-    X_test: pd.DataFrame,
-    y_test: pd.Series
+    model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, float]:
     """
     Evaluates a regression model on test data.
@@ -901,19 +909,12 @@ def EvaluateRegressionModelSklearn(
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mse)
 
-    return {
-        "R2": r2,
-        "MSE": mse,
-        "RMSE": rmse,
-        "MAE": mae
-    }
+    return {"R2": r2, "MSE": mse, "RMSE": rmse, "MAE": mae}
 
 
 @as_function_node("metrics")
 def EvaluateClassificationModelSklearn(
-    model: Dict,
-    X_test: pd.DataFrame,
-    y_test: pd.Series
+    model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, Any]:
     """
     Evaluates a classification model on test data.
@@ -939,7 +940,7 @@ def EvaluateClassificationModelSklearn(
         "precision": precision,
         "recall": recall,
         "f1_score": f1,
-        "confusion_matrix": cm.tolist()
+        "confusion_matrix": cm.tolist(),
     }
 
 
@@ -947,11 +948,9 @@ def EvaluateClassificationModelSklearn(
 # MODEL PREDICTION NODES
 # =============================================================================
 
+
 @as_function_node("predictions")
-def PredictRegression(
-    model: Dict,
-    X: pd.DataFrame
-) -> np.ndarray:
+def PredictRegression(model: Dict, X: pd.DataFrame) -> np.ndarray:
     """
     Makes predictions using a fitted regression model.
 
@@ -967,9 +966,7 @@ def PredictRegression(
 
 @as_function_node("predictions")
 def PredictClassification(
-    model: Dict,
-    X: pd.DataFrame,
-    return_probabilities: bool = False
+    model: Dict, X: pd.DataFrame, return_probabilities: bool = False
 ) -> Dict[str, Any]:
     """
     Makes predictions using a fitted classification model.
@@ -996,13 +993,14 @@ def PredictClassification(
 # MODEL COMPARISON NODES
 # =============================================================================
 
+
 @as_function_node("comparison_results")
 def CompareRegressionModels(
     model_1: Dict,
     model_2: Dict,
     X_validation: pd.DataFrame,
     y_validation: pd.Series,
-    metric: str = "r2"
+    metric: str = "r2",
 ) -> Dict[str, Any]:
     """
     Compares two regression models on validation data.
@@ -1046,7 +1044,7 @@ def CompareRegressionModels(
         "best_model": best_model,
         "model_1_metrics": {"R2": r2_1, "RMSE": rmse_1, "MAE": mae_1},
         "model_2_metrics": {"R2": r2_2, "RMSE": rmse_2, "MAE": mae_2},
-        "winning_model": 1 if best_model is model_1 else 2
+        "winning_model": 1 if best_model is model_1 else 2,
     }
 
 
@@ -1056,7 +1054,7 @@ def CompareClassificationModels(
     model_2: Dict,
     X_validation: pd.DataFrame,
     y_validation: pd.Series,
-    metric: str = "f1"
+    metric: str = "f1",
 ) -> Dict[str, Any]:
     """
     Compares two classification models on validation data.
@@ -1101,13 +1099,13 @@ def CompareClassificationModels(
             "accuracy": acc_1,
             "f1": f1_1,
             "precision": prec_1,
-            "recall": rec_1
+            "recall": rec_1,
         },
         "model_2_metrics": {
             "accuracy": acc_2,
             "f1": f1_2,
             "precision": prec_2,
-            "recall": rec_2
+            "recall": rec_2,
         },
-        "winning_model": 1 if best_model is model_1 else 2
+        "winning_model": 1 if best_model is model_1 else 2,
     }
