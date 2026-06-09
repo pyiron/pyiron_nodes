@@ -11,7 +11,7 @@ from pyiron_nodes.atomistic.engine.vasp_new import VaspInputResources, _build_in
 
 
 @dataclass
-class CCEParameters:
+class CEParameters:
     path_to_plugin: str      # Default path to plugin template
     phi0: float                         # Target voltage (V)
     Q0: float                           # Adjusted charge for plugin (C), includes precision-matched ZVAL adjustment
@@ -24,9 +24,14 @@ class CCEParameters:
     ay: float             # Cell dimension b (Å), filled in by node
     az: float             # Cell dimension c (Å), filled in by node
     d_electrode: float    # Electrode distance (Å), filled in by node
-    i_Ne: int            # Index of Ne in POTCAR, filled in by node
-    n_elements: int      # Number of unique elements, filled in by node
-    n_Ne: int            # Number of Ne atoms, filled in by node
+    #CCE-specific parameters
+    i_Ne: Optional[int] = None            # Index of Ne in POTCAR, filled in by node
+    n_elements: Optional[int] = None      # Number of unique elements, filled in by node
+    n_Ne: Optional[int] = None            # Number of Ne atoms, filled in by node
+    # CDCE-specific parameters
+    Q_pos: Optional[np.array] = None  # Position of the Gaussian charge (Å)
+    width_wall: Optional[float] = None          # Width of the wall potential (Å)
+    pos_right_wall: Optional[float] = None      # Position of the right wall (
 
 
 
@@ -63,7 +68,7 @@ def _modify_potcar(working_directory: str, original_line: str, zval_ne: float) -
         f.writelines(lines)
 
 
-def _write_plugin_file(working_directory: str, cce_params: CCEParameters) -> None:
+def _write_plugin_file(working_directory: str, ce_params: CEParameters) -> None:
     """
     Fill the vasp_plugin.py template with CCE parameters and write
     it to the working directory.
@@ -76,13 +81,13 @@ def _write_plugin_file(working_directory: str, cce_params: CCEParameters) -> Non
         Path to the plugin template file.
     working_directory : str
         Path to the VASP job working directory.
-    cce_params : CCEParameters
-        CCE parameter bundle containing all values to fill into the template.
+    ce_params : CEParameters
+        CE parameter bundle containing all values to fill into the template.
     """
     # -------------------------------------------------------------------------
     # Read plugin template file
     # -------------------------------------------------------------------------
-    plugin_path = os.path.expanduser(cce_params.path_to_plugin)
+    plugin_path = os.path.expanduser(ce_params.path_to_plugin)
     if not os.path.exists(plugin_path):
         raise FileNotFoundError(
             f"Plugin template not found: {plugin_path}"
@@ -91,20 +96,23 @@ def _write_plugin_file(working_directory: str, cce_params: CCEParameters) -> Non
         plugin_string = f.read()
 
     plugin_params = {
-        'phi0':               cce_params.phi0,
-        'Q0':                 cce_params.Q0,
-        'nelect_neutral':     cce_params.nelect_neutral,
-        'grid_roll_frac':     cce_params.grid_roll_frac,
-        'grid_position_frac': cce_params.grid_position_frac,
-        'tau':                cce_params.tau,
-        'temperature':        cce_params.temperature,
-        'ax':                 cce_params.ax,
-        'ay':                 cce_params.ay,
-        'az':                 cce_params.az,
-        'd_electrode':        cce_params.d_electrode,
-        'i_Ne':               cce_params.i_Ne,
-        'n_elements':         cce_params.n_elements,
-        'n_Ne':               cce_params.n_Ne,
+        'phi0':               ce_params.phi0,
+        'Q0':                 ce_params.Q0,
+        'nelect_neutral':     ce_params.nelect_neutral,
+        'grid_roll_frac':     ce_params.grid_roll_frac,
+        'grid_position_frac': ce_params.grid_position_frac,
+        'tau':                ce_params.tau,
+        'temperature':        ce_params.temperature,
+        'ax':                 ce_params.ax,
+        'ay':                 ce_params.ay,
+        'az':                 ce_params.az,
+        'd_electrode':        ce_params.d_electrode,
+        'i_Ne':               ce_params.i_Ne,
+        'n_elements':         ce_params.n_elements,
+        'n_Ne':               ce_params.n_Ne,
+        'Q_pos':             ce_params.Q_pos,
+        'width_wall':        ce_params.width_wall,
+        'pos_right_wall':    ce_params.pos_right_wall
     }
 
     try:
@@ -249,7 +257,7 @@ def CCESetup(
         'LDIPOL':          '.TRUE.',
     }
 
-    cce_params = CCEParameters(
+    cce_params = CEParameters(
         path_to_plugin=path_to_plugin,
         phi0=phi0,
         Q0=Q0,
@@ -289,6 +297,162 @@ def CCESetup(
             os.remove(filepath)
 
     return input_resources
+
+
+@as_function_node
+def CDCESetup(
+    input_resources: VaspInputResources,
+    electrode: Atoms,
+    phi0: float,
+    path_to_plugin: str = 'pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.py',
+    Q0: float = 0.0,
+
+    dipole_position: float = 0.85,
+    grid_roll_frac: float = 0.1,
+    pos_right_wall: float = 0.75, #for now this is in fractional coordinates
+    width_wall: float = 6.5,
+
+    temperature: float = 300.0,
+    n_steps: int = 500,
+    potim: float = 0.5,
+    langevin_gamma: float = 5.0,
+    tau: float = 50.0,
+):
+    """
+    Build INCAR dictionary and plugin parameters for an electrochemistry
+    VASP calculation using the Ne-CCE thermopotentiostat plugin.
+
+    Computes all structure-dependent quantities from the ASE structure
+    and packages everything needed for:
+      - additional_incar  -> passed directly to the VASP node
+      - plugin_params     -> passed to WriteAndRunVasp node for file modifications
+
+    """
+
+    if input_resources.calc.ionic_update_algorithm != "MolecularDynamics":
+        # Set default values for molecular dynamics parameters
+         raise ValueError("Warning: Ionic update algorithm is not MolecularDynamics. "
+              "This CDCE plugin is designed for MD simulations. Make sure to set appropriate "
+              "parameters for your simulation."
+        )
+
+    # -------------------------------------------------------------------------
+    # Calculate nelect_neutral from individual POTCAR files
+    # Uses existing _get_potcar_paths() helper — reads before concatenation
+    # -------------------------------------------------------------------------
+    potcar_paths = _get_potcar_paths(
+        input_resources.structure,
+        input_resources.calc.functional,
+        input_resources.potcar_lib_path,
+    )
+
+    # Read ZVAL for each element from its individual POTCAR file
+    # POTCAR line format: "   POMASS =  196.970; ZVAL   =   11.000    mass and valenz"
+    zval_per_element = {}
+    unique_elements = _ordered_elements(input_resources.structure)
+
+    for el, potcar_path in zip(unique_elements, potcar_paths):
+        with open(potcar_path, 'r') as f:
+            content = f.read()
+        # Take first match — each individual POTCAR has exactly one ZVAL
+        match = re.search(r'ZVAL\s*=\s*([\d.]+)', content)
+        if match is None:
+            raise ValueError(f"Could not find ZVAL in POTCAR for element {el}: {potcar_path}")
+        zval_per_element[el] = float(match.group(1))
+
+    # nelect_neutral = sum of ZVAL over all atoms
+    nelect_neutral = int(sum(zval_per_element[sym] for sym in input_resources.structure.get_chemical_symbols()))
+
+    # -------------------------------------------------------------------------
+    # Structure-derived quantities
+    # -------------------------------------------------------------------------
+
+    # Cell dimensions - must be orthogonal
+    cell = input_resources.structure.get_cell()
+    if (np.abs(cell[0] @ cell[2]) + np.abs(cell[1] @ cell[2])) > 1e-6:
+        raise ValueError(
+            "Cell must be orthogonal (a3 perpendicular to a1 and a2) "
+            "for the electrochemistry plugin."
+        )
+    ax, ay, az = np.diag(cell)
+
+    # Get electrode elements directly from the electrode structure
+    electrode_elements = list(set(electrode.get_chemical_symbols()))
+
+    # Get all electrode atom indices in the full structure
+    electrode_indices = np.concatenate([
+        [i for i, sym in enumerate(input_resources.structure.get_chemical_symbols()) if sym in electrode_elements]
+    ])
+
+    Q_pos = np.array([ax * 0.5, ay * 0.5, az * pos_right_wall - 2.0])
+
+    d_electrode = float(Q_pos[2] - float(np.max(input_resources.structure[electrode_indices].positions[:, 2])))
+
+    # Conwering to string to ensure the format in vasp_plugin.py is correct
+    Q_pos = f"np.array({Q_pos.tolist()})"
+
+
+    nelect_adjusted = float(nelect_neutral) + np.round(Q0)
+
+    # Langevin gamma string - must have one value per element in the system
+    n_elements = len(unique_elements)
+    langevin_gamma_str = ' '.join([str(langevin_gamma)] * n_elements)
+
+    # -------------------------------------------------------------------------
+    # INCAR dictionary
+    # -------------------------------------------------------------------------
+    additional_incar = {
+        'PLUGINS/LOCAL_POTENTIAL': 'T',
+        'PLUGINS/OCCUPANCIES':     'T',
+        'PLUGINS/FORCE_AND_STRESS': 'T',
+        'TEBEG':           temperature,
+        'MDALGO':          3,               # Langevin thermostat
+        'LANGEVIN_GAMMA':  langevin_gamma_str,
+        'NSW':             n_steps,
+        'POTIM':           potim,
+        'NELECT':          nelect_adjusted,
+        'LREMOVE_DRIFT':   'F'    
+        }
+
+    cdce_params = CEParameters(
+        path_to_plugin=path_to_plugin,
+        phi0=phi0,
+        Q0=Q0,
+        Q_pos=Q_pos,
+        nelect_neutral=nelect_neutral,
+        grid_position_frac=dipole_position,
+        grid_roll_frac=grid_roll_frac,
+        width_wall=width_wall,
+        pos_right_wall=pos_right_wall,
+        ax=ax,
+        ay=ay,
+        az=az,
+        d_electrode=d_electrode,
+        tau=tau,
+        temperature=temperature
+    )
+
+
+    if input_resources.extra_incar is not None:
+        input_resources.extra_incar.update(additional_incar)
+    else:
+        input_resources.extra_incar = additional_incar
+
+    incar = _build_incar(input_resources.calc, input_resources.extra_incar)
+    incar.write_file(os.path.join(input_resources.working_directory, "INCAR"))
+
+    _write_plugin_file(input_resources.working_directory, cdce_params)
+
+    output_files = ['el_pot_z.dat', 'Q.dat', 'phi.dat', 'dipole_corr.dat']
+
+    # Remove existing output files to avoid confusion with previous runs
+    for filename in output_files:
+        filepath = os.path.join(input_resources.working_directory, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return input_resources
+
 
 
 @as_function_node

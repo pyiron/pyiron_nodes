@@ -1,41 +1,40 @@
 import itertools
 import numpy as np
+import time
 from scipy.special import comb
 import os
 # Unit conversions to stay consistent with vasp
 RYTOEV = 13.605826
 AUTOA = 0.529177249
 unit_change = 2 * RYTOEV * AUTOA
-# Solid-liquid/Ne-CCE calculation with thermopotentiostat # Not officially in VASP
-#IMPORTANT !!! plugin file must be renamed to vasp_plugin.py in the job directory, this is done in the pyiron notebook automatically
-# but if you do not use pyiron, you must rename this yourself.
+
+
+
 phi0 = {phi0}
-# pyiron will automatically create the the INCAR, KPOINTS and POTCAR if it is used with jupyter, but these files are included here anyways in case pyiron is not used
 
-Q0 = {Q0}   # Q is normal charge # when restart change this
-
-Q_list = [Q0]
+Q_pos = {Q_pos}
+Q0 = 0   # Initial charge, when restarting change this to charge of second last ionic step
+rQ_list = [Q_pos]
+Q_list = [Q0]  
 
 nelect_neutral =  {nelect_neutral}
 grid_roll_frac = {grid_roll_frac}
 grid_position_frac = {grid_position_frac} # where dipole correction is
-
-eps0 = 1.0/180.953062045845 # in e/(V*A), the vasp-value
+width_wall = {width_wall} # Confining wall width in Angstrom
+pos_right_wall = {pos_right_wall} # Position of confining wall
 ax, ay, az = ({ax}, {ay}, {az})
-kB = 8.6173857e-5
+
+
+
+
 d_electrode = {d_electrode}
+eps0 = 1.0/180.953062045845 # in e/(V*A), the vasp-value
+kB = 8.6173857e-5
 C0 = eps0*ax*ay/d_electrode #0.0641078458625971 #eps0*ax*az/az  # in e*A/V
 tau = {tau} # in units of dt
 temperature = {temperature} # in K
 global_data = None
 global_pot_z= None
-i_Ne  = {i_Ne}
-n_elements = {n_elements}
-n_Ne = {n_Ne}
-
-global_pot = None
-global_dipole = None
-# This is the faster version developed in the hackathon
 def _compute_reciprocal_lattice_vectors(cell):
     volume = _compute_volume(cell)
     b1 = 2 * np.pi * np.cross(cell[1], cell[2]) / volume
@@ -105,12 +104,12 @@ def _safe_divide(quantity_1, quantity_2):
 
 def check_normalization(q, rhoSum, tol=1e-3):
     return np.abs(q-rhoSum) < tol
-
-def external_potential_gradient(Lz, nx, ny, nz, dV):
+        
+def external_potential_gradient(Lx, Ly, Lz, nx, ny, nz, dV):
     z = np.linspace(0, Lz, nz, endpoint=False)
     dz = z[1] - z[0]
     dV_gradient = np.zeros((nx, ny, nz))
-    # point 0
+    # point 0 
     dV_gradient = -(np.roll(dV, 1, axis = 2) - np.roll(dV, -1, axis = 2))/(2*dz)
     return dV_gradient
 
@@ -127,18 +126,20 @@ def force_ion_from_external(
     grid_size = charge_density.shape
     nx, ny, nz = charge_density.shape
     box = lattice_vectors
+    Lx = box[0][0]
+    Ly = box[1][1]
     Lz = box[2][2]
-    delta_pot = np.load('delta_pot.npy')
-    # delta_pot = data
+    #delta_pot = np.load('delta_pot.npy')
+    delta_pot = global_data
     # np.save('delta_pot_in_force_calc.npy', delta_pot)
-    forces = np.zeros((positions.shape[0], 3))
-    dV_gradient = external_potential_gradient(Lz, nx, ny, nz, delta_pot)
+    forces = np.zeros((positions.shape[0], 3)) 
+    dV_gradient = external_potential_gradient(Lx, Ly, Lz, nx, ny, nz, delta_pot)
     for i in range(number_ions):
-        pos = positions[i]  # fractional position
-        pos_x = int(pos[0]*nx)%nx
-        pos_y = int(pos[1]*ny)%ny
-        pos_z = int(pos[2]*nz)%nz
-        local_V_gradient = dV_gradient[pos_x, pos_y, pos_z]
+        pos = positions[i]
+        pos_x = int(np.round(pos[0]*nx))%nx
+        pos_y = int(np.round(pos[1]*ny))%ny
+        pos_z = int(np.round(pos[2]*nz))%nz
+        local_V_gradient = dV_gradient[pos_x, pos_y, pos_z]  
         forces[i, 2] += zval[ion_types[i]]*local_V_gradient
     return forces
 
@@ -152,9 +153,9 @@ def smoothstep(x, x_min=0, x_max=1, N=1):
 
     result *= x ** (N + 1)
     return result
-
+    
 def wall(r, scaling=1):
-    forces = np.zeros_like(r)
+    forces = np.zeros_like(r)    
     z = r[:,2]
     fz = np.zeros_like(z)
     if(pos_right_wall>-1):
@@ -163,55 +164,101 @@ def wall(r, scaling=1):
     return forces
 
 
-def calc_dipole(chargedensity, Lz, nz, core_dipole, grid_position_frac =  grid_position_frac, grid_roll_frac = grid_roll_frac, dx_dipolcorr = 8):
+def force_and_stress(constants, additions):
+    # force of core in electric field
+    force_ion = force_ion_from_external(
+        constants.lattice_vectors,
+        constants.number_ion_types,
+        constants.ion_types,
+        constants.number_ions,
+        constants.ZVAL,
+        constants.positions,
+        constants.charge_density,
+    )
+    # force of wall to keep water molecules inside
+    force_wall = wall(constants.positions @ constants.lattice_vectors)
+    #np.save('position.npy', constants.positions)
+    #np.save('lattice_vectors.npy', constants.lattice_vectors)
+    #np.save('force_wall.npy', force_wall)
+    #np.save('force_ion.npy', force_ion)
+    delta_force = force_wall + force_ion
+    additions.forces += delta_force
 
-    gridposition = int(grid_position_frac*nz)
-    grid_roll = int(grid_roll_frac*nz)
+
+def calc_dipole(chargedensity, Lz, nz, core_dipole, grid_position_frac =  grid_position_frac, grid_roll_frac = grid_roll_frac, dx_dipolcorr = 8):
+    gridposition = int(grid_position_frac*nz)  
+    grid_roll = int(grid_roll_frac*nz)  
     chargedensity_roll = chargedensity.copy()
-    chargedensity_roll = np.roll(chargedensity_roll, grid_roll, axis = 2) # Eventually planar average because np.roll is expensive
+    chargedensity_roll = np.roll(chargedensity_roll, grid_roll, axis = 2)
     dz = Lz/nz
     z = np.linspace(0, Lz, nz, endpoint = False)
     dipole = np.sum(np.mean(chargedensity_roll, (0,1))*z) * dz
     dipole -= core_dipole
-    #if(np.abs(dipole)<1e-5): return 0, chargedensity
-    if(np.abs(dipole)<1e-5): return 0
+    if(np.abs(dipole)<1e-5): return 0, chargedensity
     q = dipole / (dx_dipolcorr*dz)
+    new_chargedensity = chargedensity.copy()
+    new_chargedensity[:,:,gridposition] = q / dz
+    new_chargedensity[:,:,gridposition+dx_dipolcorr] = -q / dz
 
-    return dipole
-
+    return dipole, new_chargedensity
+    
 def local_potential(constants, additions):
-
     rho = constants.charge_density
     nx, ny, nz = rho.shape
     box = constants.lattice_vectors
-    a1, a2, a3 = box
-    L1 = np.linalg.norm(a1)
-    L2 = np.linalg.norm(a2)
-    Lz = np.linalg.norm(a3) #box[2][2]
-    if np.abs(a1@a3) + np.abs(a2@a3) > 1e-10:
-        raise ValueError("only supercells with a3 orthogonal to a1 and a2 are supported")
+    Lx = box[0][0]
+    Ly = box[1][1]
+    Lz = box[2][2]
     dz = Lz/nz
-    volume = _compute_volume(constants.lattice_vectors)
-    dV = volume/nx/ny/nz
+    dV = Lx*Ly*Lx/nx/ny/nz
+    
+    Q = Q_list[-1]
+    Q_ext, V_ext = external_charge(nx, ny, nz, [Q], rQ_list, box, mode='gaussianWall')
+    # Q_ext has unit of el/angstrom^3
+    # charge_density has unit of el (per grid)
 
-    # calculate dipole correction
-    core_dipole = 0
-    pos_cart = constants.positions @ constants.lattice_vectors
-
+    #np.save('charge_density.npy', constants.charge_density)
+    total_charge = constants.charge_density - Q_ext*Lx*Ly*Lz
+    #np.save('total_charge.npy', total_charge)
+    total_nelect = np.sum(total_charge)/nx/ny/nz
+    if check_normalization(nelect_neutral, total_nelect):
+        # calculate dipole correction
+        core_dipole = 0
+        pos_cart = constants.positions @ constants.lattice_vectors
+        for i in range(constants.number_ions):
+            pos_z = (pos_cart[i, 2]+ int(grid_roll_frac*nz)*dz)%Lz
+            core_dipole += constants.ZVAL[constants.ion_types[i]] * pos_z
+        dipole, new_chargedensity = calc_dipole(total_charge/Lx/Ly/Lz, Lz, nz, core_dipole/Lx/Ly)
+        total_pot = electrostatic_potential(new_chargedensity, Lx, Ly, Lz, epsilon_0=0.005526349358057108)
+        delta_pot = total_pot - constants.hartree_potential 
+    else:
+        # first electronic step, NELECT = NELECT neutral
+        delta_pot = V_ext
+        dipole = 0
+    np.save('dipole.npy', dipole*Lx*Ly)
+    #np.save('delta_pot.npy', delta_pot)
+    global global_data 
+    global_data = delta_pot
+    with open("dipole_corr.dat", "a") as file:  
+        file.write(str(dipole*Lx*Ly)+"\n")
+    additions.total_potential += delta_pot
+ 
+    # correct the energy of core in external potential
+    energy = 0
     for i in range(constants.number_ions):
-        pos_z = (pos_cart[i, 2]+ int(grid_roll_frac*nz)*dz)%Lz
-        core_dipole += constants.ZVAL[constants.ion_types[i]] * pos_z
-
-    dipole = calc_dipole(rho/volume, Lz, nz, core_dipole/(volume/Lz))
-    delta_pot = electrostatic_potential(dipole, L1, L2, Lz,rho.shape)
-
-
-    np.save('dipole.npy', dipole*L1*L2)
-
+        pos = constants.positions[i]
+        pos_x = int(np.round(pos[0]*nx))%nx
+        pos_y = int(np.round(pos[1]*ny))%ny
+        pos_z = int(np.round(pos[2]*nz))%nz
+        local_V = delta_pot[pos_x, pos_y, pos_z] 
+        energy += constants.ZVAL[constants.ion_types[i]] * local_V
+    additions.total_energy -= energy
     total_pot_z = np.mean(delta_pot + constants.hartree_potential + constants.ion_potential, axis = (0, 1))
+    #np.save('total_pot_z.npy', total_pot_z)
 
     global global_pot_z
     global_pot_z = total_pot_z
+
 
 def occupancies(constants, additions):
     dipole = np.load('dipole.npy')
@@ -220,85 +267,65 @@ def occupancies(constants, additions):
     dq = C0*(phi0+(phi-phi0)*np.exp(-1.0/tau) \
          + np.sqrt(kB * temperature / C0) \
          * np.sqrt(1.0-np.exp(-2.0/tau)) \
-         * np.random.normal() - phi)
-    Q_list.append(Q_list[-1] - dq)   ##CHECK the sign
+         * np.random.normal() - phi) 
+    Q_list.append(Q_list[-1] - dq)
     np.save('Q_list.npy', Q_list)
-    with open("Q.dat", "a") as file:
+    with open("Q.dat", "a") as file:  
         file.write(str(Q_list[-1])+"\n")
-    with open("phi.dat", "a") as file:
+    with open("phi.dat", "a") as file:  
         file.write(str(phi)+"\n")
     #total_pot_z = np.load('total_pot_z.npy')
     total_pot_z = global_pot_z
     with open("el_pot_z.dat", "a") as file:  # Open in append mode
-        np.savetxt(file, total_pot_z, fmt="%s")
+        np.savetxt(file, total_pot_z, fmt="%s") 
+    additions.NELECT -= dq
+        
 
-
-    additions.NELECT -= dq   # Check if the dq sign is the same
-
-    dzval = np.zeros(n_elements)
-    dzval[i_Ne] = dq/n_Ne
-    additions.ZVAL -= dzval
-
-
-def electrostatic_potential(dipole, Lx, Ly, Lz, rho_shape, grid_position_frac = grid_position_frac, epsilon_0=0.005526349358057108,dx_dipolcorr = 8):
+def electrostatic_potential(rho, Lx, Ly, Lz, epsilon_0=0.005526349358057108):
     """
     Calculate the electrostatic potential from charge density in 3D with periodic boundary conditions.
     This version handles non-cubic (rectangular) grids.
-
+    
     Parameters:
     - rho (3D numpy array): The charge density.
     - Lx, Ly, Lz (floats): The lengths of the periodic box in each direction.
     - epsilon_0 (float): The permittivity of free space (default is in SI units).
-
+    
     Returns:
     - phi (3D numpy array): The electrostatic potential.
     """
+    
+    # Get the grid size in each dimension
+    (Nx, Ny, Nz) = np.shape(rho)
+    
+    # Perform the Fourier transform of the charge density
+    rho_k = np.fft.fftn(rho)
+    
+    # Create the wave vectors for the Fourier space (kx, ky, kz)
+    kx = np.fft.fftfreq(Nx, d=Lx/Nx) * 2 * np.pi
+    ky = np.fft.fftfreq(Ny, d=Ly/Ny) * 2 * np.pi
+    kz = np.fft.fftfreq(Nz, d=Lz/Nz) * 2 * np.pi
+    kx, ky, kz = np.meshgrid(kx, ky, kz, indexing='ij')
+    
+    # Compute k^2 = kx^2 + ky^2 + kz^2
+    k_squared = kx**2 + ky**2 + kz**2
+    
+    # Solve for phi_k (handle the k = 0 mode separately)
+    phi_k = np.zeros_like(rho_k)
+    nonzero_mask = k_squared > 0  # Avoid division by zero for k = 0
+    phi_k[nonzero_mask] = rho_k[nonzero_mask] / (epsilon_0 * k_squared[nonzero_mask])
+    
+    # Set the k = 0 mode to zero (this is the average charge in the system)
+    phi_k[~nonzero_mask] = 0.0
+    
+    # Perform the inverse Fourier transform to get the potential in real space
+    phi = np.fft.ifftn(phi_k).real
+    
+    return phi
 
-    global global_dipole
-
-    if global_dipole is None:
-        # Get the grid size in each dimension
-        (Nx, Ny, Nz) = rho_shape
-        dz = Lz/Nz
-
-        chargedensity = np.zeros(shape=(Nx,Ny,Nz))
-
-        gridposition = int(grid_position_frac*Nz)
-
-        #q = dipole / (dx_dipolcorr*dz)
-        q = 1 / (dx_dipolcorr*dz)
-
-        chargedensity[:,:,gridposition] = q / dz
-        chargedensity[:,:,gridposition+dx_dipolcorr] = -q / dz
-
-
-        # Perform the Fourier transform of the charge density
-        rho_k = np.fft.fftn(chargedensity)
-
-        # Create the wave vectors for the Fourier space (kx, ky, kz)
-        kx = np.fft.fftfreq(Nx, d=Lx/Nx) * 2 * np.pi
-        ky = np.fft.fftfreq(Ny, d=Ly/Ny) * 2 * np.pi
-        kz = np.fft.fftfreq(Nz, d=Lz/Nz) * 2 * np.pi
-        kx, ky, kz = np.meshgrid(kx, ky, kz, indexing='ij')
-
-        # Compute k^2 = kx^2 + ky^2 + kz^2
-        k_squared = kx**2 + ky**2 + kz**2
-
-        # Solve for phi_k (handle the k = 0 mode separately)
-        phi_k = np.zeros_like(rho_k)
-        nonzero_mask = k_squared > 0  # Avoid division by zero for k = 0
-        phi_k[nonzero_mask] = rho_k[nonzero_mask] / (epsilon_0 * k_squared[nonzero_mask])
-
-        # Set the k = 0 mode to zero (this is the average charge in the system)
-        phi_k[~nonzero_mask] = 0.0
-
-        # Perform the inverse Fourier transform to get the potential in real space
-        phi = np.fft.ifftn(phi_k).real
-        global_dipole = phi
-    else:
-        phi = global_dipole
-
-    return phi*dipole
-
-
-
+        
+    
+        
+    
+    
+    
