@@ -72,21 +72,18 @@ def _iterate_node(
             )
             for idx, value in enumerate(values)
         }
-        # Placeholder, to restore original order after as_completed
-        if all([f.done() for f in futures]):
-
-            results = [None] * len(values)
-            for future in as_completed(futures):
-                idx, val = futures[future]
-                out = future.result()
-                if copy_results:
-                    out = copy(out)
-                results[idx] = out
-                if debug:
-                    print(f"Parallel iter: {input_label}={val}, out={out}")
-            out_lst = results
-            if collect_input:
-                inp_lst = list(values)
+        results = [None] * len(values)
+        for future in as_completed(futures):
+            idx, val = futures[future]
+            out = future.result()
+            if copy_results:
+                out = copy(out)
+            results[idx] = out
+            if debug:
+                print(f"Parallel iter: {input_label}={val}, out={out}")
+        out_lst = results
+        if collect_input:
+            inp_lst = list(values)
 
     return (out_lst, inp_lst) if collect_input else out_lst
 

@@ -64,7 +64,7 @@ _POTCAR_CSV = {
 @dataclass
 class VaspInputResources:
     structure: Atoms        # ASE Atoms — compatible with Bulk and other structure nodes
-    calc: InputCalcDFT
+    calc: Optional[InputCalcDFT]
     potcar_lib_path: str = field(default_factory=lambda: _default_potcar_lib_path)  # base path to POTCAR folders
     working_directory: Optional[str] = None
     potcar_symbols: Optional[list[str]] = None  # override default CSV symbol selection
