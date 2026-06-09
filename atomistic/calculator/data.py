@@ -1,5 +1,5 @@
 from dataclasses import field
-from typing import Optional
+from typing import Optional, Literal
 
 from core import as_inp_dataclass_node, as_out_dataclass_node
 from core.data_fields import DataArray, EmptyArrayField
@@ -144,3 +144,26 @@ class InputCalcMinimize:
 class InputCalcStatic:
     pass  # LammpsControl.calc_static takes exactly zero arguments, and currently we
     # have the input objects matching their respective LammpsControl counterparts
+
+
+@as_inp_dataclass_node
+class InputCalcDFT:
+    energy_cutoff: float = 400.0        # energy cutoff in eV
+    electronic_convergence: float = 1e-6         # electronic convergence criterion
+    ionic_convergence: float = -0.01       # ionic convergence (negative = forces in eV/Å)
+    max_ionic_steps: int = 0                # ionic steps (0 = static, >0 = relaxation)
+    ionic_relaxation: bool = False  
+    ionic_update_algorithm: Optional [
+        Literal["MolecularDynamics", "RMM-DIIS", "ConjugateGradient", "DampedMolecularDynamics"]
+    ] = None
+    #ibrion: int = -1            # ion update algorithm (-1 = none, 2 = CG, 1 = RMM-DIIS)
+    isif: int = 2               # stress/relaxation mask (2 = ions only, 3 = ions+cell)
+    ismear: int = 1             # smearing method (1 = Methfessel-Paxton, 0 = Gaussian, -5 = tetrahedron)
+    sigma: float = 0.2          # smearing width in eV
+    ispin: int = 1              # spin polarization (1 = off, 2 = on)
+    algo: str = "Fast"          # electronic minimization algorithm
+    prec: str = "Normal"        # precision mode
+    ncore: int = 1              # number of cores per band
+    kpoints_mesh: str = "1 1 1" # Optional[list] = None  # Gamma-centred mesh e.g. [4, 4, 4]; None → 1x1x1
+    functional: str = "PBE"     # exchange-correlation functional ("PBE" or "LDA")
+    
