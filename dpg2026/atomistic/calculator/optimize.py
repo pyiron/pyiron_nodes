@@ -139,7 +139,7 @@ def MapCalculatorOnStructures(
 def Relax(
         structure: Atoms,
         engine,
-        opt_parameters: GenericOptimizerSettings = GenericOptimizerSettings(), 
+        opt_parameters: Optional[GenericOptimizerSettings] = GenericOptimizerSettings(), 
         opt_mode: Literal["volume", "full"] = "volume",
         store: bool = False
         ) -> Atoms:
@@ -174,15 +174,7 @@ def Relax(
     calculator = engine.calculator
     # print("calculator: ", calculator)
 
-    # FIXME: meh
-    if opt_mode == "full":
-            # calculator.inputs.use_symmetry = True
-            structure.calc = calculator
-    elif opt_mode == "volume":
-            # calculator.inputs.use_symmetry = False
-            structure.calc = calculator
-    else:
-        raise ValueError("Unknown optimization mode")
+    structure.calc = calculator
 
     filtered_structure = mode.apply_filter_and_constraints(structure)
     lbfgs = LBFGS(filtered_structure, logfile="/dev/null")
