@@ -31,6 +31,7 @@ def BuildWater(n_mols: int = 10) -> Atoms:
     import numpy as np
     from ase import Atoms
     from ase.units import mol
+
     # from pyiron_atomistics import Project
 
     density = 1.0e-24  # g/A^3
@@ -66,7 +67,7 @@ def BuildWater(n_mols: int = 10) -> Atoms:
 
     water = water.repeat([n, n, n])
     structure = water.copy()
-    
+
     return structure
 
 
@@ -114,7 +115,8 @@ def AddWaterFilm(
     import ase.units as units
     import numpy as np
     from ase.build import molecule
-    #from pyiron_atomistics import ase_to_pyiron
+
+    # from pyiron_atomistics import ase_to_pyiron
 
     lx, ly = electrode.cell.diagonal()[:2]
     zmin = np.max(electrode.positions[:, 2])
@@ -132,7 +134,7 @@ def AddWaterFilm(
 
     H2O = molecule("H2O", cell=cell / cell_repeat)
     H2O.set_pbc(True)
-    #H2O = ase_to_pyiron(H2O).repeat(cell_repeat)
+    # H2O = ase_to_pyiron(H2O).repeat(cell_repeat)
     H2O = H2O.repeat(cell_repeat)
     H2O.positions[:, 2] += zmin + hydrophobic_gap
     H2O.set_cell(electrode.cell)
@@ -158,9 +160,9 @@ def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     ase.Atoms: The modified structure with a single layer of neon atoms.
     """
     import numpy as np
-    from ase.build import fcc111   
+    from ase.build import fcc111
 
-    #from pyiron_nodes.atomistic.structure.build import Surface
+    # from pyiron_nodes.atomistic.structure.build import Surface
 
     # Get the maximum z value of an atom in the structure
     max_z = np.max(structure.get_positions()[:, 2])
@@ -194,7 +196,7 @@ def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     # Add the neon layer to the modified structure
     modified_structure.extend(neon_layer)
 
-    structure=modified_structure.copy()
+    structure = modified_structure.copy()
 
     return structure
 
@@ -212,7 +214,7 @@ def AddIonPair(
 
     The function selects ``number`` oxygen atoms at random, replaces the first
     half with the provided ``anion`` species and the second half with the
-    ``cation`` species.  After the substitution, two H atoms closest to the 
+    ``cation`` species.  After the substitution, two H atoms closest to the
     selected oxygen atoms are also removed – this mimics the removal of water
     molecules that would otherwise coordinate the ion.
 
@@ -229,7 +231,7 @@ def AddIonPair(
         Chemical symbol of the cation to place on the second half of the
         selected oxygen sites.
     no_of_pairs : int
-        Number of ion pairs to be put in the structure. 
+        Number of ion pairs to be put in the structure.
     seed : int, optional
         Random seed for reproducible selection of oxygen atoms.  Default is
         ``1234``.
@@ -241,12 +243,13 @@ def AddIonPair(
         removed.
     """
     import numpy as np
-    #from pyiron_atomistics import Project  # retained for compatibility with existing code
-    #import random  # retained for compatibility; not used directly
+
+    # from pyiron_atomistics import Project  # retained for compatibility with existing code
+    # import random  # retained for compatibility; not used directly
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()
-    number = 2*no_of_pairs #number of O atoms to be replaced
+    number = 2 * no_of_pairs  # number of O atoms to be replaced
 
     # Indices of all oxygen atoms in the structure
     # ind_O = electrolyte.select_index("O")

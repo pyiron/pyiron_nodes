@@ -207,7 +207,7 @@ def FixAtoms(
             f"xyz_constraint values must be 0 or 1. Got: '{xyz_constraint}'"
         )
 
-    dof_mask = [bool(f) for f in flags]   # [fix_x, fix_y, fix_z]
+    dof_mask = [bool(f) for f in flags]  # [fix_x, fix_y, fix_z]
 
     # Use FixAtoms (simpler) when all three directions are fixed
     use_fix_atoms = all(dof_mask)
@@ -228,7 +228,7 @@ def FixAtoms(
             parsed_species = fix_species
 
         if isinstance(parsed_species, str):
-            species_set = set(item.strip() for item in parsed_species.split(','))
+            species_set = set(item.strip() for item in parsed_species.split(","))
         elif isinstance(parsed_species, (list, tuple, set)):
             if not all(isinstance(item, str) for item in parsed_species):
                 raise ValueError("All entries in the element list must be strings.")
@@ -264,9 +264,10 @@ def FixAtoms(
 
     for i, atom in enumerate(structure):
         fix_by_species = atom.symbol in species_set
-        fix_by_index   = i in index_set
-        fix_by_z       = (
-            fix_at_z is not None and fix_at_z != ''
+        fix_by_index = i in index_set
+        fix_by_z = (
+            fix_at_z is not None
+            and fix_at_z != ""
             and abs(atom.position[2] - fix_at_z) <= fix_at_z_tol
         )
         mask.append(fix_by_species or fix_by_index or fix_by_z)
@@ -283,12 +284,13 @@ def FixAtoms(
         else:
             constraint = FixCartesian(
                 a=fixed_indices,
-                mask=dof_mask,   # [fix_x, fix_y, fix_z]
+                mask=dof_mask,  # [fix_x, fix_y, fix_z]
             )
 
         structure.set_constraint(constraint)
 
     return structure
+
 
 @as_function_node
 def GenerateHEAStructures(
@@ -298,11 +300,11 @@ def GenerateHEAStructures(
     n_structures: int = 1,
     fixed_index: Optional[int] = None,
     r_cutoff: Optional[float] = None,
-    seed: Optional[int] = None
+    seed: Optional[int] = None,
 ) -> list[Atoms]:
     """
     Generate random High Entropy Alloy (HEA) structures from an input ASE structure.
-    
+
     Parameters
     ----------
     structure : Atoms
@@ -325,20 +327,20 @@ def GenerateHEAStructures(
     seed : int, optional
         Random seed for reproducibility. If n_structures > 1 and seed is provided,
         each structure gets a different but deterministic seed (seed + i).
-        
+
     Returns
     -------
     list[Atoms]
         List of ASE Atoms objects with randomized element assignments
-        
+
     Raises
     ------
     ValueError
         If elements and shares have different lengths, shares are invalid,
         or fixed_index is out of range.
-        
+
     """
-    
+
     from ase.io.trajectory import Trajectory
 
     # -------------------------------------------------------------------------
@@ -346,67 +348,62 @@ def GenerateHEAStructures(
     # -------------------------------------------------------------------------
     element_list = elements.strip().split()
     share_list = [float(s) for s in shares.strip().split()]
-    
+
     if len(element_list) != len(share_list):
         raise ValueError(
             f"Number of elements ({len(element_list)}) must match "
             f"number of shares ({len(share_list)})"
         )
-    
+
     if any(s < 0 for s in share_list):
         raise ValueError("All shares must be non-negative.")
-    
+
     total_share = sum(share_list)
     if total_share == 0:
         raise ValueError("Shares must not all be zero.")
-    
+
     # Renormalize shares just in case they don't sum to exactly 1
     share_array = np.array(share_list) / total_share
-    
+
     n_atoms = len(structure)
-    
+
     if fixed_index is not None:
         if not (0 <= fixed_index < n_atoms):
             raise ValueError(
                 f"fixed_index {fixed_index} is out of range for structure "
                 f"with {n_atoms} atoms."
             )
-    
+
     # -------------------------------------------------------------------------
     # Determine which atom indices are "free" (can be reassigned)
     # -------------------------------------------------------------------------
     fixed_indices = set()
-    
+
     if fixed_index is not None:
         fixed_indices.add(fixed_index)
-        
+
         if r_cutoff is not None:
             # Use ASE NeighborList to find all atoms within r_cutoff
             # We set cutoffs for each atom: only fixed_index needs a real cutoff
             cutoffs = [0.0] * n_atoms
             cutoffs[fixed_index] = r_cutoff
-            
-            nl = NeighborList(
-                cutoffs,
-                skin=0.0,
-                self_interaction=False,
-                bothways=True
-            )
+
+            nl = NeighborList(cutoffs, skin=0.0, self_interaction=False, bothways=True)
             nl.update(structure)
-            
+
             neighbors, _ = nl.get_neighbors(fixed_index)
             for neighbor_idx in neighbors:
                 fixed_indices.add(int(neighbor_idx))
-    
+
     free_indices = [i for i in range(n_atoms) if i not in fixed_indices]
     n_free = len(free_indices)
-    
+
     if n_free == 0:
         raise ValueError(
             "No free atoms to randomize. All atoms are fixed by "
             "fixed_index and/or r_cutoff constraints."
         )
-    
+
     # -------------------------------------------------------------------------
     # Calculate how many atoms of each element to assign among free sites
     # -------------------------------------------------------------------------
@@ -419,59 +416,59 @@ def GenerateHEAStructures(
         exact_counts = fractions * n_sites
         floor_counts = np.floor(exact_counts).astype(int)
         remainder = n_sites - floor_counts.sum()
-        
+
         # Distribute remaining slots by largest fractional parts
         fractional_parts = exact_counts - floor_counts
         indices_sorted = np.argsort(-fractional_parts)  # descending
         for i in range(remainder):
             floor_counts[indices_sorted[i]] += 1
-            
+
         return floor_counts
-    
+
     element_counts = compute_counts(n_free, share_array)
-    
+
     # Verbose summary
-    print(f"Structure has {n_atoms} total atoms, {len(fixed_indices)} fixed, {n_free} free.")
+    print(
+        f"Structure has {n_atoms} total atoms, {len(fixed_indices)} fixed, {n_free} free."
+    )
     print(f"Element distribution among free sites:")
     for el, cnt, frac in zip(element_list, element_counts, share_array):
         print(f"  {el}: {cnt} atoms ({cnt/n_free*100:.1f}%,  target: {frac*100:.1f}%)")
-    
+
     # -------------------------------------------------------------------------
     # Generate n_structures random structures
     # -------------------------------------------------------------------------
     results = []
-    
+
     for i in range(n_structures):
-        
+
         # Handle seeding
         if seed is not None:
             # Each structure gets its own deterministic seed
             rng = np.random.default_rng(seed + i)
         else:
             rng = np.random.default_rng()
-        
+
         # Create a shuffled assignment of elements to free sites
         element_assignment = []
         for el, cnt in zip(element_list, element_counts):
             element_assignment.extend([el] * cnt)
-        
+
         element_assignment = np.array(element_assignment)
         rng.shuffle(element_assignment)
-        
+
         # Build new structure as a copy
         new_structure = copy.deepcopy(structure)
         symbols = list(new_structure.get_chemical_symbols())
-        
+
         # Assign shuffled elements to free indices
         for free_pos, atom_idx in enumerate(free_indices):
             symbols[atom_idx] = element_assignment[free_pos]
-        
+
         new_structure.set_chemical_symbols(symbols)
         results.append(new_structure)
 
     return results
-
-
 
 
 @as_function_node
