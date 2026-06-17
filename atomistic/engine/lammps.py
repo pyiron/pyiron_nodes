@@ -106,7 +106,6 @@ def CreateLammpsStructure(
 ) -> LammpsIOBundle:
     from lammpsparser.compatibility.file import _get_potential
 
-    print("units:", units)
     io_bundle = LammpsIOBundle(
         structure=structure,
         potential=potential,
@@ -238,7 +237,6 @@ def CreateLammpsMDInput(
     ]
 
     calc_kwargs["units"] = io_bundle.units
-    print("calc_kwargs:", calc_kwargs)
     lmp_str_lst += calc_md(**calc_kwargs)
 
     if read_restart_file:

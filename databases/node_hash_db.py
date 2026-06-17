@@ -3,9 +3,7 @@ import getpass
 
 USERNAME = getpass.getuser()
 
-from typing import Literal
-
-
+from typing import Union
 
 @as_function_node
 def CreateDB(
