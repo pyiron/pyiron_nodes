@@ -11,7 +11,7 @@ def CreateDB(
     host: str = "localhost",
     port: int = 5432,
     database: str = "none",
-    table_name: str = "none"
+    table_name: str = "none",
 ):
     import pyiron_database
 
