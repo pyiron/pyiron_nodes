@@ -6,7 +6,7 @@ import pandas as pd
 from core import as_function_node
 from assyst.crystals import pyxtal
 from typing import Optional, Union
-from pyiron_nodes.atomistic.structure.build import _ase_to_data
+from pyiron_nodes.atomistic.structure._atoms import _ase_to_data
 
 
 @dataclass(frozen=True)

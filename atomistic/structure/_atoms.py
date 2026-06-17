@@ -161,6 +161,8 @@ def _ase_to_data(atoms: Atoms) -> OutputAtoms:
     -------
     OutputAtoms
     """
+    if isinstance(atoms, OutputAtoms):
+        return atoms
     return OutputAtoms(
         symbols=list(atoms.symbols),
         positions=atoms.positions,

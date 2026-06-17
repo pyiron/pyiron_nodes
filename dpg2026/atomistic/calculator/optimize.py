@@ -108,7 +108,7 @@ def MapCalculatorOnStructures(
         if isinstance(structure, OutputAtoms):
              structure = _data_to_ase(structure)
         calculator.inputs.structure = structure
-        out = calculator.pull()["out"]
+        out = calculator.pull()
         # print("out: ", out)
         relaxed_structures.append(_ase_to_data(out.structure))
         energies.append(out.energy)
