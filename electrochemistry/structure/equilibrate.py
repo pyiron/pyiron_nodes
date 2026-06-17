@@ -144,8 +144,12 @@ def WaterPotential(
                     "pair_style lj/cut/coul/long 10.0\n",
                     "pair_coeff * * 0.000 0.000 \n",
                     "pair_coeff 2 2 0.102 3.188 \n",
+                    "pair_coeff 3 3 0.350 2.62  \n",
+                    "pair_coeff 4 4 0.010 3.000 \n",
                     "pair_coeff 2 3 {:.4} {:.4} \n".format(epsilon, sigma),
                     "pair_coeff 2 4 {:.4} {:.4} \n".format(epsilon, sigma),
+                    "pair_coeff 1 3 0.010 1.60 \n",
+                    "pair_coeff 1 4 0.010 1.60 \n",
                     "bond_style  harmonic\n",
                     "bond_coeff  1 450 0.9572\n",
                     "angle_style harmonic\n",
@@ -157,7 +161,23 @@ def WaterPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+            "O": {
+                "O-H": {
+                    "max_bond_num" : 2,
+                    "neighbor_type": "H",
+                    "cutoff"       : 1.2,
+                },
+                "H-O-H": {
+                    "max_angle_num": 1,
+                    "neighbor_type": "H",
+                    "cutoff"       : 1.2,
+                },
+            }
+        }
+
+    return water_potential, bond_dict
+
 
 
 @as_function_node
@@ -296,7 +316,22 @@ def IonPotential(
         }
     )
 
-    return water_potential
+    bond_dict = {
+        "O": {
+            "O-H": {
+                "max_bond_num" : 2,
+                "neighbor_type": "H",
+                "cutoff"       : 1.2,
+            },
+            "H-O-H": {
+                "max_angle_num": 1,
+                "neighbor_type": "H",
+                "cutoff"       : 1.2,
+            },
+        }
+    }
+
+    return water_potential, bond_dict
 
 
 @as_function_node("Ion_density")

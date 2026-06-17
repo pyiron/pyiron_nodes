@@ -36,9 +36,31 @@ class LammpsIOBundle:
     units: str = "metal"
     resource_path: Optional[str] = None
 
+from ase import Atoms
+from core import as_function_node
+from dataclasses import dataclass
+
+@dataclass
+class LammpsInputResources:
+    structure: Atoms
+    potential: str | pd.DataFrame
+    working_directory: str = "."
+    lammps_input_string: str = ''
+    lammps_input_filename: str = 'lmp.in'
+    lammps_structure_string: str = ''
+    lammps_structure_filename: str = 'lammps.data'
+    lammps_potential_string: str = ''
+    lammps_potential_filename: str = 'potential.inp'
+    read_restart_filename: Optional[str] = None
+    write_restart_filename: Optional[str] = None
+    units: str = 'metal'
+    resource_path: Optional[str] = None
 
 @as_function_node
-def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
+def ListPotentials(
+    structure: Atoms, 
+    resource_path: Optional[str] = None
+):
 
     import os
     from lammpsparser.potential import view_potentials
@@ -109,6 +131,22 @@ def CreateLammpsStructure(
     _, potential_replace, potential_elements = _get_potential(
         potential=potential, resource_path=resource_path
     )
+    
+    # CHECK if this makes sense
+    #if "atom_style" in potential_replace.keys():
+    #    atom_type = potential_replace["atom_style"].split()[-1]
+
+    if atom_type == "full":
+        # LammpsStructure does not support "full" atom_style, so an additional function write_lammps_data_full was added in this file and is used for the 'full' case
+        # Does not include dihedrals or impropers, but should be sufficient for bonds and angles.
+        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for WaterPotential node.
+        
+        structure_string = write_lammps_data_full(
+            structure=structure,
+            specorder=potential_elements,
+            bond_dict=bond_dict,
+            potential=potential
+        )
 
     # CHECK if this makes sense
     if "atom_style" in potential_replace.keys():
@@ -155,7 +193,319 @@ def CreateLammpsMDInput(
     potential_lst, potential_replace, _ = _get_potential(
         potential=io_bundle.potential, resource_path=io_bundle.resource_path
     )
+    output = parse_lammps_output(
+            working_directory=input_resources.working_directory,
+            structure=input_resources.structure,
+            potential_elements=species,
+            units=input_resources.units,
+            prism=None,
+            dump_h5_file_name=dump_h5_file_name,
+            dump_out_file_name=dump_out_file_name,
+            log_lammps_file_name=log_lammps_file_name,
+        )
+    from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 
+    out = OutputCalcMD.pure_dataclass()
+
+    out.cells=output["generic"].get('cells')
+    out.energies_tot=output["generic"].get('energies_tot')
+    out.energies_pot=output["generic"].get('energies_pot')
+    out.forces=output["generic"].get('forces')
+    out.indices=output["generic"].get('indices')
+    out.natoms=output["generic"].get('natoms')
+    out.positions=output["generic"].get('positions')
+    out.pressures=output["generic"].get('pressures')
+    out.steps=output["generic"].get('steps')
+    out.temperatures=output["generic"].get('temperature')
+    out.unwrapped_positions=output["generic"].get('unwrapped_positions')
+    out.velocities=output["generic"].get('velocities')
+    out.volumes=output["generic"].get('volume')
+    out.species=output["generic"].get('species')
+
+    ase_trajectory = None
+
+    if out.positions is not None:
+        ase_trajectory = []
+
+        # Get symbols once from initial structure
+        all_symbols = input_resources.structure.get_chemical_symbols()
+
+        for frame_idx in range(len(out.positions)):
+            
+            cell = out.cells[frame_idx] if out.cells is not None else None
+            frame = Atoms(
+                symbols=all_symbols,
+                positions=out.positions[frame_idx],
+                cell=cell,
+                pbc=cell is not None,
+            )
+            ase_trajectory.append(frame)
+
+    return out, ase_trajectory
+
+
+# temporary here, should be included in LammpsStructure?
+def write_lammps_data_full(
+    structure: Atoms,
+    specorder: list[str],
+    bond_dict: dict,
+    potential:  str | pd.DataFrame,
+) -> str:
+    """
+    Build LAMMPS data file string in full atom_style.
+
+    Full atom line format:
+        atom-ID  mol-ID  atom-type  charge  x  y  z
+
+    Returns
+    -------
+    str
+        Complete LAMMPS data file content as a string.
+    """
+    from ase.neighborlist import neighbor_list
+    from lammpsparser.structure import UnfoldingPrism, is_skewed
+    from ase.data import atomic_masses, atomic_numbers
+    from collections import defaultdict
+
+    prism   = UnfoldingPrism(structure.cell, digits=15)
+    coords  = [prism.pos_to_lammps(pos) for pos in structure.positions]
+    symbols = structure.get_chemical_symbols()
+    n_atoms = len(structure)
+
+    charges = extract_charges_from_lammps_potential(
+        potential.iloc[0]["Config"], specorder=specorder
+    )
+
+    species_lammps_id_dict = {el: idx + 1 for idx, el in enumerate(specorder)}
+
+    # ------------------------------------------------------------------
+    # Find bonds and angles via neighbor search using bond_dict
+    # ------------------------------------------------------------------
+    bond_list  = []  # [(atom_i, atom_j, bond_type), ...]
+    angle_list = []  # [(atom_i, atom_j_center, atom_k, angle_type), ...]
+
+    bond_type_map      = {}
+    angle_type_map     = {}
+    bond_type_counter  = 1
+    angle_type_counter = 1
+
+    neighbors = defaultdict(list)  # {atom_i: [atom_j, ...]}
+
+    for center_el, specs in bond_dict.items():
+        for spec_name, spec in specs.items():
+
+            if "max_bond_num" in spec:
+                cutoff      = spec["cutoff"]
+                neighbor_el = spec["neighbor_type"]
+
+                if spec_name not in bond_type_map:
+                    bond_type_map[spec_name] = bond_type_counter
+                    bond_type_counter += 1
+                btype = bond_type_map[spec_name]
+
+                i_lst, j_lst = neighbor_list(
+                    "ij", structure,
+                    cutoff={
+                        (center_el, neighbor_el): cutoff,
+                        (neighbor_el, center_el): cutoff,
+                    },
+                )
+                seen = set()
+                for i, j in zip(i_lst, j_lst):
+                    if symbols[i] == center_el and symbols[j] == neighbor_el:
+                        pair = (min(i, j), max(i, j))
+                        if pair not in seen:
+                            bond_list.append((pair[0], pair[1], btype))
+                            seen.add(pair)
+                            neighbors[pair[0]].append(pair[1])
+                            neighbors[pair[1]].append(pair[0])
+
+            if "max_angle_num" in spec:
+                cutoff      = spec["cutoff"]
+                neighbor_el = spec["neighbor_type"]
+
+                if spec_name not in angle_type_map:
+                    angle_type_map[spec_name] = angle_type_counter
+                    angle_type_counter += 1
+                atype = angle_type_map[spec_name]
+
+                for center_idx, center_sym in enumerate(symbols):
+                    if center_sym != center_el:
+                        continue
+                    nb = [
+                        j for j in neighbors[center_idx]
+                        if symbols[j] == neighbor_el
+                    ]
+                    for a in range(len(nb)):
+                        for b in range(a + 1, len(nb)):
+                            angle_list.append(
+                                (nb[a], center_idx, nb[b], atype)
+                            )
+
+    # ------------------------------------------------------------------
+    # Assign molecule IDs via union-find on bond connectivity
+    # ------------------------------------------------------------------
+    parent = list(range(n_atoms))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        parent[find(x)] = find(y)
+
+    for i, j, _ in bond_list:
+        union(i, j)
+
+    root_to_mol: dict = {}
+    mol_counter = 1
+    mol_ids     = []
+    for i in range(n_atoms):
+        root = find(i)
+        if root not in root_to_mol:
+            root_to_mol[root] = mol_counter
+            mol_counter += 1
+        mol_ids.append(root_to_mol[root])
+
+    # ------------------------------------------------------------------
+    # Build string
+    # ------------------------------------------------------------------
+    xhi, yhi, zhi, xy, xz, yz = prism.get_lammps_prism_str()
+
+    lines = []
+
+    # Header
+    lines.append("Start File for LAMMPS TEST")
+    lines.append(f"{n_atoms} atoms")
+    lines.append(f"{len(specorder)} atom types")
+    lines.append(f"{len(bond_list)} bonds")
+    lines.append(f"{len(angle_list)} angles")
+    lines.append(f"{len(bond_type_map)} bond types")
+    lines.append(f"{len(angle_type_map)} angle types")
+    lines.append("")
+
+    # Cell
+    lines.append(f"0. {xhi} xlo xhi")
+    lines.append(f"0. {yhi} ylo yhi")
+    lines.append(f"0. {zhi} zlo zhi")
+    if is_skewed(structure):
+        lines.append(f"{xy} {xz} {yz} xy xz yz")
+    lines.append("")
+
+    # Masses
+    lines.append("Masses\n")
+    for el, idx in species_lammps_id_dict.items():
+        mass = atomic_masses[atomic_numbers[el]]
+        lines.append(f"{idx:3d} {mass:f}  # ({el})")
+    lines.append("")
+
+    # Atoms — full style: atom-ID  mol-ID  atom-type  charge  x  y  z
+    lines.append("Atoms  # full\n")
+    for idx in range(n_atoms):
+        el      = symbols[idx]
+        atype   = species_lammps_id_dict[el]
+        charge  = charges.get(el, 0.0)
+        x, y, z = coords[idx]
+        lines.append(
+            f"{idx+1:6d} "
+            f"{mol_ids[idx]:6d} "
+            f"{atype:4d} "
+            f"{charge:10.6f} "
+            f"{x:.15f} {y:.15f} {z:.15f}"
+        )
+    lines.append("")
+
+    # Bonds
+    lines.append("Bonds\n")
+    for b_id, (i, j, btype) in enumerate(bond_list, start=1):
+        lines.append(f"{b_id:6d} {btype:4d} {i+1:6d} {j+1:6d}")
+    lines.append("")
+
+    # Angles
+    lines.append("Angles\n")
+    for a_id, (i, j, k, atype) in enumerate(angle_list, start=1):
+        lines.append(f"{a_id:6d} {atype:4d} {i+1:6d} {j+1:6d} {k+1:6d}")
+    lines.append("")
+
+    return "\n".join(lines)   # ← caller decides what to do with it
+
+def extract_charges_from_lammps_potential(lines, specorder):
+    """
+    Extract charges mapped to element symbols from LAMMPS potential Config lines.
+
+    Parameters
+    ----------
+    lines : list of str
+        Lines from potential["Config"].
+    specorder : list of str
+        Element symbols in potential order, e.g. ["O", "H"].
+
+    Returns
+    -------
+    dict
+        {element_symbol: charge_value}, e.g. {"O": -0.830, "H": 0.415}
+    """
+    import re
+
+    # group_name -> charge
+    group_charges = {}
+    # element_symbol -> charge  (group name IS the element symbol here)
+    result = {}
+
+    # "group O type 2"  — group name is element symbol directly
+    p_group_type = re.compile(r"^group\s+(\S+)\s+type\s+(\d+)", re.IGNORECASE)
+    # "set group O charge -0.830"
+    p_set_group  = re.compile(r"^set\s+group\s+(\S+)\s+charge\s+(-?\d*\.?\d+)", re.IGNORECASE)
+    # "set type 1 charge -0.834"
+    p_set_type   = re.compile(r"^set\s+type\s+(\d+)\s+charge\s+(-?\d*\.?\d+)", re.IGNORECASE)
+
+    # type_id -> element symbol  (from "group O type 2")
+    type_to_element = {}
+
+    for raw_line in lines:
+        line = raw_line.strip()
+
+        # skip comments and empty lines
+        if not line or line.startswith("#"):
+            continue
+
+        m = p_group_type.match(line)
+        if m:
+            element = m.group(1)   # "O", "H", "Pt", "Ne"
+            type_id = int(m.group(2))
+            type_to_element[type_id] = element
+            continue
+
+        m = p_set_group.match(line)
+        if m:
+            element = m.group(1)   # group name IS element symbol
+            charge  = float(m.group(2))
+            group_charges[element] = charge
+            continue
+
+        m = p_set_type.match(line)
+        if m:
+            type_id = int(m.group(1))
+            charge  = float(m.group(2))
+            element = type_to_element.get(type_id)
+            if element is not None:
+                group_charges[element] = charge
+            continue
+
+    # ------------------------------------------------------------------
+    # Only return charges for elements in specorder
+    # ------------------------------------------------------------------
+    for element in specorder:
+        if element in group_charges:
+            result[element] = group_charges[element]
+        else:
+            print(f"  WARNING: no charge found for element '{element}', defaulting to 0.0")
+            result[element] = 0.0
+
+    print("Extracted charges:", result)
+    return result
     # FIXME - temporary fix, should ideally use `read_restart_filename is not None`
     # Problem gets worse when the check box is ticked and the filename is empty
     read_restart_file = bool(read_restart_filename)

@@ -5,7 +5,7 @@ from core import as_function_node
 
 
 @as_function_node("water")
-def build_water(project: str = "test2", n_mols: int = 10) -> Atoms:
+def BuildWater(n_mols: int = 10) -> Atoms:
     """
     Construct a bulk water super‑cell with a target number of water molecules.
 
@@ -16,10 +16,6 @@ def build_water(project: str = "test2", n_mols: int = 10) -> Atoms:
 
     Parameters
     ----------
-    project : str, optional
-        Name (or path) of a *pyiron* project.  If a string is supplied it is
-        converted to a :class:`pyiron_atomistics.Project` instance; otherwise an
-        already‑instantiated ``Project`` object can be passed.  Default is ``"test2"``.
     n_mols : int, optional
         Desired total number of water molecules in the final structure.
         The function will automatically compute the cubic root to obtain the
@@ -28,12 +24,14 @@ def build_water(project: str = "test2", n_mols: int = 10) -> Atoms:
     Returns
     -------
     Atoms
-        A :class:`pyiron_atomistics.Atoms` object containing ``n_mols`` water
+        A :class:`Atoms` object containing ``n_mols`` water
         molecules arranged in a cubic lattice with periodic boundary conditions.
     """
 
     import numpy as np
-    from pyiron_atomistics import Project
+    from ase import Atoms
+    from ase.units import mol
+    # from pyiron_atomistics import Project
 
     density = 1.0e-24  # g/A^3
     mol_mass_water = 18.015  # g/mol
@@ -52,18 +50,28 @@ def build_water(project: str = "test2", n_mols: int = 10) -> Atoms:
     r_H2 = [-dx, dx, 0]
     unit_cell = (a / n) * np.eye(3)
 
-    if isinstance(project, str):
-        project = Project(project)
-
-    water = project.create_atoms(
-        elements=["H", "H", "O"], positions=[r_H1, r_H2, r_O], cell=unit_cell, pbc=True
+    water = Atoms(
+        symbols=["H", "H", "O"],
+        positions=[r_H1, r_H2, r_O],
+        cell=unit_cell,
+        pbc=True,
     )
-    water.set_repeat([n, n, n])
-    return water
+
+    # if isinstance(project, str):
+    #     project = Project(project)
+
+    # water = project.create_atoms(
+    #     elements=["H", "H", "O"], positions=[r_H1, r_H2, r_O], cell=unit_cell, pbc=True
+    # )
+
+    water = water.repeat([n, n, n])
+    structure = water.copy()
+    
+    return structure
 
 
 @as_function_node
-def add_water_film(
+def AddWaterFilm(
     electrode: Atoms,
     water_width: float = 10.0,
     hydrophobic_gap: float = 3.0,
@@ -106,7 +114,7 @@ def add_water_film(
     import ase.units as units
     import numpy as np
     from ase.build import molecule
-    from pyiron_atomistics import ase_to_pyiron
+    #from pyiron_atomistics import ase_to_pyiron
 
     lx, ly = electrode.cell.diagonal()[:2]
     zmin = np.max(electrode.positions[:, 2])
@@ -124,17 +132,20 @@ def add_water_film(
 
     H2O = molecule("H2O", cell=cell / cell_repeat)
     H2O.set_pbc(True)
-    H2O = ase_to_pyiron(H2O).repeat(cell_repeat)
+    #H2O = ase_to_pyiron(H2O).repeat(cell_repeat)
+    H2O = H2O.repeat(cell_repeat)
     H2O.positions[:, 2] += zmin + hydrophobic_gap
     H2O.set_cell(electrode.cell)
 
     electrochemical_cell = electrode + H2O
 
-    return electrochemical_cell
+    structure = electrochemical_cell.copy()
+
+    return structure
 
 
 @as_function_node
-def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
+def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     """
     Add a single layer of neon atoms to the input structure above the maximum z value of an atom.
 
@@ -147,8 +158,9 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     ase.Atoms: The modified structure with a single layer of neon atoms.
     """
     import numpy as np
+    from ase.build import fcc111   
 
-    from pyiron_nodes.atomistic.structure.build import Surface
+    #from pyiron_nodes.atomistic.structure.build import Surface
 
     # Get the maximum z value of an atom in the structure
     max_z = np.max(structure.get_positions()[:, 2])
@@ -162,9 +174,17 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     ny = int(np.ceil(b / (d_eq * 2))) * 2
 
     # Create a new Atoms object for the neon layer
-    neon_layer = Surface(
-        "Ne", "fcc111", size=f"{nx} {ny} 1", vacuum=25.0, orthogonal=True
-    ).run()
+    neon_layer = fcc111(
+        "Ne",
+        size=(nx, ny, 1),
+        vacuum=25.0,
+        orthogonal=True,
+    )
+
+    # neon_layer = Surface(
+    #     "Ne", "fcc111", size=f"{nx} {ny} 1", vacuum=25.0, orthogonal=True
+    # ).run()
+
     neon_layer.set_cell(cell=structure.cell, scale_atoms=True)
     neon_layer.positions[:, 2] = max_z + hydrophobic_gap
 
@@ -174,15 +194,17 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     # Add the neon layer to the modified structure
     modified_structure.extend(neon_layer)
 
-    return modified_structure
+    structure=modified_structure.copy()
+
+    return structure
 
 
 @as_function_node
-def add_ion_pair(
+def AddIonPair(
     structure: Atoms,
     anion: str = "Na",
     cation: str = "Cl",
-    number: int = 0,
+    no_of_pairs: int = 0,
     seed: int = 1234,
 ) -> Atoms:
     """
@@ -190,8 +212,8 @@ def add_ion_pair(
 
     The function selects ``number`` oxygen atoms at random, replaces the first
     half with the provided ``anion`` species and the second half with the
-    ``cation`` species.  After the substitution, two atoms immediately above
-    each selected oxygen are removed – this mimics the removal of water
+    ``cation`` species.  After the substitution, two H atoms closest to the 
+    selected oxygen atoms are also removed – this mimics the removal of water
     molecules that would otherwise coordinate the ion.
 
     Parameters
@@ -206,9 +228,8 @@ def add_ion_pair(
     cation : str
         Chemical symbol of the cation to place on the second half of the
         selected oxygen sites.
-    number : int
-        Total number of oxygen atoms to be replaced.  Must be an even number;
-        otherwise the integer division ``number // 2`` determines the split.
+    no_of_pairs : int
+        Number of ion pairs to be put in the structure. 
     seed : int, optional
         Random seed for reproducible selection of oxygen atoms.  Default is
         ``1234``.
@@ -220,16 +241,16 @@ def add_ion_pair(
         removed.
     """
     import numpy as np
-    from pyiron_atomistics import (
-        Project,
-    )  # retained for compatibility with existing code
-    import random  # retained for compatibility; not used directly
+    #from pyiron_atomistics import Project  # retained for compatibility with existing code
+    #import random  # retained for compatibility; not used directly
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()
+    number = 2*no_of_pairs #number of O atoms to be replaced
 
     # Indices of all oxygen atoms in the structure
-    ind_O = electrolyte.select_index("O")
+    # ind_O = electrolyte.select_index("O")
+    ind_O = [atom.index for atom in electrolyte if atom.symbol == "O"]
 
     # Randomly choose ``number`` distinct oxygen indices
     rng = np.random.default_rng(seed)
@@ -237,14 +258,36 @@ def add_ion_pair(
 
     # Replace the first half with the anion and the second half with the cation
     half = number // 2
+
+    # get all chemical symbols as a list and modify it
+    symbols = electrolyte.get_chemical_symbols()
     for i in picked[:half]:
-        electrolyte[i] = anion
+        symbols[i] = anion
     for i in picked[half:number]:
-        electrolyte[i] = cation
+        symbols[i] = cation
 
-    # Remove two atoms above each selected site (e.g., coordinated water)
-    for i in reversed(picked):
-        del electrolyte[i + 2]
-        del electrolyte[i + 1]
+    # set the modified symbols back
+    electrolyte.set_chemical_symbols(symbols)
 
-    return electrolyte
+    # Find the two hydrogens closest to each selected oxygen and remove them
+    indices_to_delete = []
+    positions = electrolyte.get_positions()
+    ind_H = [atom.index for atom in electrolyte if atom.symbol == "H"]
+
+    for i in picked:
+        # Calculate distances from this oxygen to all hydrogens
+        o_pos = positions[i]
+        h_positions = positions[ind_H]
+        distances = np.linalg.norm(h_positions - o_pos, axis=1)
+
+        # Get the two closest hydrogens
+        closest_two = np.array(ind_H)[np.argsort(distances)[:2]]
+        indices_to_delete.extend(closest_two.tolist())
+
+    # Delete in reverse order to avoid index shifting
+    for i in sorted(set(indices_to_delete), reverse=True):
+        del electrolyte[i]
+
+    structure = electrolyte.copy()
+
+    return structure
