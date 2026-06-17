@@ -11,6 +11,7 @@ def CreateDB(
     host: str = "localhost",
     port: int = 5432,
     database: str = "none",
+    table_name: str = "none"
 ):
     import pyiron_database
 
@@ -19,8 +20,9 @@ def CreateDB(
 
     connection_str = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
-    db = pyiron_database.PostgreSQLInstanceDatabase(connection_str)
-    db.init()
+    db = pyiron_database.PostgreSQLInstanceDatabase(
+        connection_str, table_name=table_name, storage_path=table_name
+    )
 
     return db
 
