@@ -6,14 +6,15 @@ USERNAME = getpass.getuser()
 from typing import Literal
 
 
+
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
-    password: str = "none",
+    password: Union[str, None] = None,
     host: str = "130.183.217.189",
     port: int = 5432,
     database: str = "pyiron",
-    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",
+    table_name: str = "pyiron_nodes_table",
 ):
     import pyiron_database
 
@@ -25,7 +26,6 @@ def CreateDB(
     db = pyiron_database.PostgreSQLInstanceDatabase(
         connection_str, table_name=table_name, storage_path=table_name
     )
-    db.init()
 
     return db
 
