@@ -235,6 +235,9 @@ def CreateLammpsMDInput(
         ).items()
     ]
 
+    calc_kwargs["units"] = io_bundle.units
+    lmp_str_lst += calc_md(**calc_kwargs)
+
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
 
