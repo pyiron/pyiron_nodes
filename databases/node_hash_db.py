@@ -1,5 +1,6 @@
 from core import Node, as_function_node
 import getpass
+from typing import Union
 
 USERNAME = getpass.getuser()
 
@@ -7,11 +8,11 @@ USERNAME = getpass.getuser()
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
-    password: str = "none",
-    host: str = "localhost",
+    password: Union[str, None] = None,
+    host: str = "130.183.217.189",
     port: int = 5432,
-    database: str = "none",
-    table_name: str = "none",
+    database: str = "pyiron",
+    table_name: str = "pyiron_nodes_table",
 ):
     import pyiron_database
 
