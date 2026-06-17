@@ -17,33 +17,34 @@ from sphinx_parser.toolkit import to_sphinx
 from sphinx_parser.jobs import set_base_parameters
 from sphinx_parser.output import collect_energy_dat
 
+
 @dataclass
 class SphinxIOBundle:
     structure: Atoms
-    sphinx_input=None
+    sphinx_input = None
     working_directory: str = "."
     sphinx_input_filename: str
 
 
 def CreateSphinxStructure(
-        structure: Atoms,
-        working_directory: str = ".",
+    structure: Atoms,
+    working_directory: str = ".",
 ):
-    io_bundle=SphinxIOBundle(
-        structure=structure,
-        working_directory=working_directory
-    )
+    io_bundle = SphinxIOBundle(structure=structure, working_directory=working_directory)
 
     input_sx = set_base_parameters(structure)
-    io_bundle.sphinx_input=input_sx
+    io_bundle.sphinx_input = input_sx
 
     return io_bundle
+
 
 def CreateSphinxMinimizeInput():
     return None
 
+
 def RunSphinxCalculation():
     return None
 
+
 def ParseSphinxOutput():
-    return None 
+    return None
