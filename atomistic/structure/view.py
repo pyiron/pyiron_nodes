@@ -5,7 +5,7 @@ import numpy as np
 from ase import Atoms as _Atoms
 
 from core import as_function_node
-from pyiron_nodes.atomistic.engine.lammps import LammpsInputResources
+#from pyiron_nodes.atomistic.engine.lammps import LammpsIOBundle
 from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase
 from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 

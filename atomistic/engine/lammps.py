@@ -116,7 +116,6 @@ def CreateLammpsStructure(
         units=units,
         resource_path=resource_path,
     )
-
     _, potential_replace, potential_elements = _get_potential(
         potential=potential, resource_path=resource_path
     )
