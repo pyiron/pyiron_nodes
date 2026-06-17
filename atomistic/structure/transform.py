@@ -31,7 +31,7 @@ def Repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
     Task hint
     ----------
     Use this node when the workflow requires building a larger supercell
-    from a primitive cell (e.g., "create a 2×2×2 bulk supercell"). Create a supercell 
+    from a primitive cell (e.g., "create a 2×2×2 bulk supercell"). Create a supercell
     by repeating the input structure. Expand to a nxnxn supercell.
     """
     return structure.repeat(int(repeat_scalar))
@@ -505,7 +505,7 @@ def FixSpecies(
     # ------------------------------------------------------------------
     # 1️⃣ Normalise ``fixed_species`` to a *set* of element symbols.
     # ------------------------------------------------------------------
-    species_set: Set[str] = set()          # default → nothing to fix
+    species_set: Set[str] = set()  # default → nothing to fix
 
     if fixed_species is not None:
         # ``fixed_species`` is a string.  It may be a plain symbol
@@ -542,7 +542,7 @@ def FixSpecies(
     #    but we skip adding the constraint for a cleaner object.
     # ------------------------------------------------------------------
     new_structure = structure.copy()
-    if any(mask):                                   # at least one atom should be fixed
+    if any(mask):  # at least one atom should be fixed
         new_structure.set_constraint(FixAtoms(mask=mask))
 
     # ------------------------------------------------------------------
@@ -560,7 +560,7 @@ def LayerShift(
 ) -> Atoms:
     """
     Shift upper layers of a structure by an in-plane translation vector.
-    
+
     This is used for creating stacking faults and computing gamma surfaces.
     The shift is applied to the top fraction of layers in fractional coordinates.
 
@@ -599,36 +599,36 @@ def LayerShift(
     -------
     >>> # Shift top half by [1/3, 1/3] in fractional coords (intrinsic stacking fault)
     >>> shifted = LayerShift(slab, shift_fraction=0.5, shift_x=0.333, shift_y=0.333)
-    >>> 
+    >>>
     >>> # Shift top layer by half of first cell vector
     >>> shifted = LayerShift(slab, shift_fraction=0.5, shift_x=0.5, shift_y=0.0)
     """
     import numpy as np
-    
+
     # Step 1: Copy the structure (never modify input in-place)
     new_structure = structure.copy()
-    
+
     # Step 2: Sort atoms by z-coordinate
     z_positions = new_structure.positions[:, 2]
     sorted_indices = np.argsort(z_positions)
-    
+
     # Step 3: Calculate cutoff position
     z_min = np.min(z_positions)
     z_max = np.max(z_positions)
     z_cutoff = z_min + shift_fraction * (z_max - z_min)
-    
+
     # Step 4: Identify atoms in the upper layers (z >= cutoff)
     upper_mask = z_positions >= z_cutoff
     upper_indices = np.where(upper_mask)[0]
-    
+
     # Step 5: Apply shift to upper atoms
     # Calculate the total shift vector in Cartesian coordinates
     cell = new_structure.cell
     shift_vector = shift_x * cell[0] + shift_y * cell[1]
-    
+
     # Apply shift to upper layer atoms
     new_structure.positions[upper_indices] += shift_vector
-    
+
     # Step 6: Return modified structure
     # ASE's PBC handling automatically wraps atoms that move beyond cell boundaries
     return new_structure
