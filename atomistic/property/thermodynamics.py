@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from core import as_macro_node
+from core import group_node
 
 
-@as_macro_node("chemical_potential")
+@group_node("chemical_potential")
 def GetChemicalPotential(
     element: str,
     engine=None,

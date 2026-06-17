@@ -31,7 +31,6 @@ def build_water(n_mols: int = 10) -> Atoms:
     import numpy as np
     from ase import Atoms
     from ase.units import mol
-    # from pyiron_atomistics import Project
 
     density = 1.0e-24  # g/A^3
     mol_mass_water = 18.015  # g/mol
@@ -112,7 +111,6 @@ def add_water_film(
     import ase.units as units
     import numpy as np
     from ase.build import molecule
-    #from pyiron_atomistics import ase_to_pyiron
 
     lx, ly = electrode.cell.diagonal()[:2]
     zmin = np.max(electrode.positions[:, 2])
@@ -130,7 +128,6 @@ def add_water_film(
 
     H2O = molecule("H2O", cell=cell / cell_repeat)
     H2O.set_pbc(True)
-    #H2O = ase_to_pyiron(H2O).repeat(cell_repeat)
     H2O = H2O.repeat(cell_repeat)
     H2O.positions[:, 2] += zmin + hydrophobic_gap
     H2O.set_cell(electrode.cell)
@@ -213,7 +210,7 @@ def add_ion_pair(
     Parameters
     ----------
     structure : Any
-        An atomic structure (e.g., ``pyiron_atomistics.Atoms``) that contains
+        An atomic structure that contains
         oxygen atoms.  The structure is copied internally; the original is not
         modified.
     anion : str
@@ -236,7 +233,6 @@ def add_ion_pair(
         removed.
     """
     import numpy as np
-    #from pyiron_atomistics import Project  # retained for compatibility with existing code
     #import random  # retained for compatibility; not used directly
 
     # Work on a copy to avoid side‑effects on the input structure

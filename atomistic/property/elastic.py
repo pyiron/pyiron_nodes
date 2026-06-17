@@ -8,7 +8,7 @@ from core import (
     Node,
     as_function_node,
     as_inp_dataclass_node,
-    as_macro_node,
+    group_node,
     as_out_dataclass_node,
 )
 
@@ -168,7 +168,7 @@ def GenerateStructures(
     return structures, job_names
 
 
-@as_macro_node("elastic_constants")
+@group_node("elastic_constants")
 def ComputeElasticConstantsMacro(
     structure,
     engine,

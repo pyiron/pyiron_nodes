@@ -5,7 +5,7 @@ import numpy as np
 from core import (
     Workflow,
     as_function_node,
-    as_macro_node,
+    group_node,
     as_out_dataclass_node,
 )
 
@@ -92,7 +92,7 @@ def compute_cp(enthalpy, temperature, label: str = "cp"):
     return out
 
 
-@as_macro_node("cp")
+@group_node("cp")
 def compute_cp_from_G(data: GibbsData, degree: int = 4):
     wf = Workflow("macro")
     wf.fit = fit_G(data, degree)

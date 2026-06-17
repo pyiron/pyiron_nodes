@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 from ase import Atoms
 
-from core import as_function_node, as_macro_node
+from core import as_function_node, group_node
 
 
 @as_function_node
@@ -162,7 +162,7 @@ def GetChemicalSpecies(structure: Atoms):
     return species
 
 
-@as_macro_node(
+@group_node(
     [
         "coefficients",
         "design_matrix",
@@ -194,7 +194,7 @@ def FitDiffPotential(
         GetRowsFromDataFrame,
         MergeDataFrames,
     )
-    from pyiron_nodes.math import (
+    from pyiron_nodes.math_utils import (
         Divide,
         DotProduct,
         Linspace,
@@ -274,7 +274,7 @@ def FitDiffPotential(
     )
 
 
-@as_macro_node(
+@group_node(
     [
         "coefficients",
         "design_matrix",

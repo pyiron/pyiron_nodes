@@ -2,33 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 from ase.atoms import Atoms
-from core import as_function_node, as_out_dataclass_node  # , as_macro_node
-from core.data_fields import DataArray, EmptyArrayField
-from dataclasses import dataclass
-
-
-# # @as_out_dataclass_node
-# @dataclass
-# class OutputAtoms:
-#     symbols: DataArray = EmptyArrayField()
-#     positions: DataArray = EmptyArrayField()
-#     cell: DataArray = EmptyArrayField()
-#     pbc: DataArray = EmptyArrayField()
-
-
-# def _data_to_ase(atoms: OutputAtoms.dataclass_type):
-#     return Atoms(
-#         symbols=atoms.symbols, positions=atoms.positions, cell=atoms.cell, pbc=atoms.pbc
-#     )
-
-
-# def _ase_to_data(atoms: Atoms):
-#     return OutputAtoms(
-#         symbols=list(atoms.symbols),
-#         positions=atoms.positions,
-#         cell=atoms.cell.tolist(),
-#         pbc=atoms.pbc.tolist(),
-# )
+from core import as_function_node, group_node
 
 
 @as_function_node("structure")
@@ -68,8 +42,7 @@ def Bulk(
 
     Returns
     -------
-    Node returns an Atoms object from ``pyiron_atomistics._StructureFactory().bulk`` compatible
-    with ASE/pyiron.
+    Node returns an Atoms object compatible with ASE/pyiron.
     """
     from ase.build import bulk
 
@@ -162,52 +135,52 @@ def HighIndexSurface(
     return ase_to_pyiron(slab)
 
 
-# @as_macro_node("structure")
-# def CubicBulkCell(
-#     element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
-# ) -> Atoms:
-#     """
-#     Build a cubic bulk supercell and optionally introduce a single vacancy.
+@group_node("structure")
+def CubicBulkCell(
+    element: str, cell_size: int = 1, vacancy_index: Optional[int] = None
+) -> Atoms:
+    """
+    Build a cubic bulk supercell and optionally introduce a single vacancy.
 
-#     **Scientific purpose**
-#     Produce a cubic replication of a bulk unit cell (useful for convergence tests,
-#     defect calculations, or large‑scale MD) and optionally create a vacancy at a
-#     user‑specified lattice site.
+    **Scientific purpose**
+    Produce a cubic replication of a bulk unit cell (useful for convergence tests,
+    defect calculations, or large‑scale MD) and optionally create a vacancy at a
+    user‑specified lattice site.
 
-#     **Required inputs**
-#     - ``element``: Chemical symbol of the bulk material (e.g. ``"Si"``).
-#     - ``cell_size``: Integer scaling factor for the cubic repeat (default ``1``).
-#     - ``vacancy_index``: Index of the atom to be removed (``None`` means no vacancy).
+    **Required inputs**
+    - ``element``: Chemical symbol of the bulk material (e.g. ``"Si"``).
+    - ``cell_size``: Integer scaling factor for the cubic repeat (default ``1``).
+    - ``vacancy_index``: Index of the atom to be removed (``None`` means no vacancy).
 
-#     **Typical use‑cases**
-#     * Generating a supercell for finite‑size scaling of defect formation energies.
-#     * Preparing a large periodic cell for classical MD simulations.
-#     * Creating a simple vacancy model for DFT relaxation studies.
+    **Typical use‑cases**
+    * Generating a supercell for finite‑size scaling of defect formation energies.
+    * Preparing a large periodic cell for classical MD simulations.
+    * Creating a simple vacancy model for DFT relaxation studies.
 
-#     Returns
-#     -------
-#     The workflow node that contains the final structure (with or without the vacancy).
-#     """
-#     from pyiron_nodes.atomistic.structure.transform import (
-#         CreateVacancy,
-#         Repeat,
-#     )
-#     from core import Workflow
+    Returns
+    -------
+    The workflow node that contains the final structure (with or without the vacancy).
+    """
+    from pyiron_nodes.atomistic.structure.transform import (
+        CreateVacancy,
+        Repeat,
+    )
+    from core import Workflow
 
-#     if (
-#         vacancy_index is not None
-#         and type(vacancy_index) is not int
-#         and "va_i_" not in vacancy_index
-#     ):
-#         print("Vacancy Index: ", vacancy_index, type(vacancy_index))
-#         vacancy_index = int(vacancy_index)
-#     wf = Workflow("macro")
+    if (
+        vacancy_index is not None
+        and type(vacancy_index) is not int
+        and "va_i_" not in vacancy_index
+    ):
+        print("Vacancy Index: ", vacancy_index, type(vacancy_index))
+        vacancy_index = int(vacancy_index)
+    wf = Workflow("macro")
 
-#     wf.bulk = Bulk(name=element, cubic=True)
-#     wf.repeat = Repeat(structure=wf.bulk, repeat_scalar=cell_size)
+    wf.bulk = Bulk(name=element, cubic=True)
+    wf.repeat = Repeat(structure=wf.bulk, repeat_scalar=cell_size)
 
-#     wf.vacancy = CreateVacancy(structure=wf.repeat, index=vacancy_index)
-#     return wf.vacancy
+    wf.vacancy = CreateVacancy(structure=wf.repeat, index=vacancy_index)
+    return wf.vacancy
 
 
 @as_function_node("structure")
@@ -254,7 +227,7 @@ def Surface(
 
     Returns
     -------
-    ``pyiron_atomistics.atomistics.structure.atoms.Atoms`` instance representing the surface.
+    ``Atoms`` instance representing the surface.
     """
     import types
 

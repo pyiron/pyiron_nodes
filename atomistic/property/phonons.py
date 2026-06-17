@@ -9,7 +9,7 @@ from pyiron_nodes.atomistic.engine.generic import OutputEngine
 from core import (
     as_function_node,
     as_inp_dataclass_node,
-    as_macro_node,
+    group_node,
     as_out_dataclass_node,
 )
 
@@ -43,7 +43,7 @@ def GenerateSupercells(phonopy: Phonopy, parameters: PhonopyParameters) -> list[
     return supercells
 
 
-@as_macro_node("phonopy", "thermal_properties")
+@group_node("phonopy", "thermal_properties")
 def phonopy(
     structure: Atoms,
     engine: OutputEngine,
@@ -159,7 +159,7 @@ def GetEigenvalues(matrix):
     return ew
 
 
-# @as_macro_node("has_imaginary_modes")
+# @group_node("has_imaginary_modes")
 # def CheckConsistency(self, phonopy: Phonopy, tolerance: float = 1e-10):
 #     self.dyn_matrix = GetDynamicalMatrix(phonopy).run()
 #     self.ew = GetEigenvalues(self.dyn_matrix)

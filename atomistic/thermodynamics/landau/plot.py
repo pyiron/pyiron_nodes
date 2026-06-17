@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from core import Workflow, as_function_node, as_macro_node
+from core import Workflow, as_function_node, group_node
 
 
 def plot_phase_diagram(
@@ -290,7 +290,7 @@ def CalcPhaseDiagram(
     return df
 
 
-@as_macro_node("phase_data")
+@group_node("phase_data")
 def ComputPhaseDiagram(
     filename: str = "MgCaFreeEnergies.pckl.gz",
     T_min: int = 300,
