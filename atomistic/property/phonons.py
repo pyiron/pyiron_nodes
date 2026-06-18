@@ -11,6 +11,7 @@ from core import (
     as_inp_dataclass_node,
     as_macro_node,
     as_out_dataclass_node,
+    group_node,
 )
 
 
@@ -43,7 +44,7 @@ def GenerateSupercells(phonopy: Phonopy, parameters: PhonopyParameters) -> list[
     return supercells
 
 
-@as_macro_node("phonopy", "thermal_properties")
+@group_node("phonopy", "thermal_properties")# as_macro_node("phonopy", "thermal_properties")
 def phonopy(
     structure: Atoms,
     engine: OutputEngine,

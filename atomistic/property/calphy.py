@@ -13,6 +13,7 @@ from core import (
     as_function_node,
     as_inp_dataclass_node,
     as_macro_node,
+    group_node,
 )
 
 
@@ -504,7 +505,7 @@ def CollectResults() -> pd.DataFrame:
     return df
 
 
-@as_macro_node("phase_transition_temperature")
+@group_node("phase_transition_temperature")#as_macro_node("phase_transition_temperature")
 def ComputeTransitionTemperature(structure, potential, inp, seed: int = 42):
     """
     Compute the phase transformation temperature.
