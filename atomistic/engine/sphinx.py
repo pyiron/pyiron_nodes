@@ -27,6 +27,7 @@ class SphinxIOBundle:
     working_directory: str = "."
     sphinx_input_filename: str = "input.sx"
 
+
 @as_function_node
 def CreateSphinxStructure(
     structure: Atoms,
@@ -41,41 +42,56 @@ def CreateSphinxStructure(
 
     k_point_coords = [float(x) for x in k_point_coords.split()]
 
-    input_sx = set_base_parameters(structure=structure, eCut=eCut, xc=xc, maxSteps=maxSteps, ekt=ekt, k_point_coords=k_point_coords)
+    input_sx = set_base_parameters(
+        structure=structure,
+        eCut=eCut,
+        xc=xc,
+        maxSteps=maxSteps,
+        ekt=ekt,
+        k_point_coords=k_point_coords,
+    )
     io_bundle.sphinx_input = input_sx
 
     return io_bundle
 
+
 @as_function_node
-def WriteSphinxInput(io_bundle: SphinxIOBundle, sphinx_input_filename: str = "input.sx"):
+def WriteSphinxInput(
+    io_bundle: SphinxIOBundle, sphinx_input_filename: str = "input.sx"
+):
 
     io_bundle.sphinx_input_filename = sphinx_input_filename
 
     os.makedirs(io_bundle.working_directory, exist_ok=True)
 
-    with open(os.path.join(io_bundle.working_directory, sphinx_input_filename), "w") as f:
+    with open(
+        os.path.join(io_bundle.working_directory, sphinx_input_filename), "w"
+    ) as f:
         f.write(to_sphinx(io_bundle.sphinx_input))
 
     return io_bundle
 
+
 def CreateSphinxMinimizeInput():
     return None
+
 
 @as_function_node
 def RunSphinxCalculation(io_bundle: SphinxIOBundle):
     command = ["sphinx"]
 
     process = subprocess.Popen(
-        command, 
-        stdout=subprocess.PIPE, 
-        stderr=subprocess.PIPE, 
-        text=True, 
-        cwd=io_bundle.working_directory
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=io_bundle.working_directory,
     )
-    
+
     stdout, stderr = process.communicate()
 
     return io_bundle, stdout, stderr
+
 
 @as_out_dataclass_node
 class SphinxEnergyOutput:
@@ -86,18 +102,21 @@ class SphinxEnergyOutput:
     scf_energy_band: DataArray = EmptyArrayField()
     scf_electronic_entropy: DataArray = EmptyArrayField()
 
+
 @as_function_node
 def ParseSphinxOutput(io_bundle: SphinxIOBundle, output_filename: str = "energy.dat"):
 
-    collected_out = collect_energy_dat(os.path.join(io_bundle.working_directory, output_filename))
+    collected_out = collect_energy_dat(
+        os.path.join(io_bundle.working_directory, output_filename)
+    )
 
     output = SphinxEnergyOutput().pure_dataclass()
 
-    output.scf_computation_time = collected_out['scf_computation_time']
-    output.scf_energy_int = collected_out['scf_energy_int']
-    output.scf_energy_free = collected_out['scf_energy_free']
-    output.scf_energy_zero = collected_out['scf_energy_zero']
-    output.scf_energy_band = collected_out['scf_energy_band']
-    output.scf_electronic_entropy = collected_out['scf_electronic_entropy']
+    output.scf_computation_time = collected_out["scf_computation_time"]
+    output.scf_energy_int = collected_out["scf_energy_int"]
+    output.scf_energy_free = collected_out["scf_energy_free"]
+    output.scf_energy_zero = collected_out["scf_energy_zero"]
+    output.scf_energy_band = collected_out["scf_energy_band"]
+    output.scf_electronic_entropy = collected_out["scf_electronic_entropy"]
 
     return output
