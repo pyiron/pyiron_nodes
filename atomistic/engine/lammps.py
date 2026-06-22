@@ -127,7 +127,7 @@ def CreateLammpsStructure(
 @as_function_node
 def CreateLammpsMDInput(
     io_bundle: LammpsIOBundle,
-    calc_dataclass: InputCalcMD,
+    calc_dataclass: Optional[InputCalcMD],
     read_restart_filename: Optional[str] = None,
     write_restart_filename: Optional[str] = None,
 ):

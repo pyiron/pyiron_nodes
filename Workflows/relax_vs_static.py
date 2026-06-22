@@ -1,7 +1,7 @@
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.controls import IterToDataFrame
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import GenericOptimizerSettings, MapCalculatorOnStructures, Relax, Static
-from pyiron_nodes.dpg2026.atomistic.structure.build import Bulk
+from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.math_utils import Linspace
 from pyiron_nodes.plotting import InputPlotOptions, MergePlots, PlotDataFrame
 from core import Workflow
