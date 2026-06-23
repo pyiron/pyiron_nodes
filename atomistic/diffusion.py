@@ -28,7 +28,7 @@ def InterstitialHPositions(path_type: Literal['O-T-O', 'T-O-T'] = 'T-O-T'):
         'O-T-O': ([0.5, 0.0, 0.0], [0.0, 0.0, 0.5]),
         # T1=[0.25,0.25,0.25] and T2=[0.75,0.75,0.75]: the body-centre O at
         # [0.5,0.5,0.5] lies exactly at the midpoint of this T–T vector.
-        'T-O-T': ([0.25, 0.25, 0.25], [0.75, 0.75, 0.75]),
+        'T-O-T': ([0.25, 0.25, 0.25], [0.25, 0.25, 0.75]),
     }
     if path_type not in _sites:
         raise ValueError(f"path_type must be 'O-T-O' or 'T-O-T', got {path_type!r}")

@@ -50,6 +50,9 @@ def Plot3d(
     if view_plane is None:
         view_plane = [1, 1, 1]
 
+    if hasattr(structure, "structure"):
+        structure = structure.structure
+
     # Convert OutputAtoms to ASE Atoms if necessary
     if isinstance(structure, OutputAtoms):
         structure = _data_to_ase(structure)
