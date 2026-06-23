@@ -6,7 +6,7 @@ from core import group_node
 
 wf = Workflow("electrochemistry_cell")
 
-wf.Surface = Surface(element='Al', size='3 4 4', vacuum=20, orthogonal=True)
+wf.Surface = Surface(element="Al", size="3 4 4", vacuum=20, orthogonal=True)
 
 wf.add_water_film = add_water_film(electrode=wf.Surface)
 

@@ -1,6 +1,7 @@
 """
 For mathematical operations.
 """
+
 from typing import Optional
 
 import numpy as np
@@ -240,9 +241,9 @@ def DiagonalizeMat(matrix: np.ndarray, UPLO: str = "L"):
         # Compute n-1 eigenpairs (the largest ones) and then compute the smallest
         # eigenpair separately to get the full set.
         k = n - 1
-        w, v = eigsh(matrix, k=k, which='LM')  # largest magnitude eigenpairs
+        w, v = eigsh(matrix, k=k, which="LM")  # largest magnitude eigenpairs
         # Compute the smallest eigenpair
-        w_min, v_min = eigsh(matrix, k=1, which='SA')
+        w_min, v_min = eigsh(matrix, k=1, which="SA")
         # Combine and sort eigenvalues/eigenvectors
         w_full = np.concatenate((w_min, w))
         v_full = np.hstack((v_min, v))
@@ -515,7 +516,7 @@ def ParameterGrid2D(
 ):
     """
     Generate a 2D parameter grid for sweeping two-dimensional parameters.
-    
+
     This is particularly useful for gamma surface calculations where you need to
     sample shift vectors across a 2D unit cell.
 
@@ -544,11 +545,11 @@ def ParameterGrid2D(
     >>> x_vals, y_vals = ParameterGrid2D(grid_size=3)
     >>> print(x_vals)  # [0.0, 0.5, 1.0]
     >>> print(y_vals)  # [0.0, 0.5, 1.0]
-    >>> 
+    >>>
     >>> # Use with meshgrid for 2D sampling
     >>> X, Y = np.meshgrid(x_vals, y_vals)
     >>> print(X.shape)  # (3, 3)
-    >>> 
+    >>>
     >>> # Total combinations
     >>> total_points = len(x_vals) * len(y_vals)
     >>> print(total_points)  # 9
@@ -567,5 +568,5 @@ def ParameterGrid2D(
     """
     x_1d = np.linspace(x_min, x_max, grid_size)
     y_1d = np.linspace(y_min, y_max, grid_size)
-    
+
     return x_1d, y_1d

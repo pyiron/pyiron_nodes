@@ -11,7 +11,6 @@ from pyiron_nodes.atomistic.structure._atoms import (
     _data_to_ase,
 )
 
-
 # ---------------------------------------------------------------------------
 # Empty structure table
 # ---------------------------------------------------------------------------
@@ -170,20 +169,20 @@ class StructureContainer:
         # Get the subset of defect rows
         defect_subset = self.table[self.table["is_pristine"].eq(False)]
         defect_indices = defect_subset.index.tolist()
-        
+
         if not defect_indices:
             raise ValueError(
                 "No defect rows in the container yet. "
                 "Create at least one defect before referencing by "
                 "relative index."
             )
-        
+
         # Validate relative_index is an integer
         if not isinstance(relative_index, int):
             raise TypeError(
                 f"relative_index must be an integer, got {type(relative_index).__name__}"
             )
-        
+
         try:
             return int(defect_indices[relative_index])
         except IndexError:
@@ -217,16 +216,16 @@ class StructureContainer:
             If *relative_index* is out of range.
         """
         all_indices = self.table.index.tolist()
-        
+
         if not all_indices:
             raise ValueError("The container is empty.")
-        
+
         # Validate relative_index is an integer
         if not isinstance(relative_index, int):
             raise TypeError(
                 f"relative_index must be an integer, got {type(relative_index).__name__}"
             )
-        
+
         try:
             return int(all_indices[relative_index])
         except IndexError:
@@ -700,12 +699,12 @@ def CreateSubstitutional(
 def _get_interstitial_sites_fcc(site_type: str) -> list:
     """
     Return fractional coordinates of interstitial sites in FCC structure.
-    
+
     Parameters
     ----------
     site_type : str
         Either "octahedral" or "tetrahedral"
-    
+
     Returns
     -------
     list of tuple
@@ -714,8 +713,8 @@ def _get_interstitial_sites_fcc(site_type: str) -> list:
     if site_type == "octahedral":
         # Octahedral sites in FCC: body center and edge centers
         return [
-            (0.5, 0.5, 0.5),      # body center
-            (0.5, 0.0, 0.0),      # edge centers
+            (0.5, 0.5, 0.5),  # body center
+            (0.5, 0.0, 0.0),  # edge centers
             (0.0, 0.5, 0.0),
             (0.0, 0.0, 0.5),
         ]
@@ -738,12 +737,12 @@ def _get_interstitial_sites_fcc(site_type: str) -> list:
 def _get_interstitial_sites_bcc(site_type: str) -> list:
     """
     Return fractional coordinates of interstitial sites in BCC structure.
-    
+
     Parameters
     ----------
     site_type : str
         Either "octahedral" or "tetrahedral"
-    
+
     Returns
     -------
     list of tuple
@@ -773,14 +772,14 @@ def _get_interstitial_sites_bcc(site_type: str) -> list:
 def _get_interstitial_sites_hcp(site_type: str, c_over_a: float = 1.633) -> list:
     """
     Return fractional coordinates of interstitial sites in HCP structure.
-    
+
     Parameters
     ----------
     site_type : str
         Either "octahedral" or "tetrahedral"
     c_over_a : float, optional
         c/a ratio for the HCP structure. Default is ideal value 1.633.
-    
+
     Returns
     -------
     list of tuple
@@ -791,18 +790,18 @@ def _get_interstitial_sites_hcp(site_type: str, c_over_a: float = 1.633) -> list
         return [
             (0.0, 0.0, 0.25),
             (0.0, 0.0, 0.75),
-            (2/3, 1/3, 0.25),
-            (2/3, 1/3, 0.75),
+            (2 / 3, 1 / 3, 0.25),
+            (2 / 3, 1 / 3, 0.75),
         ]
     elif site_type == "tetrahedral":
         # Tetrahedral sites in HCP
         return [
             (0.0, 0.0, 0.375),
             (0.0, 0.0, 0.875),
-            (2/3, 1/3, 0.375),
-            (2/3, 1/3, 0.875),
-            (1/3, 2/3, 0.125),
-            (1/3, 2/3, 0.625),
+            (2 / 3, 1 / 3, 0.375),
+            (2 / 3, 1 / 3, 0.875),
+            (1 / 3, 2 / 3, 0.125),
+            (1 / 3, 2 / 3, 0.625),
         ]
     else:
         raise ValueError(f"Unknown site_type: {site_type}")
@@ -899,7 +898,7 @@ def CreateInterstitial(
     )
 
     atoms = _data_to_ase(structure)
-    
+
     # Get analytical interstitial positions based on crystal structure
     if crystal_type == "fcc":
         fractional_positions = _get_interstitial_sites_fcc(site_type)
@@ -926,6 +925,7 @@ def CreateInterstitial(
 
     # Apply minimum image convention to ensure position is in the unit cell
     from ase.geometry import find_mic
+
     cart_pos = find_mic(cart_pos.reshape(1, 3), cell, atoms.get_pbc())[0][0]
 
     # Create interstitial

@@ -1,5 +1,8 @@
 from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import GenericOptimizerSettings, Relax
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+    GenericOptimizerSettings,
+    Relax,
+)
 from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
 from core import Workflow
 from core import group_node
@@ -7,6 +10,7 @@ from core import as_function_node
 import pandas as pd
 
 # ── Local node definitions ──────────────────────
+
 
 @as_function_node("df")
 def BuildDecoratedStructures(
@@ -109,93 +113,138 @@ def ChemicalPotentialSweep(
 
 # ── Group node factories ─────────────────────────────
 
+
 @group_node("surface")
-def mg_surface(size='1 1 1', vacuum=1.0):
+def mg_surface(size="1 1 1", vacuum=1.0):
     from pyiron_nodes.atomistic.structure.build import Surface
     from core import Workflow
-    
+
     inner_wf = Workflow("mg_surface")
-    inner_wf.slab = Surface(element='Mg', surface_type='hcp0001', size=size, vacuum=vacuum, orthogonal=True)
+    inner_wf.slab = Surface(
+        element="Mg", surface_type="hcp0001", size=size, vacuum=vacuum, orthogonal=True
+    )
     return inner_wf.slab
+
 
 @group_node("mu")
 def mu_mg(structure, engine, optimizer_settings=None):
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
     from core import Workflow
     from core import as_function_node
-    
+
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
         from pyiron_nodes.atomistic.structure._atoms import to_ase
-    
+
         s = to_ase(calc_result.structure)
         return calc_result.energy / len(s)
-    
+
     inner_wf = Workflow("mu_mg")
-    inner_wf.relaxed = Relax(structure=structure, engine=engine, opt_parameters=optimizer_settings, opt_mode='full')
-    inner_wf.relaxed.inputs.add("store", port_type=bool, default=False, value=True, has_explicit_default=True)
+    inner_wf.relaxed = Relax(
+        structure=structure,
+        engine=engine,
+        opt_parameters=optimizer_settings,
+        opt_mode="full",
+    )
+    inner_wf.relaxed.inputs.add(
+        "store", port_type=bool, default=False, value=True, has_explicit_default=True
+    )
     inner_wf.mu = _energy_per_atom(calc_result=inner_wf.relaxed)
     return inner_wf.mu
+
 
 @group_node("mu")
 def mu_ca_ref(structure, engine, optimizer_settings=None):
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
     from core import Workflow
     from core import as_function_node
-    
+
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
         from pyiron_nodes.atomistic.structure._atoms import to_ase
-    
+
         s = to_ase(calc_result.structure)
         return calc_result.energy / len(s)
-    
+
     inner_wf = Workflow("mu_ca_ref")
-    inner_wf.relaxed = Relax(structure=structure, engine=engine, opt_parameters=optimizer_settings, opt_mode='full')
-    inner_wf.relaxed.inputs.add("store", port_type=bool, default=False, value=True, has_explicit_default=True)
+    inner_wf.relaxed = Relax(
+        structure=structure,
+        engine=engine,
+        opt_parameters=optimizer_settings,
+        opt_mode="full",
+    )
+    inner_wf.relaxed.inputs.add(
+        "store", port_type=bool, default=False, value=True, has_explicit_default=True
+    )
     inner_wf.mu = _energy_per_atom(calc_result=inner_wf.relaxed)
     return inner_wf.mu
 
+
 @group_node("result")
 def FormationEnergies(df, mu_host, mu_solute):
-    from pyiron_nodes.atomistic.thermodynamics.defect_phases import AddDefectConcentrationColumns, AddElementCountColumns, ComputeDefectFormationEnergy
+    from pyiron_nodes.atomistic.thermodynamics.defect_phases import (
+        AddDefectConcentrationColumns,
+        AddElementCountColumns,
+        ComputeDefectFormationEnergy,
+    )
     from core import Workflow
     from core import as_function_node
-    
+
     @as_function_node("chemical_potentials")
     def _pack_chemical_potentials(mu_host, mu_solute, host="Mg", solute="Ca"):
         return {host: mu_host, solute: mu_solute}
-    
+
     inner_wf = Workflow("FormationEnergies")
-    inner_wf.chemical_potentials = _pack_chemical_potentials(mu_host=mu_host, mu_solute=mu_solute)
+    inner_wf.chemical_potentials = _pack_chemical_potentials(
+        mu_host=mu_host, mu_solute=mu_solute
+    )
     inner_wf.with_counts = AddElementCountColumns(df=df)
     inner_wf.with_deltas = AddDefectConcentrationColumns(df=inner_wf.with_counts)
-    inner_wf.formation_energies = ComputeDefectFormationEnergy(df=inner_wf.with_deltas, chemical_potentials=inner_wf.chemical_potentials)
+    inner_wf.formation_energies = ComputeDefectFormationEnergy(
+        df=inner_wf.with_deltas, chemical_potentials=inner_wf.chemical_potentials
+    )
     return inner_wf.formation_energies
+
 
 wf = Workflow("mg_ca_surface_diagram")
 
-wf.bulk_ca = Bulk(name='Ca', crystalstructure='fcc', a=5.59)
+wf.bulk_ca = Bulk(name="Ca", crystalstructure="fcc", a=5.59)
 
-wf.bulk_mg = Bulk(name='Mg', crystalstructure='hcp', a=3.21, c=5.21, orthorhombic=True)
+wf.bulk_mg = Bulk(name="Mg", crystalstructure="hcp", a=3.21, c=5.21, orthorhombic=True)
 
-wf.grace_engine = Grace(model='GRACE-2L-OAM')
+wf.grace_engine = Grace(model="GRACE-2L-OAM")
 
-wf.mg_surface = mg_surface(size='2 2 6', vacuum=10.0)
+wf.mg_surface = mg_surface(size="2 2 6", vacuum=10.0)
 
 wf.optimizer_settings = GenericOptimizerSettings(max_steps=500, force_tolerance=0.001)
 
 wf.decorated_surface_structures = BuildDecoratedStructures(host_structure=wf.mg_surface)
 
-wf.mu_mg = mu_mg(structure=wf.bulk_mg, engine=wf.grace_engine, optimizer_settings=wf.optimizer_settings)
+wf.mu_mg = mu_mg(
+    structure=wf.bulk_mg,
+    engine=wf.grace_engine,
+    optimizer_settings=wf.optimizer_settings,
+)
 
-wf.mu_ca_ref = mu_ca_ref(structure=wf.bulk_ca, engine=wf.grace_engine, optimizer_settings=wf.optimizer_settings)
+wf.mu_ca_ref = mu_ca_ref(
+    structure=wf.bulk_ca,
+    engine=wf.grace_engine,
+    optimizer_settings=wf.optimizer_settings,
+)
 
-wf.surface_relax_template = Relax(engine=wf.grace_engine, opt_parameters=wf.optimizer_settings, opt_mode='full')
-wf.surface_relax_template.inputs.add("store", port_type=bool, default=False, value=False, has_explicit_default=True)
+wf.surface_relax_template = Relax(
+    engine=wf.grace_engine, opt_parameters=wf.optimizer_settings, opt_mode="full"
+)
+wf.surface_relax_template.inputs.add(
+    "store", port_type=bool, default=False, value=False, has_explicit_default=True
+)
 
 wf.mu_ca_sweep = ChemicalPotentialSweep(mu_ref=wf.mu_ca_ref)
 
-wf.relaxed_surface_df = RelaxStructuresDataFrame(df=wf.decorated_surface_structures, relax_node=wf.surface_relax_template)
+wf.relaxed_surface_df = RelaxStructuresDataFrame(
+    df=wf.decorated_surface_structures, relax_node=wf.surface_relax_template
+)
 
-wf.FormationEnergies = FormationEnergies(df=wf.relaxed_surface_df, mu_host=wf.mu_mg, mu_solute=wf.mu_ca_ref)
+wf.FormationEnergies = FormationEnergies(
+    df=wf.relaxed_surface_df, mu_host=wf.mu_mg, mu_solute=wf.mu_ca_ref
+)

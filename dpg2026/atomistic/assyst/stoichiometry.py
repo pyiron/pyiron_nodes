@@ -92,19 +92,19 @@ def FilterSize(
         Elements: filtered object
     """
     import math
+
     if max is None:
         max = math.inf
-    return Stoichiometry(tuple(s for s in elements
-                                if min <= sum(s.values()) <= max ))
+    return Stoichiometry(tuple(s for s in elements if min <= sum(s.values()) <= max))
 
 
 @as_function_node
 def SpaceGroupSampling(
-        elements: Stoichiometry,
-        spacegroups: Optional[Union[list[int], tuple[int,...]]] = None,
-        max_atoms: int = 4,
-        max_structures: int  = 10,
-        store: bool = False,
+    elements: Stoichiometry,
+    spacegroups: Optional[Union[list[int], tuple[int, ...]]] = None,
+    max_atoms: int = 4,
+    max_structures: int = 10,
+    store: bool = False,
 ) -> list[Atoms]:
     """
     Create symmetric random structures.
@@ -122,17 +122,20 @@ def SpaceGroupSampling(
     import math
 
     if spacegroups is None:
-        spacegroups = list(range(1,231))
+        spacegroups = list(range(1, 231))
     if max_structures is None:
         max_structures = math.inf
 
     structures = []
-    with catch_warnings(category=UserWarning, action='ignore'):
+    with catch_warnings(category=UserWarning, action="ignore"):
         for stoich in (bar := tqdm(elements)):
             elements, num_atomss = zip(*stoich.items())
             stoich_str = "".join(f"{s}{n}" for s, n in zip(elements, num_atomss))
             bar.set_description(stoich_str)
-            structures += [_ase_to_data(s['atoms']) for s in pyxtal(spacegroups, elements, num_atomss)]
+            structures += [
+                _ase_to_data(s["atoms"])
+                for s in pyxtal(spacegroups, elements, num_atomss)
+            ]
             if len(structures) > max_structures:
                 structures = structures[:max_structures]
                 break

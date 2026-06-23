@@ -7,11 +7,11 @@ from typing import Literal
 from core import as_function_node, as_out_dataclass_node
 from core.data_fields import DataArray, EmptyArrayField
 
-
 # ── Structure helpers ────────────────────────────────────────────────────────
 
+
 @as_function_node
-def InterstitialHPositions(path_type: Literal['O-T-O', 'T-O-T'] = 'T-O-T'):
+def InterstitialHPositions(path_type: Literal["O-T-O", "T-O-T"] = "T-O-T"):
     """Return fractional initial/final positions for a nearest-neighbour H hop.
 
     path_type='O-T-O': endpoints at octahedral sites; tetrahedral site is the
@@ -25,10 +25,10 @@ def InterstitialHPositions(path_type: Literal['O-T-O', 'T-O-T'] = 'T-O-T'):
     _sites = {
         # O1=[0.5,0,0] and O2=[0,0,0.5]: nearest-neighbour O–O pair in FCC,
         # connected via a T-site saddle at ~[0.25,0.25,0.25].
-        'O-T-O': ([0.5, 0.0, 0.0], [0.0, 0.0, 0.5]),
+        "O-T-O": ([0.5, 0.0, 0.0], [0.0, 0.0, 0.5]),
         # T1=[0.25,0.25,0.25] and T2=[0.75,0.75,0.75]: the body-centre O at
         # [0.5,0.5,0.5] lies exactly at the midpoint of this T–T vector.
-        'T-O-T': ([0.25, 0.25, 0.25], [0.25, 0.25, 0.75]),
+        "T-O-T": ([0.25, 0.25, 0.25], [0.25, 0.25, 0.75]),
     }
     if path_type not in _sites:
         raise ValueError(f"path_type must be 'O-T-O' or 'T-O-T', got {path_type!r}")
@@ -60,6 +60,7 @@ def AddInterstitialH(structure, frac_pos: list = None, repeat_scalar: int = 1):
 
 # ── MD analysis ──────────────────────────────────────────────────────────────
 
+
 @as_function_node
 def ComputeMSD(md_output, species_symbol: str = "H"):
     """Compute mean-square displacement of *species_symbol* over the MD trajectory.
@@ -72,10 +73,10 @@ def ComputeMSD(md_output, species_symbol: str = "H"):
     species = np.array(md_output.species)
     h_indices = np.where(species == species_symbol)[0]
     unwrapped_pos = np.array(md_output.unwrapped_positions)  # (n_frames, n_atoms, 3)
-    h_pos = unwrapped_pos[:, h_indices, :]                   # (n_frames, n_h, 3)
+    h_pos = unwrapped_pos[:, h_indices, :]  # (n_frames, n_h, 3)
     ref = h_pos[0]
     disp = h_pos - ref[np.newaxis, :, :]
-    msd = np.mean(np.sum(disp**2, axis=-1), axis=-1)         # Å², shape (n_frames,)
+    msd = np.mean(np.sum(disp**2, axis=-1), axis=-1)  # Å², shape (n_frames,)
     return msd
 
 
@@ -98,12 +99,12 @@ def DiffusionConstant(msd, md_input, fit_start_fraction: float = 0.2):
     import numpy as np
 
     n_frames = len(msd)
-    time_step_ps = md_input.time_step * 1e-3                           # fs → ps
-    times = np.arange(n_frames) * md_input.n_print * time_step_ps     # ps
+    time_step_ps = md_input.time_step * 1e-3  # fs → ps
+    times = np.arange(n_frames) * md_input.n_print * time_step_ps  # ps
     start = int(fit_start_fraction * n_frames)
-    slope = np.polyfit(times[start:], msd[start:], 1)[0]              # Å²/ps
+    slope = np.polyfit(times[start:], msd[start:], 1)[0]  # Å²/ps
     # 1 Å²/ps = 1e-20 m² / 1e-12 s = 1e-8 m²/s
-    diffusion_constant = slope / 6.0 * 1e-8                           # m²/s
+    diffusion_constant = slope / 6.0 * 1e-8  # m²/s
     return diffusion_constant, times
 
 
@@ -140,6 +141,7 @@ def PlotHPositions(md_output, md_input, species_symbol: str = "H"):
 
 # ── Free energy surface ──────────────────────────────────────────────────────
 
+
 @as_function_node
 def FoldPositionsToUnitCell(md_output, al_bulk, species_symbol: str = "H"):
     """Fold H Cartesian positions back into the unit cell as fractional coords in [0, 1)."""
@@ -148,12 +150,12 @@ def FoldPositionsToUnitCell(md_output, al_bulk, species_symbol: str = "H"):
     species = np.array(md_output.species)
     h_indices = np.where(species == species_symbol)[0]
     unwrapped_pos = np.array(md_output.unwrapped_positions)  # (n_frames, n_atoms, 3)
-    h_pos = unwrapped_pos[:, h_indices, :].reshape(-1, 3)    # (N, 3) Cartesian Å
+    h_pos = unwrapped_pos[:, h_indices, :].reshape(-1, 3)  # (N, 3) Cartesian Å
 
-    unit_cell = np.array(al_bulk.cell)          # (3,3), rows = lattice vectors
+    unit_cell = np.array(al_bulk.cell)  # (3,3), rows = lattice vectors
     inv_cell = np.linalg.inv(unit_cell)
-    frac = h_pos @ inv_cell                     # fractional coords (row-vector convention)
-    folded_positions = frac % 1.0               # fold into [0, 1)
+    frac = h_pos @ inv_cell  # fractional coords (row-vector convention)
+    folded_positions = frac % 1.0  # fold into [0, 1)
     return folded_positions
 
 
@@ -169,10 +171,11 @@ def AugmentWithSymmetry(folded_positions, al_bulk):
 
     try:
         import spglib
+
         cell = (al_bulk.cell, al_bulk.get_scaled_positions(), al_bulk.numbers)
         sym = spglib.get_symmetry(cell, symprec=1e-5)
-        rotations = sym['rotations']      # (n_ops, 3, 3) int; col-vec: x' = R @ x
-        translations = sym['translations']
+        rotations = sym["rotations"]  # (n_ops, 3, 3) int; col-vec: x' = R @ x
+        translations = sym["translations"]
     except Exception:
         # 48 elements of Oh: all permutations of axes × all sign combinations
         ops = []
@@ -213,7 +216,7 @@ def ComputeFreeEnergySurface(augmented_positions, md_input, n_bins: int = 30):
         range=[(0.0, 1.0), (0.0, 1.0), (0.0, 1.0)],
     )
 
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         F = np.where(hist > 0, -kT * np.log(hist / hist.max()), np.nan)
 
     F -= np.nanmin(F)
@@ -234,9 +237,11 @@ def ExtractMigrationBarrier(free_energy, grid_centers):
     from scipy.interpolate import RegularGridInterpolator
 
     cx, cy, cz = grid_centers
-    F_filled = np.where(np.isnan(free_energy), np.nanmax(free_energy) * 2.0, free_energy)
+    F_filled = np.where(
+        np.isnan(free_energy), np.nanmax(free_energy) * 2.0, free_energy
+    )
     interp = RegularGridInterpolator(
-        (cx, cy, cz), F_filled, method='linear', bounds_error=False, fill_value=None
+        (cx, cy, cz), F_filled, method="linear", bounds_error=False, fill_value=None
     )
 
     # Locate T-site as the global minimum
@@ -244,18 +249,20 @@ def ExtractMigrationBarrier(free_energy, grid_centers):
     t_site = np.array([cx[F_min_idx[0]], cy[F_min_idx[1]], cz[F_min_idx[2]]])
 
     # Octahedral interstitials in FCC (fractional coords of conventional cell)
-    o_candidates = np.array([
-        [0.5, 0.5, 0.5],   # body centre
-        [0.5, 0.5, 0.0],   # face centre (and periodic images)
-        [0.5, 0.0, 0.5],
-        [0.0, 0.5, 0.5],
-    ])
+    o_candidates = np.array(
+        [
+            [0.5, 0.5, 0.5],  # body centre
+            [0.5, 0.5, 0.0],  # face centre (and periodic images)
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5],
+        ]
+    )
 
     n_sample = 200
     barriers = []
     for o in o_candidates:
         delta = o - t_site
-        delta -= np.round(delta)          # minimum-image convention
+        delta -= np.round(delta)  # minimum-image convention
         path = t_site + np.outer(np.linspace(0.0, 1.0, n_sample), delta)
         path = path % 1.0
         F_path = interp(path)
@@ -266,8 +273,15 @@ def ExtractMigrationBarrier(free_energy, grid_centers):
 
 
 @as_function_node
-def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, md_input,
-                      n_bins_1d: int = 100, tube_fraction: float = 0.35):
+def PlotMigrationPath(
+    free_energy,
+    grid_centers,
+    augmented_positions,
+    al_bulk,
+    md_input,
+    n_bins_1d: int = 100,
+    tube_fraction: float = 0.35,
+):
     """1D free energy T → O → T' profile with cosine-model extrapolation.
 
     The x-axis is normalised to [0, 1]: 0 = T-site (initial config.),
@@ -285,48 +299,50 @@ def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, m
 
     # ── T-site: bin with maximum visit count (mode of augmented histogram) ────
     hist3d, edges3d = np.histogramdd(
-        augmented_positions, bins=n_bins_grid,
-        range=[(0., 1.), (0., 1.), (0., 1.)]
+        augmented_positions,
+        bins=n_bins_grid,
+        range=[(0.0, 1.0), (0.0, 1.0), (0.0, 1.0)],
     )
     mode_idx = np.unravel_index(np.argmax(hist3d), hist3d.shape)
-    def _centers(e): return (e[:-1] + e[1:]) / 2.0
+
+    def _centers(e):
+        return (e[:-1] + e[1:]) / 2.0
+
     t_site = np.array([_centers(edges3d[i])[mode_idx[i]] for i in range(3)])
     t_cart = t_site @ unit_cell
 
     # Pre-compute Cartesian positions for all augmented points
-    cart_pos = augmented_positions @ unit_cell   # (N, 3) Å
+    cart_pos = augmented_positions @ unit_cell  # (N, 3) Å
 
     # O-site candidates (octahedral interstitials in FCC conventional cell)
-    o_candidates = np.array([
-        [0.5, 0.5, 0.5],
-        [0.5, 0.5, 0.0],
-        [0.5, 0.0, 0.5],
-        [0.0, 0.5, 0.5],
-    ])
+    o_candidates = np.array(
+        [
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.0],
+            [0.5, 0.0, 0.5],
+            [0.0, 0.5, 0.5],
+        ]
+    )
 
     best_barrier = np.inf
     best_result = None
 
     for o in o_candidates:
         delta = o - t_site
-        delta -= np.floor(delta + 0.5)   # robust min-image (avoids banker's rounding)
+        delta -= np.floor(delta + 0.5)  # robust min-image (avoids banker's rounding)
         delta_cart = delta @ unit_cell
         d_to = np.linalg.norm(delta_cart)
-        if d_to < 0.5:                   # skip if T and O overlap (misidentified T-site)
+        if d_to < 0.5:  # skip if T and O overlap (misidentified T-site)
             continue
         delta_hat = delta_cart / d_to
         r_tube = tube_fraction * d_to
 
         # Project all augmented positions onto the T→O axis
-        diff = cart_pos - t_cart         # (N, 3)
-        along = diff @ delta_hat         # (N,) signed distance along path in Å
-        perp_sq = np.sum((diff - np.outer(along, delta_hat))**2, axis=1)
+        diff = cart_pos - t_cart  # (N, 3)
+        along = diff @ delta_hat  # (N,) signed distance along path in Å
+        perp_sq = np.sum((diff - np.outer(along, delta_hat)) ** 2, axis=1)
 
-        in_tube = (
-            (perp_sq < r_tube**2) &
-            (along >= -0.2 * d_to) &
-            (along <= 2.2 * d_to)
-        )
+        in_tube = (perp_sq < r_tube**2) & (along >= -0.2 * d_to) & (along <= 2.2 * d_to)
         rc_tube = along[in_tube]
         if rc_tube.size < 50:
             continue
@@ -336,7 +352,7 @@ def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, m
         )
         rc_c = (edges1d[:-1] + edges1d[1:]) / 2.0
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             F1d = np.where(hist1d > 0, -kT * np.log(hist1d / hist1d.max()), np.nan)
         F1d -= np.nanmin(F1d)
 
@@ -353,10 +369,16 @@ def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, m
 
     if best_result is None:
         fig, ax = plt.subplots(figsize=(7, 4))
-        ax.text(0.5, 0.5,
-                "Insufficient sampling for 1D path profile.\n"
-                "Try a longer trajectory or reduce tube_fraction.",
-                ha='center', va='center', transform=ax.transAxes, fontsize=11)
+        ax.text(
+            0.5,
+            0.5,
+            "Insufficient sampling for 1D path profile.\n"
+            "Try a longer trajectory or reduce tube_fraction.",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=11,
+        )
         ax.set_axis_off()
         figure = fig
         return figure
@@ -369,29 +391,30 @@ def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, m
         return (A / 2.0) * (1.0 - np.cos(np.pi * rc / L))
 
     rc_valid = rc_c[valid]
-    F_valid  = F_sm[valid]
-    fit_mask = rc_valid > 0.0   # rising edge only
+    F_valid = F_sm[valid]
+    fit_mask = rc_valid > 0.0  # rising edge only
 
-    A_fit, L_fit = best_barrier * 1.5, d_to   # defaults if fit fails
+    A_fit, L_fit = best_barrier * 1.5, d_to  # defaults if fit fails
     if fit_mask.sum() > 5:
         try:
             popt, _ = curve_fit(
                 cosine_model,
-                rc_valid[fit_mask], F_valid[fit_mask],
+                rc_valid[fit_mask],
+                F_valid[fit_mask],
                 p0=[best_barrier * 1.5, d_to],
                 bounds=(
-                    [0.0,                              0.5 * d_to],
-                    [max(1.0, 50.0 * best_barrier),    3.0 * d_to],
+                    [0.0, 0.5 * d_to],
+                    [max(1.0, 50.0 * best_barrier), 3.0 * d_to],
                 ),
                 maxfev=10000,
             )
             A_fit, L_fit = float(popt[0]), float(popt[1])
         except Exception:
-            pass   # keep defaults
+            pass  # keep defaults
 
     # Full cosine profile — only within [0, 2L] where the model is physical
-    rc_full  = np.linspace(-0.15 * d_to, 2.15 * d_to, 600)
-    F_cos    = cosine_model(rc_full, A_fit, L_fit)
+    rc_full = np.linspace(-0.15 * d_to, 2.15 * d_to, 600)
+    F_cos = cosine_model(rc_full, A_fit, L_fit)
     cos_mask = (rc_full >= 0.0) & (rc_full <= 2.0 * L_fit)
     F_cos[~cos_mask] = np.nan
 
@@ -402,19 +425,27 @@ def PlotMigrationPath(free_energy, grid_centers, augmented_positions, al_bulk, m
 
     # ── Plot ──────────────────────────────────────────────────────────────────
     rc_fill_n = rc_full_n[cos_mask]
-    F_fill    = F_cos[cos_mask]
+    F_fill = F_cos[cos_mask]
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.fill_between(rc_fill_n, F_fill, alpha=0.10, color='steelblue')
-    ax.plot(rc_full_n, F_cos, lw=1.5, ls='--', color='tomato', alpha=0.85,
-            label=f'cosine fit  ΔF = {A_fit:.3f} eV,  L = {L_fit:.2f} Å')
-    ax.plot(rc_data_n, F_sm[valid], lw=2.5, color='steelblue',
-            label='MD data (smoothed)')
-    ax.axvline(0.5, color='gray', ls=':', lw=1.2)
-    ax.text(0.5 * 1.02, A_fit * 0.05, 'O-site', color='gray', fontsize=9, va='bottom')
-    ax.set_xlabel('Reaction coordinate  (0 = T-site, 1 = T′-site)')
-    ax.set_ylabel('Free energy (eV)')
-    ax.set_title('1D free energy profile: T → O → T′ (minimum energy path)')
+    ax.fill_between(rc_fill_n, F_fill, alpha=0.10, color="steelblue")
+    ax.plot(
+        rc_full_n,
+        F_cos,
+        lw=1.5,
+        ls="--",
+        color="tomato",
+        alpha=0.85,
+        label=f"cosine fit  ΔF = {A_fit:.3f} eV,  L = {L_fit:.2f} Å",
+    )
+    ax.plot(
+        rc_data_n, F_sm[valid], lw=2.5, color="steelblue", label="MD data (smoothed)"
+    )
+    ax.axvline(0.5, color="gray", ls=":", lw=1.2)
+    ax.text(0.5 * 1.02, A_fit * 0.05, "O-site", color="gray", fontsize=9, va="bottom")
+    ax.set_xlabel("Reaction coordinate  (0 = T-site, 1 = T′-site)")
+    ax.set_ylabel("Free energy (eV)")
+    ax.set_title("1D free energy profile: T → O → T′ (minimum energy path)")
     ax.legend(fontsize=9)
     fig.tight_layout()
     figure = fig
@@ -440,20 +471,25 @@ def PlotFreeEnergySurface(free_energy, grid_centers, al_bulk):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     for ax, iz, label in zip(axes, z_idx, z_labels):
         F_slice = free_energy[:, :, iz].T  # (n_y, n_x) for contourf
-        im = ax.contourf(cx_ang, cy_ang, F_slice, levels=20, cmap='viridis', vmax=F_max)
-        ax.contour(cx_ang, cy_ang, F_slice, levels=10, colors='k', linewidths=0.3, alpha=0.5)
-        plt.colorbar(im, ax=ax, label='F (eV)')
+        im = ax.contourf(cx_ang, cy_ang, F_slice, levels=20, cmap="viridis", vmax=F_max)
+        ax.contour(
+            cx_ang, cy_ang, F_slice, levels=10, colors="k", linewidths=0.3, alpha=0.5
+        )
+        plt.colorbar(im, ax=ax, label="F (eV)")
         ax.set_title(label)
-        ax.set_xlabel('x (Å)')
-        ax.set_ylabel('y (Å)')
-        ax.set_aspect('equal')
-    fig.suptitle('Free energy surface F(x, y) at fixed z (symmetry-augmented trajectory)')
+        ax.set_xlabel("x (Å)")
+        ax.set_ylabel("y (Å)")
+        ax.set_aspect("equal")
+    fig.suptitle(
+        "Free energy surface F(x, y) at fixed z (symmetry-augmented trajectory)"
+    )
     fig.tight_layout()
     figure = fig
     return figure
 
 
 # ── ASE MD ───────────────────────────────────────────────────────────────────
+
 
 @as_function_node
 def RunASEMD(structure, engine, md_input, store: bool = False):
@@ -477,11 +513,11 @@ def RunASEMD(structure, engine, md_input, store: bool = False):
     atoms = to_ase(structure)
     atoms.calc = engine.calculator
 
-    T      = md_input.temperature
-    dt_fs  = md_input.time_step
+    T = md_input.temperature
+    dt_fs = md_input.time_step
     n_steps = md_input.n_ionic_steps
     n_print = md_input.n_print
-    tau_fs  = md_input.temperature_damping_timescale or 100.0
+    tau_fs = md_input.temperature_damping_timescale or 100.0
 
     MaxwellBoltzmannDistribution(atoms, temperature_K=T, rng=None)
 
@@ -501,26 +537,26 @@ def RunASEMD(structure, engine, md_input, store: bool = False):
     n_atoms = len(atoms)
 
     state = {
-        'prev': atoms.get_positions().copy(),
-        'uw':   atoms.get_positions().copy(),
-        'step': 0,
+        "prev": atoms.get_positions().copy(),
+        "uw": atoms.get_positions().copy(),
+        "step": 0,
     }
 
     def _record():
         cur = atoms.get_positions()
-        delta = cur - state['prev']
+        delta = cur - state["prev"]
         frac_d = delta @ inv_cell
         frac_d -= np.round(frac_d)
-        state['uw'] = state['uw'] + frac_d @ cell_mat
-        state['prev'] = cur.copy()
+        state["uw"] = state["uw"] + frac_d @ cell_mat
+        state["prev"] = cur.copy()
 
         buf_pos.append(cur.copy())
-        buf_uw.append(state['uw'].copy())
+        buf_uw.append(state["uw"].copy())
         buf_cells.append(atoms.get_cell()[:].copy())
         buf_epot.append(atoms.get_potential_energy())
         buf_temp.append(atoms.get_temperature())
-        buf_steps.append(state['step'])
-        state['step'] += n_print
+        buf_steps.append(state["step"])
+        state["step"] += n_print
 
     dyn.attach(_record, interval=n_print)
     dyn.run(n_steps)
@@ -540,11 +576,13 @@ def RunASEMD(structure, engine, md_input, store: bool = False):
 
 # ── NEB ──────────────────────────────────────────────────────────────────────
 
+
 @as_out_dataclass_node
 class NEBTrajectory:
     species: DataArray = EmptyArrayField()
     positions: DataArray = EmptyArrayField()
     cells: DataArray = EmptyArrayField()
+
 
 @as_function_node
 def LammpsAseEngine(potential, resource_path=None, cores: int = 1):
@@ -574,7 +612,9 @@ def LammpsAseEngine(potential, resource_path=None, cores: int = 1):
 
     lmp_cmd = os.getenv(
         "LAMMPS_COMMAND",
-        os.getenv("ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {cores} --oversubscribe lmp_mpi"),
+        os.getenv(
+            "ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {cores} --oversubscribe lmp_mpi"
+        ),
     )
     os.environ["ASE_LAMMPSRUN_COMMAND"] = lmp_cmd
 
@@ -619,20 +659,22 @@ def RunNEB(
     import numpy as np
 
     initial_atoms = to_ase(initial_state.structure)
-    final_atoms   = to_ase(final_state.structure)
+    final_atoms = to_ase(final_state.structure)
 
-    images = [initial_atoms.copy()] \
-           + [initial_atoms.copy() for _ in range(n_images)] \
-           + [final_atoms.copy()]
+    images = (
+        [initial_atoms.copy()]
+        + [initial_atoms.copy() for _ in range(n_images)]
+        + [final_atoms.copy()]
+    )
 
     calc = engine.calculator
     for img in images:
         img.calc = calc
 
     neb = SingleCalculatorNEB(images)
-    neb.interpolate('idpp')
+    neb.interpolate("idpp")
 
-    opt = LBFGS(neb, logfile='/dev/null')
+    opt = LBFGS(neb, logfile="/dev/null")
     opt.run(fmax=fmax, steps=max_steps)
 
     # Re-evaluate all images with the same calculator so energies are on a
@@ -660,12 +702,20 @@ def PlotNEBPath(path_energies, barrier):
     image_idx = np.arange(n) / (n - 1)
 
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(image_idx, path_energies, 'o-', color='steelblue', lw=2.0,
-            markersize=7, markerfacecolor='white', markeredgewidth=2)
-    ax.axhline(0, color='gray', lw=0.8, ls='--')
-    ax.set_xlabel('Reaction coordinate  (0 = initial, 1 = final)')
-    ax.set_ylabel('Energy relative to initial state (eV)')
-    ax.set_title(f'NEB path — barrier = {barrier:.3f} eV')
+    ax.plot(
+        image_idx,
+        path_energies,
+        "o-",
+        color="steelblue",
+        lw=2.0,
+        markersize=7,
+        markerfacecolor="white",
+        markeredgewidth=2,
+    )
+    ax.axhline(0, color="gray", lw=0.8, ls="--")
+    ax.set_xlabel("Reaction coordinate  (0 = initial, 1 = final)")
+    ax.set_ylabel("Energy relative to initial state (eV)")
+    ax.set_title(f"NEB path — barrier = {barrier:.3f} eV")
     ax.set_xticks(image_idx)
     fig.tight_layout()
     figure = fig

@@ -13,7 +13,7 @@ from core import Workflow
 
 wf = Workflow("db_table")
 
-wf.CreateDB = CreateDB(host='localhost', database='none')
+wf.CreateDB = CreateDB(host="localhost", database="none")
 
 wf.ShowTable = ShowTable(db=wf.CreateDB)
 

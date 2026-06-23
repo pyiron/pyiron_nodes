@@ -1,16 +1,23 @@
 from pyiron_nodes.atomistic.engine.lammps import ListPotentials, CreateLammpsStructure
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import GenericOptimizerSettings, Relax
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+    GenericOptimizerSettings,
+    Relax,
+)
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
-from pyiron_nodes.atomistic.diffusion import AddInterstitialH, LammpsAseEngine, PlotNEBPath, RunNEB
+from pyiron_nodes.atomistic.diffusion import (
+    AddInterstitialH,
+    LammpsAseEngine,
+    PlotNEBPath,
+    RunNEB,
+)
 from pyiron_nodes.plotting import Plot
 from pyiron_nodes.controls import pick_element
 from core import Workflow
 
-
 wf = Workflow("h_diffusion_neb_lammps")
 
-wf.al_unit = Bulk(name='Al', cubic=True)
+wf.al_unit = Bulk(name="Al", cubic=True)
 
 wf.opt_settings = GenericOptimizerSettings(max_steps=300, force_tolerance=0.02)
 
@@ -37,7 +44,7 @@ wf.initial_relaxed = Relax(
     structure=wf.h_initial,
     engine=wf.lammps_engine,
     opt_parameters=wf.opt_settings,
-    opt_mode='internal',
+    opt_mode="internal",
 )
 wf.initial_relaxed.inputs.add(
     "store", port_type=bool, default=False, value=True, has_explicit_default=True
@@ -47,7 +54,7 @@ wf.final_relaxed = Relax(
     structure=wf.h_final,
     engine=wf.lammps_engine,
     opt_parameters=wf.opt_settings,
-    opt_mode='internal',
+    opt_mode="internal",
 )
 wf.final_relaxed.inputs.add(
     "store", port_type=bool, default=False, value=True, has_explicit_default=True

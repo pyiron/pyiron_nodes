@@ -22,16 +22,22 @@ wf = Workflow("h_diffusion_GRACE_md")
 
 wf.GRACE = GRACE()
 
-wf.al_unit = Bulk(name='Al', cubic=True)
+wf.al_unit = Bulk(name="Al", cubic=True)
 
 wf.al_supercell = Repeat(structure=wf.al_unit, repeat_scalar=3)
 
 wf.al_h_structure = AddInterstitialH(structure=wf.al_supercell, repeat_scalar=3)
 
-wf.md_params = InputCalcMD(temperature=800.0, n_ionic_steps=100000, n_print=100, time_step=1.0)
+wf.md_params = InputCalcMD(
+    temperature=800.0, n_ionic_steps=100000, n_print=100, time_step=1.0
+)
 
-wf.md_run = RunASEMD(structure=wf.al_h_structure, engine=wf.GRACE, md_input=wf.md_params)
-wf.md_run.inputs.add("store", port_type=bool, default=False, value=True, has_explicit_default=True)
+wf.md_run = RunASEMD(
+    structure=wf.al_h_structure, engine=wf.GRACE, md_input=wf.md_params
+)
+wf.md_run.inputs.add(
+    "store", port_type=bool, default=False, value=True, has_explicit_default=True
+)
 
 # ── Split raw output into named ports ─────────────────────────────────────────
 
@@ -55,7 +61,9 @@ wf.msd_plot = Plot(y=wf.msd, x=wf.diffusion.outputs.times)
 
 wf.folded_h_pos = FoldPositionsToUnitCell(md_output=wf.md_run, al_bulk=wf.al_unit)
 
-wf.augmented_h_pos = AugmentWithSymmetry(folded_positions=wf.folded_h_pos, al_bulk=wf.al_unit)
+wf.augmented_h_pos = AugmentWithSymmetry(
+    folded_positions=wf.folded_h_pos, al_bulk=wf.al_unit
+)
 
 wf.free_energy_surface = ComputeFreeEnergySurface(
     augmented_positions=wf.augmented_h_pos, md_input=wf.md_params

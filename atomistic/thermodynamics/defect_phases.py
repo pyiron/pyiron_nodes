@@ -33,7 +33,6 @@ from pyiron_nodes.atomistic.structure._atoms import (
     to_ase,
 )
 
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -225,11 +224,9 @@ def AddDefectConcentrationColumns(
 
     result = df.copy()
     for col in n_columns:
-        el        = col[len("n_"):]
+        el = col[len("n_") :]
         ref_count = int(df.loc[ref_abs, col])
-        result[f"delta_n_{el}"] = (
-            result[col] - ref_count
-        ).astype(int)
+        result[f"delta_n_{el}"] = (result[col] - ref_count).astype(int)
 
     df = result
     return df
@@ -374,9 +371,7 @@ def ComputeChemicalPotentials(
     # 1.  Validate columns
     # ------------------------------------------------------------------
     if "energy" not in df.columns:
-        raise ValueError(
-            "Input DataFrame must contain an 'energy' column."
-        )
+        raise ValueError("Input DataFrame must contain an 'energy' column.")
 
     n_columns = [c for c in df.columns if c.startswith("n_")]
     if not n_columns:
@@ -396,7 +391,7 @@ def ComputeChemicalPotentials(
                 "mu_reference is provided."
             )
 
-    elements = [c[len("n_"):] for c in n_columns]
+    elements = [c[len("n_") :] for c in n_columns]
 
     if mu_reference_element is not None and mu_reference is not None:
         if mu_reference_element not in elements:
@@ -438,10 +433,7 @@ def ComputeChemicalPotentials(
     scalar_potentials: dict[str, float] = {}
 
     for abs_idx in all_rows:
-        counts = {
-            el: int(df.loc[abs_idx, f"n_{el}"])
-            for el in elements
-        }
+        counts = {el: int(df.loc[abs_idx, f"n_{el}"]) for el in elements}
         present = {el: n for el, n in counts.items() if n > 0}
 
         if len(present) == 0:
@@ -450,14 +442,11 @@ def ComputeChemicalPotentials(
         energy = float(df.loc[abs_idx, "energy"])
 
         if len(present) == 1:
-            (element, n_atoms) = next(iter(present.items()))
+            element, n_atoms = next(iter(present.items()))
 
             # External value takes precedence over unary rows for the
             # reference element.
-            if (
-                element == mu_reference_element
-                and mu_reference is not None
-            ):
+            if element == mu_reference_element and mu_reference is not None:
                 warnings.warn(
                     f"A unary row for '{element}' (index {abs_idx}) "
                     "was found in df, but the externally supplied "
@@ -499,8 +488,8 @@ def ComputeChemicalPotentials(
     # 7.  Warn about elements with no potential at all
     # ------------------------------------------------------------------
     for el in elements:
-        has_scalar  = el in scalar_potentials
-        is_ref_el   = el == mu_reference_element and mu_reference is not None
+        has_scalar = el in scalar_potentials
+        is_ref_el = el == mu_reference_element and mu_reference is not None
         if not has_scalar and not is_ref_el:
             warnings.warn(
                 f"No unary reference row found for element '{el}' and "
@@ -520,15 +509,14 @@ def ComputeChemicalPotentials(
     if array_mode:
         # Every scalar potential is broadcast to the shape of mu_ref_array
         for el, val in scalar_potentials.items():
-            chemical_potentials[el] = np.full(
-                mu_ref_array.shape, val, dtype=float
-            )
+            chemical_potentials[el] = np.full(mu_ref_array.shape, val, dtype=float)
         # Add the externally supplied array potential
         chemical_potentials[mu_reference_element] = mu_ref_array.copy()
     else:
         chemical_potentials = dict(scalar_potentials)
 
     return chemical_potentials
+
 
 @as_function_node
 def ComputeDefectFormationEnergy(
@@ -613,12 +601,10 @@ def ComputeDefectFormationEnergy(
     # 1. Validate required columns
     # ------------------------------------------------------------------
     if "energy" not in df.columns:
-        raise ValueError(
-            "Input DataFrame must contain an 'energy' column."
-        )
+        raise ValueError("Input DataFrame must contain an 'energy' column.")
 
     delta_columns = [c for c in df.columns if c.startswith("delta_n_")]
-    n_columns     = [c for c in df.columns if c.startswith("n_")]
+    n_columns = [c for c in df.columns if c.startswith("n_")]
 
     if not delta_columns and not n_columns:
         raise ValueError(
@@ -643,11 +629,11 @@ def ComputeDefectFormationEnergy(
 
     if delta_columns:
         delta_df = df[delta_columns].copy()
-        delta_df.columns = [c[len("delta_n_"):] for c in delta_columns]
+        delta_df.columns = [c[len("delta_n_") :] for c in delta_columns]
     else:
         delta_df = pd.DataFrame(index=df.index)
         for col in n_columns:
-            el = col[len("n_"):]
+            el = col[len("n_") :]
             ref_count = int(df.loc[ref_abs, col])
             delta_df[el] = (df[col] - ref_count).astype(int)
 
@@ -659,8 +645,8 @@ def ComputeDefectFormationEnergy(
     #    The first such entry in iteration order wins.
     # ------------------------------------------------------------------
     mu: dict[str, float | np.ndarray] = {}
-    mu_values: float | np.ndarray     = 0.0
-    array_mode                         = False
+    mu_values: float | np.ndarray = 0.0
+    array_mode = False
 
     for element, value in chemical_potentials.items():
         if np.ndim(value) == 0:
@@ -671,7 +657,7 @@ def ComputeDefectFormationEnergy(
             mu[element] = arr
             # Only treat as x-axis if it actually varies
             if not array_mode and not np.all(arr == arr[0]):
-                mu_values  = arr
+                mu_values = arr
                 array_mode = True
 
     # ------------------------------------------------------------------
@@ -695,17 +681,15 @@ def ComputeDefectFormationEnergy(
 
     for abs_idx in all_rows:
         e_defect = float(df.loc[abs_idx, "energy"])
-        delta_e  = e_defect - e_pristine
+        delta_e = e_defect - e_pristine
 
         if array_mode:
-            correction: float | np.ndarray = np.zeros_like(
-                mu_values, dtype=float
-            )
+            correction: float | np.ndarray = np.zeros_like(mu_values, dtype=float)
         else:
             correction = 0.0
 
         for element in delta_df.columns:
-            dn   = int(delta_df.loc[abs_idx, element])
+            dn = int(delta_df.loc[abs_idx, element])
             mu_i = mu.get(element, 0.0)
             correction = correction + dn * mu_i  # type: ignore[operator]
 
@@ -883,10 +867,12 @@ def PlotConvexHull(
     if not phase_keys:
         raise ValueError("No plottable entries found in formation_energies.")
 
-    ef_matrix = np.array([
-        np.atleast_1d(np.asarray(formation_energies[k], dtype=float))
-        for k in phase_keys
-    ])  # (n_phases, n_mu)
+    ef_matrix = np.array(
+        [
+            np.atleast_1d(np.asarray(formation_energies[k], dtype=float))
+            for k in phase_keys
+        ]
+    )  # (n_phases, n_mu)
 
     hull_ef = np.min(ef_matrix, axis=0)
     hull_idx = np.argmin(ef_matrix, axis=0)
@@ -896,15 +882,27 @@ def PlotConvexHull(
 
     for i, key in enumerate(phase_keys):
         ls = "--" if key == "pristine" else "-"
-        ax.plot(mu_arr, ef_matrix[i], color=cmap(i % 10),
-                lw=1.0, alpha=0.35, ls=ls, label=key)
+        ax.plot(
+            mu_arr,
+            ef_matrix[i],
+            color=cmap(i % 10),
+            lw=1.0,
+            alpha=0.35,
+            ls=ls,
+            label=key,
+        )
 
     ax.plot(mu_arr, hull_ef, color="black", lw=2.5, zorder=5, label="convex hull")
 
     transitions = np.where(np.diff(hull_idx))[0]
     for t in transitions:
-        ax.axvline(0.5 * (mu_arr[t] + mu_arr[t + 1]),
-                   color="crimson", lw=1.2, ls="--", alpha=0.8)
+        ax.axvline(
+            0.5 * (mu_arr[t] + mu_arr[t + 1]),
+            color="crimson",
+            lw=1.2,
+            ls="--",
+            alpha=0.8,
+        )
 
     i = 0
     while i < len(mu_arr):
@@ -913,8 +911,15 @@ def PlotConvexHull(
         while j < len(mu_arr) and int(hull_idx[j]) == p:
             j += 1
         mid = (i + j) // 2
-        ax.text(mu_arr[mid], hull_ef[mid], phase_keys[p],
-                fontsize=7, ha="center", va="bottom", color=cmap(p % 10))
+        ax.text(
+            mu_arr[mid],
+            hull_ef[mid],
+            phase_keys[p],
+            fontsize=7,
+            ha="center",
+            va="bottom",
+            color=cmap(p % 10),
+        )
         i = j
 
     ax.axhline(0.0, color="gray", lw=0.8, ls=":")
@@ -964,10 +969,9 @@ def SelectStableStructures(
     mu_arr = np.atleast_1d(np.asarray(formation_energies["mu_values"], dtype=float))
     phases = [k for k in formation_energies if k != "mu_values"]
 
-    ef = np.array([
-        np.atleast_1d(np.asarray(formation_energies[k], dtype=float))
-        for k in phases
-    ])  # (n_phases, n_mu)
+    ef = np.array(
+        [np.atleast_1d(np.asarray(formation_energies[k], dtype=float)) for k in phases]
+    )  # (n_phases, n_mu)
 
     best_idx = np.argmin(ef, axis=0)
 
@@ -978,12 +982,14 @@ def SelectStableStructures(
         j = i
         while j < len(mu_arr) and int(best_idx[j]) == p:
             j += 1
-        rows.append({
-            "stable_phase":         phases[p],
-            "mu_min":               float(mu_arr[i]),
-            "mu_max":               float(mu_arr[j - 1]),
-            "min_formation_energy": float(np.min(ef[p, i:j])),
-        })
+        rows.append(
+            {
+                "stable_phase": phases[p],
+                "mu_min": float(mu_arr[i]),
+                "mu_max": float(mu_arr[j - 1]),
+                "min_formation_energy": float(np.min(ef[p, i:j])),
+            }
+        )
         i = j
 
     return pd.DataFrame(rows).sort_values("min_formation_energy").reset_index(drop=True)

@@ -6,9 +6,7 @@ from typing import Optional
 
 @dataclass
 class OutputEngine:
-    calculator: Optional[callable] = field(
-        default=None
-    )
+    calculator: Optional[callable] = field(default=None)
     engine_id: Optional[int] = field(default=None)
     # parameters: Optional[wf_data_class] = field(
     #     default=None, metadata=wfMetaData(log_level=10)

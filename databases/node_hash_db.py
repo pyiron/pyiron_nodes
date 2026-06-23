@@ -101,6 +101,7 @@ def DeleteNode(db, index: int = 0):
 
     if output_path:
         import pathlib
+
         p = pathlib.Path(output_path)
         if p.exists():
             p.unlink()
@@ -222,11 +223,8 @@ def GetDownstreamNodes(db, node_id: int, qualname: str = ""):
     # Connected inputs are encoded as "{hash}@{port}", so any row whose
     # inputs JSON text contains the target hash is a direct downstream node.
     with db.engine.connect() as conn:
-        stmt = (
-            db.table.select()
-            .where(
-                cast(db.table.c.inputs, Text).like(f"%{target_hash}%")
-            )
+        stmt = db.table.select().where(
+            cast(db.table.c.inputs, Text).like(f"%{target_hash}%")
         )
         query_result = conn.execute(stmt)
         rows = query_result.fetchall()
@@ -239,9 +237,7 @@ def GetDownstreamNodes(db, node_id: int, qualname: str = ""):
     df_downstream = pd.DataFrame(rows, columns=col_names)
 
     # Attach the original row index from the full table.
-    df_downstream = df_downstream.merge(
-        df_full[["id", "hash"]], on="hash", how="left"
-    )
+    df_downstream = df_downstream.merge(df_full[["id", "hash"]], on="hash", how="left")
     # Move id to the front.
     cols = ["id"] + [c for c in df_downstream.columns if c != "id"]
     df_downstream = df_downstream[cols]
