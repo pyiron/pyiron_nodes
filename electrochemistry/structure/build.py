@@ -65,7 +65,7 @@ def BuildWater(n_mols: int = 10) -> Atoms:
 
     water = water.repeat([n, n, n])
     structure = water.copy()
-    
+
     return structure
 
 
@@ -191,7 +191,7 @@ def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     # Add the neon layer to the modified structure
     modified_structure.extend(neon_layer)
 
-    structure=modified_structure.copy()
+    structure = modified_structure.copy()
 
     return structure
 
@@ -209,7 +209,7 @@ def AddIonPair(
 
     The function selects ``number`` oxygen atoms at random, replaces the first
     half with the provided ``anion`` species and the second half with the
-    ``cation`` species.  After the substitution, two H atoms closest to the 
+    ``cation`` species.  After the substitution, two H atoms closest to the
     selected oxygen atoms are also removed – this mimics the removal of water
     molecules that would otherwise coordinate the ion.
 
@@ -226,7 +226,7 @@ def AddIonPair(
         Chemical symbol of the cation to place on the second half of the
         selected oxygen sites.
     no_of_pairs : int
-        Number of ion pairs to be put in the structure. 
+        Number of ion pairs to be put in the structure.
     seed : int, optional
         Random seed for reproducible selection of oxygen atoms.  Default is
         ``1234``.
@@ -243,7 +243,7 @@ def AddIonPair(
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()
-    number = 2*no_of_pairs #number of O atoms to be replaced
+    number = 2 * no_of_pairs  # number of O atoms to be replaced
 
     # Indices of all oxygen atoms in the structure
     # ind_O = electrolyte.select_index("O")
