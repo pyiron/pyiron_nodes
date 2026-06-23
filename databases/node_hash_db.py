@@ -5,6 +5,7 @@ USERNAME = getpass.getuser()
 
 from typing import Union
 
+
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
