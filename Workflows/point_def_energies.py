@@ -8,7 +8,7 @@ from core import group_node
 # ── Group node factories ─────────────────────────────
 
 @group_node("table")
-def CreateStructures(name, cubic=False, repeat_scalar=1, element):
+def CreateStructures(name, element, cubic=False, repeat_scalar=1):
     from pyiron_nodes.atomistic.structure.build import Bulk
     from pyiron_nodes.atomistic.structure.container import AddPristine, CreateSubstitutional, CreateVacancy, GetStructureTable
     from pyiron_nodes.atomistic.structure.transform import Repeat

@@ -4,6 +4,7 @@ from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
 from core import Workflow
 from core import group_node
 from core import as_function_node
+import pandas as pd
 
 # ── Local node definitions ──────────────────────
 
@@ -118,7 +119,7 @@ def mg_surface(size='1 1 1', vacuum=1.0):
     return inner_wf.slab
 
 @group_node("mu")
-def mu_mg(structure, engine, optimizer_settings=<core.node.as_inp_dataclass_node.<locals>.DataclassInputNode object at 0x12b5f1bb0>):
+def mu_mg(structure, engine, optimizer_settings=None):
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
     from core import Workflow
     from core import as_function_node
@@ -137,7 +138,7 @@ def mu_mg(structure, engine, optimizer_settings=<core.node.as_inp_dataclass_node
     return inner_wf.mu
 
 @group_node("mu")
-def mu_ca_ref(structure, engine, optimizer_settings=<core.node.as_inp_dataclass_node.<locals>.DataclassInputNode object at 0x12b5f1bb0>):
+def mu_ca_ref(structure, engine, optimizer_settings=None):
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
     from core import Workflow
     from core import as_function_node
