@@ -25,7 +25,8 @@ from pyiron_nodes.atomistic.calculator.data import (
 
 # ── INCAR enum lookups ────────────────────────────────────────────────────────
 
-def _ISMEAR(smearing_type, smearing_order): 
+
+def _ISMEAR(smearing_type, smearing_order):
     if smearing_type == "fermi-dirac":
         return -1
     elif smearing_type == "gaussian":
@@ -34,6 +35,7 @@ def _ISMEAR(smearing_type, smearing_order):
         if smearing_order < 1:
             raise ValueError("Methfessel-Paxton order must be >= 1")
         return smearing_order
+
 
 _IBRION_MINIMIZE = {
     "ConjugateGradient": 2,
