@@ -4,6 +4,7 @@ from core import as_function_node
 
 # ── Local node definitions ──────────────────────
 
+
 @as_function_node
 class Node:
     """Base graph node with hierarchical parent reference.
@@ -283,6 +284,7 @@ class Node:
                 self.inputs[inp_name].value = inp_data["value"]
         if "state" in state:
             self.state = state["state"]
+
 
 wf = Workflow("whileloop1")
 

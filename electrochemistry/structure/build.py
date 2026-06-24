@@ -151,9 +151,9 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     ase.Atoms: The modified structure with a single layer of neon atoms.
     """
     import numpy as np
-    from ase.build import fcc111   
+    from ase.build import fcc111
 
-    #from pyiron_nodes.atomistic.structure.build import Surface
+    # from pyiron_nodes.atomistic.structure.build import Surface
 
     # Get the maximum z value of an atom in the structure
     max_z = np.max(structure.get_positions()[:, 2])
@@ -233,7 +233,8 @@ def add_ion_pair(
         removed.
     """
     import numpy as np
-    #import random  # retained for compatibility; not used directly
+
+    # import random  # retained for compatibility; not used directly
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()

@@ -50,6 +50,9 @@ def Plot3d(
     if view_plane is None:
         view_plane = [1, 1, 1]
 
+    if hasattr(structure, "structure"):
+        structure = structure.structure
+
     # Convert OutputAtoms to ASE Atoms if necessary
     if isinstance(structure, OutputAtoms):
         structure = _data_to_ase(structure)
@@ -127,7 +130,7 @@ def VisualizeMultipleStructures(
     ase_structure_list: list,
     columns: int = 3,
     figure_size: float = 4.0,
-    rotation: str = "0x,0y,0z"
+    rotation: str = "0x,0y,0z",
 ):
     import matplotlib.pyplot as plt
     import matplotlib.image as mpimg
@@ -145,8 +148,10 @@ def VisualizeMultipleStructures(
     n = len(ase_structure_list)
     rows = math.ceil(n / columns)
 
-    fig, axes = plt.subplots(rows, columns, figsize=(figure_size * columns, figure_size * rows))
-    
+    fig, axes = plt.subplots(
+        rows, columns, figsize=(figure_size * columns, figure_size * rows)
+    )
+
     # Make axes always 2D array for consistent indexing
     if rows == 1 and columns == 1:
         axes = [[axes]]
@@ -157,20 +162,20 @@ def VisualizeMultipleStructures(
 
     for i, struct in enumerate(ase_structure_list):
         row, col = divmod(i, columns)
-        
+
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             tmp_path = f.name
-        
+
         try:
             write(tmp_path, struct, rotation=rotation)
-            plt.close('all')  # close any figures ASE opened internally
+            plt.close("all")  # close any figures ASE opened internally
             img = mpimg.imread(tmp_path)
             axes[row][col].imshow(img)
             axes[row][col].set_title(f"Structure {i}")
             axes[row][col].axis("off")
         finally:
             os.unlink(tmp_path)
-    
+
     # Hide unused axes
     for i in range(n, rows * columns):
         row, col = divmod(i, columns)
@@ -179,5 +184,3 @@ def VisualizeMultipleStructures(
     plt.tight_layout()
     plt.ion()  # turn interactive mode back on
     return fig
-
-

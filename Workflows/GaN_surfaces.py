@@ -6,7 +6,9 @@ from core import group_node
 
 wf = Workflow("GaN_surfaces")
 
-wf.Bulk = Bulk(name='GaN', crystalstructure='wurtzite', a=3.189, c=5.125, orthorhombic=True)
+wf.Bulk = Bulk(
+    name="GaN", crystalstructure="wurtzite", a=3.189, c=5.125, orthorhombic=True
+)
 
 wf.Repeat = Repeat(structure=wf.Bulk, repeat_scalar=2)
 

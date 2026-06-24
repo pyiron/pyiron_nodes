@@ -28,7 +28,7 @@ def Repeat(structure: Atoms, repeat_scalar: int = 1) -> Atoms:
     Task hint
     ----------
     Use this node when the workflow requires building a larger supercell
-    from a primitive cell (e.g., "create a 2×2×2 bulk supercell"). Create a supercell 
+    from a primitive cell (e.g., "create a 2×2×2 bulk supercell"). Create a supercell
     by repeating the input structure. Expand to a nxnxn supercell.
     """
     # Convert structure to ASE Atoms if necessary
@@ -64,7 +64,7 @@ def RepeatXYZ(
         A new ``Atoms`` object containing the repeated supercell.
     """
     # Convert structure to ASE Atoms if necessary
-    structure = _data_to_ase(structure)    
+    structure = _data_to_ase(structure)
     return structure.repeat([int(repeat_x), int(repeat_y), int(repeat_z)])
 
 
@@ -247,11 +247,9 @@ def FixAtoms(
         )
 
     if not all(f in (0, 1) for f in flags):
-        raise ValueError(
-            f"fix_xyz values must be 0 or 1. Got: '{fix_xyz}'"
-        )
+        raise ValueError(f"fix_xyz values must be 0 or 1. Got: '{fix_xyz}'")
 
-    dof_mask = [bool(f) for f in flags]   # [fix_x, fix_y, fix_z]
+    dof_mask = [bool(f) for f in flags]  # [fix_x, fix_y, fix_z]
 
     # Use FixAtoms (simpler) when all three directions are fixed
     use_fix_atoms = all(dof_mask)
@@ -272,7 +270,7 @@ def FixAtoms(
             parsed_species = fixed_species
 
         if isinstance(parsed_species, str):
-            species_set = set(item.strip() for item in parsed_species.split(','))
+            species_set = set(item.strip() for item in parsed_species.split(","))
         elif isinstance(parsed_species, (list, tuple, set)):
             if not all(isinstance(item, str) for item in parsed_species):
                 raise ValueError("All entries in the element list must be strings.")
@@ -309,9 +307,10 @@ def FixAtoms(
 
     for i, atom in enumerate(structure):
         fix_by_species = atom.symbol in species_set
-        fix_by_index   = i in index_set
-        fix_by_z       = (
-            fix_z_coordinate is not None and fix_z_coordinate != ''
+        fix_by_index = i in index_set
+        fix_by_z = (
+            fix_z_coordinate is not None
+            and fix_z_coordinate != ""
             and abs(atom.position[2] - fix_z_coordinate) <= fix_z_tolerance
         )
         mask.append(fix_by_species or fix_by_index or fix_by_z)
@@ -331,7 +330,7 @@ def FixAtoms(
             # Partial directions fixed → FixCartesian
             constraint = FixCartesian(
                 a=fixed_indices,
-                mask=dof_mask,   # [fix_x, fix_y, fix_z]
+                mask=dof_mask,  # [fix_x, fix_y, fix_z]
             )
 
         new_structure.set_constraint(constraint)
@@ -370,7 +369,7 @@ def FixSpecies(
     # ------------------------------------------------------------------
     # 1️⃣ Normalise ``fixed_species`` to a *set* of element symbols.
     # ------------------------------------------------------------------
-    species_set: Set[str] = set()          # default → nothing to fix
+    species_set: Set[str] = set()  # default → nothing to fix
 
     if fixed_species is not None:
         # ``fixed_species`` is a string.  It may be a plain symbol
@@ -407,7 +406,7 @@ def FixSpecies(
     #    but we skip adding the constraint for a cleaner object.
     # ------------------------------------------------------------------
     new_structure = structure.copy()
-    if any(mask):                                   # at least one atom should be fixed
+    if any(mask):  # at least one atom should be fixed
         new_structure.set_constraint(FixAtoms(mask=mask))
 
     # ------------------------------------------------------------------
@@ -425,7 +424,7 @@ def LayerShift(
 ) -> Atoms:
     """
     Shift upper layers of a structure by an in-plane translation vector.
-    
+
     This is used for creating stacking faults and computing gamma surfaces.
     The shift is applied to the top fraction of layers in fractional coordinates.
 
@@ -464,36 +463,36 @@ def LayerShift(
     -------
     >>> # Shift top half by [1/3, 1/3] in fractional coords (intrinsic stacking fault)
     >>> shifted = LayerShift(slab, shift_fraction=0.5, shift_x=0.333, shift_y=0.333)
-    >>> 
+    >>>
     >>> # Shift top layer by half of first cell vector
     >>> shifted = LayerShift(slab, shift_fraction=0.5, shift_x=0.5, shift_y=0.0)
     """
     import numpy as np
-    
+
     # Step 1: Copy the structure (never modify input in-place)
     new_structure = structure.copy()
-    
+
     # Step 2: Sort atoms by z-coordinate
     z_positions = new_structure.positions[:, 2]
     sorted_indices = np.argsort(z_positions)
-    
+
     # Step 3: Calculate cutoff position
     z_min = np.min(z_positions)
     z_max = np.max(z_positions)
     z_cutoff = z_min + shift_fraction * (z_max - z_min)
-    
+
     # Step 4: Identify atoms in the upper layers (z >= cutoff)
     upper_mask = z_positions >= z_cutoff
     upper_indices = np.where(upper_mask)[0]
-    
+
     # Step 5: Apply shift to upper atoms
     # Calculate the total shift vector in Cartesian coordinates
     cell = new_structure.cell
     shift_vector = shift_x * cell[0] + shift_y * cell[1]
-    
+
     # Apply shift to upper layer atoms
     new_structure.positions[upper_indices] += shift_vector
-    
+
     # Step 6: Return modified structure
     # ASE's PBC handling automatically wraps atoms that move beyond cell boundaries
     return new_structure
@@ -530,4 +529,5 @@ def Stack(
         The combined bicrystal structure.
     """
     from ase.build import stack as ase_stack
+
     return ase_stack(bottom, top, axis=axis, distance=distance, reorder=reorder)

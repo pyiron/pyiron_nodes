@@ -70,7 +70,7 @@ class PotentialConfig:
                 return d
 
         return remove_none(asdict(self))
-    
+
 
 @as_function_node
 def ParameterizePotentialConfig(

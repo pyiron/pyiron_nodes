@@ -74,9 +74,6 @@ def SplitTrainingAndTesting(
     return df_training, df_testing
 
 
-
-
-
 def make_linearfit(
     workflow_name: str,
     delete_existing_savefiles=False,

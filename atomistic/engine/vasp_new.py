@@ -17,8 +17,8 @@ from pymatgen.io.vasp.outputs import Vasprun
 from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStatic
 
-
 # ── POTCAR config ─────────────────────────────────────────────────────────────
+
 
 def read_potcar_config(config_file: Path) -> dict:
     config_data = {}
@@ -38,7 +38,9 @@ def read_potcar_config(config_file: Path) -> dict:
 
         # construct path directly: potpawPBE → potpaw_PBE
         potcar_dir = default_POTCAR_set.replace("potpaw", "potpaw_")
-        config_data["default_POTCAR_path"] = os.path.join(pyiron_vasp_resources, potcar_dir)
+        config_data["default_POTCAR_path"] = os.path.join(
+            pyiron_vasp_resources, potcar_dir
+        )
         config_data["default_functional"] = default_functional
 
     except FileNotFoundError:
@@ -61,17 +63,21 @@ _POTCAR_CSV = {
 
 # ── Input resource dataclass ──────────────────────────────────────────────────
 
+
 @dataclass
 class VaspInputResources:
-    structure: Atoms        # ASE Atoms — compatible with Bulk and other structure nodes
+    structure: Atoms  # ASE Atoms — compatible with Bulk and other structure nodes
     calc: Optional[InputCalcDFT]
-    potcar_lib_path: str = field(default_factory=lambda: _default_potcar_lib_path)  # base path to POTCAR folders
+    potcar_lib_path: str = field(
+        default_factory=lambda: _default_potcar_lib_path
+    )  # base path to POTCAR folders
     working_directory: Optional[str] = None
     potcar_symbols: Optional[list[str]] = None  # override default CSV symbol selection
-    extra_incar: Optional[dict] = None          # additional INCAR tags beyond InputCalcDFT
+    extra_incar: Optional[dict] = None  # additional INCAR tags beyond InputCalcDFT
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
+
 
 def _ordered_elements(atoms: Atoms) -> list[str]:
     elements, prev = [], None
@@ -93,14 +99,14 @@ def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]
 
 
 def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
-    
+
     if not calc.ionic_relaxation:
         ibrion = -1
     else:
         match calc.ionic_update_algorithm:
             case "MolecularDynamics":
                 ibrion = 0
-            case "RMM-DIIS": 
+            case "RMM-DIIS":
                 ibrion = 1
             case "ConjugateGradient":
                 ibrion = 2
@@ -111,7 +117,7 @@ def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
                     f"ionic_update_algorithm must be set when ionic_relaxation is True, "
                     f"got: {calc.ionic_update_algorithm!r}"
                 )
-    
+
     tags = {
         "ENCUT": calc.energy_cutoff,
         "EDIFF": calc.electronic_convergence,
@@ -130,11 +136,14 @@ def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
         tags.update(extra)
     return Incar(tags)
 
+
 def _generate_hash(input_resources: VaspInputResources) -> str:
     atoms = input_resources.structure
     calc = input_resources.calc
 
-    flat_positions = [round(x, 6) for row in atoms.get_positions().tolist() for x in row]
+    flat_positions = [
+        round(x, 6) for row in atoms.get_positions().tolist() for x in row
+    ]
     flat_cell = [round(x, 6) for row in atoms.get_cell().array.tolist() for x in row]
 
     parts = [
@@ -169,7 +178,9 @@ def _generate_hash(input_resources: VaspInputResources) -> str:
     hash_string = "|".join(parts)
     return hashlib.sha256(hash_string.encode()).hexdigest()[:8]
 
+
 # ── Nodes ─────────────────────────────────────────────────────────────────────
+
 
 @as_function_node
 def CreateVaspInputResources(
@@ -190,8 +201,8 @@ def CreateVaspInputResources(
     )
 
     print("writing_input")
-    print("working dir: ", input_resources.working_directory )
-    
+    print("working dir: ", input_resources.working_directory)
+
     if input_resources.working_directory is not None:
         workdir = input_resources.working_directory
     else:
@@ -210,9 +221,16 @@ def CreateVaspInputResources(
 
     # POTCAR — look up paths from CSV, concatenate files into workdir/POTCAR
     potcar_paths = (
-        [os.path.join(input_resources.potcar_lib_path, s, "POTCAR") for s in input_resources.potcar_symbols]
+        [
+            os.path.join(input_resources.potcar_lib_path, s, "POTCAR")
+            for s in input_resources.potcar_symbols
+        ]
         if input_resources.potcar_symbols is not None
-        else _get_potcar_paths(input_resources.structure, input_resources.calc.functional, input_resources.potcar_lib_path)
+        else _get_potcar_paths(
+            input_resources.structure,
+            input_resources.calc.functional,
+            input_resources.potcar_lib_path,
+        )
     )
     with open(os.path.join(workdir, "POTCAR"), "wb") as wfd:
         for p in potcar_paths:

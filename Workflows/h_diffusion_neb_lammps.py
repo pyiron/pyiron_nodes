@@ -1,0 +1,75 @@
+from pyiron_nodes.atomistic.engine.lammps import ListPotentials, CreateLammpsStructure
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+    GenericOptimizerSettings,
+    Relax,
+)
+from pyiron_nodes.atomistic.structure.build import Bulk
+from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+from pyiron_nodes.atomistic.diffusion import (
+    AddInterstitialH,
+    LammpsAseEngine,
+    PlotNEBPath,
+    RunNEB,
+)
+from pyiron_nodes.plotting import Plot
+from pyiron_nodes.controls import pick_element
+from core import Workflow
+
+wf = Workflow("h_diffusion_neb_lammps")
+
+wf.al_unit = Bulk(name="Al", cubic=True)
+
+wf.opt_settings = GenericOptimizerSettings(max_steps=300, force_tolerance=0.02)
+
+wf.al_supercell = Repeat(structure=wf.al_unit, repeat_scalar=2)
+
+# For the Angelo 1995 potential the O-site is the energy minimum and the
+# T-site is the saddle, so the NEB must connect two adjacent O-sites.
+# O1(1/2,0,0) and O2(0,0,1/2) are both nearest neighbours of T(1/4,1/4,1/4),
+# which will be found automatically as the saddle by the NEB.
+wf.h_initial = AddInterstitialH(
+    structure=wf.al_supercell, frac_pos=[0.5, 0.0, 0.0], repeat_scalar=2
+)
+wf.h_final = AddInterstitialH(
+    structure=wf.al_supercell, frac_pos=[0.0, 0.0, 0.5], repeat_scalar=2
+)
+
+# LAMMPS potential — same selection as in h_diffusion_lammps_md.py (index 0)
+wf.list_potentials = ListPotentials(structure=wf.h_initial)
+wf.potential = pick_element(lst=wf.list_potentials, index=0)
+
+wf.lammps_engine = LammpsAseEngine(potential=wf.potential)
+
+wf.initial_relaxed = Relax(
+    structure=wf.h_initial,
+    engine=wf.lammps_engine,
+    opt_parameters=wf.opt_settings,
+    opt_mode="internal",
+)
+wf.initial_relaxed.inputs.add(
+    "store", port_type=bool, default=False, value=True, has_explicit_default=True
+)
+
+wf.final_relaxed = Relax(
+    structure=wf.h_final,
+    engine=wf.lammps_engine,
+    opt_parameters=wf.opt_settings,
+    opt_mode="internal",
+)
+wf.final_relaxed.inputs.add(
+    "store", port_type=bool, default=False, value=True, has_explicit_default=True
+)
+
+wf.neb = RunNEB(
+    initial_state=wf.initial_relaxed,
+    final_state=wf.final_relaxed,
+    engine=wf.lammps_engine,
+)
+wf.neb.inputs.add(
+    "store", port_type=bool, default=False, value=True, has_explicit_default=True
+)
+
+wf.neb_plot = PlotNEBPath(
+    path_energies=wf.neb.outputs.path_energies,
+    barrier=wf.neb.outputs.barrier,
+)
