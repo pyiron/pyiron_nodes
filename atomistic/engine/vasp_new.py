@@ -20,6 +20,7 @@ from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStati
 # ── POTCAR config ─────────────────────────────────────────────────────────────
 # testing the comit
 
+
 def read_potcar_config(config_file: Path) -> dict:
     config_data = {}
     try:
