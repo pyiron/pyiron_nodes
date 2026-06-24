@@ -156,17 +156,16 @@ class InputSCF:
     Basic inputs for a static (SCF) DFT calculation.
     """
 
-    kpoints: str  
+    kpoints: str
     kpoint_offset: str = "0.5 0.5 0.5"
-    functional: str = "PBE"  
-    energy_cutoff: float = 400.0  
-    smearing_type: Literal[
-        "gaussian", "methfessel-paxton", "fermi-dirac"
-    ] = "gaussian" 
-    smearing_width: float = 0.2  
+    functional: str = "PBE"
+    energy_cutoff: float = 400.0
+    smearing_type: Literal["gaussian", "methfessel-paxton", "fermi-dirac"] = "gaussian"
+    smearing_width: float = 0.2
     smearing_order: int = 1
-    electronic_convergence: float = 1e-6  
-    num_electronic_steps: int = 100 
+    electronic_convergence: float = 1e-6
+    num_electronic_steps: int = 100
+
 
 @as_inp_dataclass_node
 class InputMinimizationVASP:
@@ -176,9 +175,9 @@ class InputMinimizationVASP:
     DampedMolecularDynamics → 3 (a damped relaxation scheme, not true MD).
     """
 
-    algorithm: Literal[
-        "ConjugateGradient", "RMM-DIIS", "DampedMolecularDynamics"
-    ] = "ConjugateGradient"  # IBRION 2 / 1 / 3
+    algorithm: Literal["ConjugateGradient", "RMM-DIIS", "DampedMolecularDynamics"] = (
+        "ConjugateGradient"  # IBRION 2 / 1 / 3
+    )
     max_ionic_steps: int = 100  # NSW, number of ionic steps
     ionic_convergence: float = -0.01  # EDIFFG; negative = max force (eV/Å)
     isif: int = 2  # ISIF: 2 = ions only, 3 = ions + cell shape + volume
