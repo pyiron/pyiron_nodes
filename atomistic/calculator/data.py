@@ -189,3 +189,32 @@ class InputDipoleCorrection:
 
     direction: int = 3  # IDIPOL: 1 / 2 / 3 = a / b / c lattice direction
     ldipol: bool = True  # LDIPOL: switch on the potential/dipole correction
+
+@as_inp_dataclass_node
+class AdditionalInputFlags:
+    """Adding additional Input Flags that are not present in the predefined dataclasses.
+    """
+
+    key1: Optional[str] = None
+    value1: Optional[str] = None
+    key2: Optional[str] = None
+    value2: Optional[str] = None
+    key3: Optional[str] = None
+    value3: Optional[str] = None
+    key4: Optional[str] = None
+    value4: Optional[str] = None
+    key5: Optional[str] = None
+    value5: Optional[str] = None
+
+    def to_dict(self) -> dict:
+
+        extra_flags = {}
+
+        for i in range(1, 6):   # 1 to 5
+            key   = getattr(self, f'key{i}') 
+            value = getattr(self, f'value{i}')
+
+            if key is not None:
+                extra_flags[key] = value
+
+        return extra_flags

@@ -21,6 +21,7 @@ from pyiron_nodes.atomistic.calculator.data import (
     InputMinimizationVASP,
     InputSCF,
     OutputCalcStatic,
+    AdditionalInputFlags
 )
 
 # ── INCAR enum lookups ────────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ class VaspInput:
     minimization: Optional[InputMinimizationVASP] = None
     md: Optional[InputCalcMD] = None
     dipole_correction: Optional[InputDipoleCorrection] = None
+    extra_incar: Optional[dict] = None
 
 
 @dataclass
@@ -153,15 +155,13 @@ def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
     tags = {
         "ENCUT": scf.energy_cutoff,
         "EDIFF": scf.electronic_convergence,
-        "NELM": scf.n_electronic_steps,
+        "NELM": scf.num_electronic_steps,
         "ISMEAR": _ISMEAR(scf.smearing_type, scf.smearing_order),
         "SIGMA": scf.smearing_width,
         # static defaults — overridden below if minimization/md is supplied
         "IBRION": -1,
         "NSW": 0,
     }
-    if scf.algorithm is not None:
-        tags["ALGO"] = scf.algorithm
 
     # ── ionic minimization (optional) ─────────────────────────────────────────
     if calc.minimization is not None:
@@ -211,7 +211,7 @@ def _generate_hash(input_resources: VaspInputResources) -> str:
         str(scf.smearing_type),
         str(scf.smearing_width),
         str(scf.algorithm),
-        str(scf.n_electronic_steps),
+        str(scf.num_electronic_steps),
         str(calc.minimization),
         str(calc.md),
         str(calc.dipole_correction),
@@ -238,6 +238,7 @@ def MergeVaspInput(
     minimization: Optional[InputMinimizationVASP] = None,
     md: Optional[InputCalcMD] = None,
     dipole_correction: Optional[InputDipoleCorrection] = None,
+    specific_inputs: Optional[AdditionalInputFlags] = None,
 ) -> VaspInput:
     """Combine the required SCF settings with any optional add-ons.
 
@@ -250,6 +251,7 @@ def MergeVaspInput(
         minimization=minimization,
         md=md,
         dipole_correction=dipole_correction,
+        extra_incar=specific_inputs.to_dict(),
     )
     return calc
 
@@ -261,7 +263,6 @@ def CreateVaspInputResources(
     potcar_lib_path: str = _default_potcar_lib_path,
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
-    extra_incar: Optional[dict] = None,
 ) -> VaspInputResources:
     input_resources = VaspInputResources(
         structure=structure,
@@ -269,7 +270,7 @@ def CreateVaspInputResources(
         working_directory=working_directory,
         potcar_lib_path=potcar_lib_path,
         potcar_symbols=potcar_symbols,
-        extra_incar=extra_incar,
+        extra_incar=calc.extra_incar,
     )
 
     print("writing_input")
