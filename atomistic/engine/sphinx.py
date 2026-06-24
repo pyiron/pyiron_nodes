@@ -29,27 +29,53 @@ class SphinxIOBundle:
 
 
 @as_function_node
-def CreateSphinxStructure(
+def CreateSphinxInput(
     structure: Atoms,
-    eCut: float = 25,
-    xc: int = 1,
-    maxSteps: int = 30,
-    ekt: float = 0.2,
+    k_point_folding: str,
+    eCut: float = 350.,
+    xc: str = "PBE",
+    smearing_width: float = 0.2,
+    smearing_type: Literal["gaussian", "fermi-dirac", "fermi-dirac-1", "methfessel-paxton"] = "gaussian",
     k_point_coords: str = "0.5 0.5 0.5",
     working_directory: str = ".",
 ):
     io_bundle = SphinxIOBundle(structure=structure, working_directory=working_directory)
 
     k_point_coords = [float(x) for x in k_point_coords.split()]
-
-    input_sx = set_base_parameters(
-        structure=structure,
-        eCut=eCut,
-        xc=xc,
-        maxSteps=maxSteps,
-        ekt=ekt,
-        k_point_coords=k_point_coords,
+    k_point_folding
+    main_group = sphinx.main(
+        scfDiag=sphinx.main.scfDiag(
+            maxSteps=maxSteps, blockCCG=sphinx.main.scfDiag.blockCCG()
+        )
     )
+    pawPot_group = get_paw_from_structure(structure)
+    basis_group = sphinx.basis(
+        eCut=eCut, kPoint=sphinx.basis.kPoint(coords=k_point_coords), folding=k_point_folding
+    )
+    smearing_arg={}
+    if smearing_type == "gaussian":
+        smearing_arg = { "MethfesselPaxton" : 0}
+    elif smearing_type == "fermi-dirac":
+        smearing_arg = { "FermiDirac" : 0}
+    elif smearing_type  == "fermi-dirac-1":
+        smearing_arg = { "FermiDirac" : 1}
+    elif smearing_type == "methfessel-paxton":
+        smearing_arg = { "MethfesselPaxton" : 1}
+
+    paw_group = sphinx.PAWHamiltonian(xc=xc, spinPolarized=spinPolarized, ekt=smearing_width,**smearing_arg)
+    initial_guess_group = sphinx.initialGuess(
+        waves=sphinx.initialGuess.waves(lcao=sphinx.initialGuess.waves.lcao()),
+        rho=sphinx.initialGuess.rho(atomicOrbitals=True, atomicSpin=spin_lst),
+    )
+    input_sx = sphinx(
+        pawPot=pawPot_group,
+        structure=struct_group,
+        main=main_group,
+        basis=basis_group,
+        PAWHamiltonian=paw_group,
+        initialGuess=initial_guess_group,
+    )
+    
     io_bundle.sphinx_input = input_sx
 
     return io_bundle
