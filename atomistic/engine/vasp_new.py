@@ -21,7 +21,7 @@ from pyiron_nodes.atomistic.calculator.data import (
     InputMinimizationVASP,
     InputSCF,
     OutputCalcStatic,
-    AdditionalInputFlags
+    AdditionalInputFlags,
 )
 
 # ── INCAR enum lookups ────────────────────────────────────────────────────────
