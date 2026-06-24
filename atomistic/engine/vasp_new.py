@@ -15,7 +15,31 @@ from pymatgen.io.vasp.inputs import Incar, Kpoints
 from pymatgen.io.vasp.outputs import Vasprun
 
 from core import as_function_node
-from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStatic
+from pyiron_nodes.atomistic.calculator.data import (
+    InputCalcMD,
+    InputDipoleCorrection,
+    InputMinimizationVASP,
+    InputSCF,
+    OutputCalcStatic,
+)
+
+# ── INCAR enum lookups ────────────────────────────────────────────────────────
+
+def _ISMEAR(smearing_type, smearing_order): 
+    if smearing_type == "fermi-dirac":
+        return -1
+    elif smearing_type == "gaussian":
+        return 0
+    elif smearing_type == "methfessel-paxton":
+        if smearing_order < 1:
+            raise ValueError("Methfessel-Paxton order must be >= 1")
+        return smearing_order
+
+_IBRION_MINIMIZE = {
+    "ConjugateGradient": 2,
+    "RMM-DIIS": 1,
+    "DampedMolecularDynamics": 3,
+}
 
 # ── POTCAR config ─────────────────────────────────────────────────────────────
 # testing the comit
@@ -66,15 +90,30 @@ _POTCAR_CSV = {
 
 
 @dataclass
+class VaspInput:
+    """Combined VASP calculation settings produced by ``MergeVaspInput``.
+
+    ``scf`` is always present; the others are layered on top when supplied. The
+    sub-objects are kept nested (not flattened) so each category stays editable
+    and new ones can be added without touching the existing ports.
+    """
+
+    scf: InputSCF
+    minimization: Optional[InputMinimizationVASP] = None
+    md: Optional[InputCalcMD] = None
+    dipole_correction: Optional[InputDipoleCorrection] = None
+
+
+@dataclass
 class VaspInputResources:
     structure: Atoms  # ASE Atoms — compatible with Bulk and other structure nodes
-    calc: Optional[InputCalcDFT]
+    calc: Optional[VaspInput]
     potcar_lib_path: str = field(
         default_factory=lambda: _default_potcar_lib_path
     )  # base path to POTCAR folders
     working_directory: Optional[str] = None
     potcar_symbols: Optional[list[str]] = None  # override default CSV symbol selection
-    extra_incar: Optional[dict] = None  # additional INCAR tags beyond InputCalcDFT
+    extra_incar: Optional[dict] = None  # additional INCAR tags beyond VaspInput
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -99,40 +138,51 @@ def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]
     return paths
 
 
-def _build_incar(calc: InputCalcDFT, extra: dict | None = None) -> Incar:
+def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
+    if calc.minimization is not None and calc.md is not None:
+        raise ValueError(
+            "minimization and md are mutually exclusive — both control IBRION/NSW. "
+            "Supply only one of them to MergeVaspInput."
+        )
 
-    if not calc.ionic_relaxation:
-        ibrion = -1
-    else:
-        match calc.ionic_update_algorithm:
-            case "MolecularDynamics":
-                ibrion = 0
-            case "RMM-DIIS":
-                ibrion = 1
-            case "ConjugateGradient":
-                ibrion = 2
-            case "DampedMolecularDynamics":
-                ibrion = 3
-            case _:
-                raise ValueError(
-                    f"ionic_update_algorithm must be set when ionic_relaxation is True, "
-                    f"got: {calc.ionic_update_algorithm!r}"
-                )
+    scf = calc.scf
 
+    # ── base SCF tags (every run) ─────────────────────────────────────────────
     tags = {
-        "ENCUT": calc.energy_cutoff,
-        "EDIFF": calc.electronic_convergence,
-        "EDIFFG": calc.ionic_convergence,
-        "NSW": calc.max_ionic_steps,
-        "IBRION": ibrion,
-        "ISIF": calc.isif,
-        "ISMEAR": calc.ismear,
-        "SIGMA": calc.sigma,
-        "ISPIN": calc.ispin,
-        "ALGO": calc.algo,
-        "PREC": calc.prec,
-        "NCORE": calc.ncore,
+        "ENCUT": scf.energy_cutoff,
+        "EDIFF": scf.electronic_convergence,
+        "NELM": scf.n_electronic_steps,
+        "ISMEAR": _ISMEAR(scf.smearing_type, scf.smearing_order),
+        "SIGMA": scf.smearing_width,
+        # static defaults — overridden below if minimization/md is supplied
+        "IBRION": -1,
+        "NSW": 0,
     }
+    if scf.algorithm is not None:
+        tags["ALGO"] = scf.algorithm
+
+    # ── ionic minimization (optional) ─────────────────────────────────────────
+    if calc.minimization is not None:
+        mini = calc.minimization
+        tags["IBRION"] = _IBRION_MINIMIZE[mini.algorithm]
+        tags["NSW"] = mini.max_ionic_steps
+        tags["EDIFFG"] = mini.ionic_convergence
+        tags["ISIF"] = mini.isif
+
+    # ── molecular dynamics (optional, minimal mapping) ────────────────────────
+    if calc.md is not None:
+        md = calc.md
+        tags["IBRION"] = 0
+        tags["NSW"] = md.n_ionic_steps
+        tags["POTIM"] = md.time_step
+        tags["TEBEG"] = md.temperature
+
+    # ── dipole correction (optional) ──────────────────────────────────────────
+    if calc.dipole_correction is not None:
+        dip = calc.dipole_correction
+        tags["LDIPOL"] = dip.ldipol
+        tags["IDIPOL"] = dip.direction
+
     if extra:
         tags.update(extra)
     return Incar(tags)
@@ -147,25 +197,22 @@ def _generate_hash(input_resources: VaspInputResources) -> str:
     ]
     flat_cell = [round(x, 6) for row in atoms.get_cell().array.tolist() for x in row]
 
+    scf = calc.scf
     parts = [
         atoms.get_chemical_formula(),
         str(flat_positions),
         str(flat_cell),
-        str(calc.energy_cutoff),
-        str(calc.electronic_convergence),
-        str(calc.ionic_convergence),
-        str(calc.max_ionic_steps),
-        str(calc.ionic_relaxation),
-        str(calc.ionic_update_algorithm),
-        str(calc.isif),
-        str(calc.ismear),
-        str(calc.sigma),
-        str(calc.ispin),
-        str(calc.algo),
-        str(calc.prec),
-        str(calc.ncore),
-        str(calc.kpoints_mesh),
-        str(calc.functional),
+        str(scf.functional),
+        str(scf.energy_cutoff),
+        str(scf.kpoints),
+        str(scf.electronic_convergence),
+        str(scf.smearing_type),
+        str(scf.smearing_width),
+        str(scf.algorithm),
+        str(scf.n_electronic_steps),
+        str(calc.minimization),
+        str(calc.md),
+        str(calc.dipole_correction),
         input_resources.potcar_lib_path,
     ]
 
@@ -184,9 +231,31 @@ def _generate_hash(input_resources: VaspInputResources) -> str:
 
 
 @as_function_node
+def MergeVaspInput(
+    scf: InputSCF,
+    minimization: Optional[InputMinimizationVASP] = None,
+    md: Optional[InputCalcMD] = None,
+    dipole_correction: Optional[InputDipoleCorrection] = None,
+) -> VaspInput:
+    """Combine the required SCF settings with any optional add-ons.
+
+    ``scf`` is mandatory; ``minimization``, ``md`` and ``dipole_correction`` are
+    optional. ``minimization`` and ``md`` are mutually exclusive (both drive the
+    ionic loop) — that is enforced when the INCAR is built.
+    """
+    calc = VaspInput(
+        scf=scf,
+        minimization=minimization,
+        md=md,
+        dipole_correction=dipole_correction,
+    )
+    return calc
+
+
+@as_function_node
 def CreateVaspInputResources(
     structure: Atoms,
-    calc: InputCalcDFT,
+    calc: VaspInput,
     potcar_lib_path: str = _default_potcar_lib_path,
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
@@ -229,7 +298,7 @@ def CreateVaspInputResources(
         if input_resources.potcar_symbols is not None
         else _get_potcar_paths(
             input_resources.structure,
-            input_resources.calc.functional,
+            input_resources.calc.scf.functional,
             input_resources.potcar_lib_path,
         )
     )
@@ -238,16 +307,15 @@ def CreateVaspInputResources(
             with open(p, "rb") as fd:
                 shutil.copyfileobj(fd, wfd)
 
-    # KPOINTS
+    # KPOINTS — Gamma-centred mesh parsed from the "kx ky kz" string on InputSCF
     kpoints_path = os.path.join(workdir, "KPOINTS")
-    kpoint_string = input_resources.calc.kpoints_mesh
-    mesh = [int(k) for k in kpoint_string.split()]
-    if mesh is not None:
-        kpoints = Kpoints.gamma_automatic(mesh)
-        kpoints.write_file(kpoints_path)
-    else:
-        with open(kpoints_path, "w") as f:
-            f.write("Automatic mesh\n0\nGamma\n1 1 1\n0 0 0\n")
+    mesh = [int(k) for k in input_resources.calc.scf.kpoints.split()]
+    if len(mesh) != 3:
+        raise ValueError(
+            f'scf.kpoints must be three integers like "4 4 4", got: '
+            f"{input_resources.calc.scf.kpoints!r}"
+        )
+    Kpoints.gamma_automatic(mesh).write_file(kpoints_path)
 
     return input_resources
 
