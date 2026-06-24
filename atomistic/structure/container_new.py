@@ -927,10 +927,14 @@ def GetVacancyDistances(container: StructureContainer, defect_index: int):
         # Extract vacancy info
         vacancies = []
         for ev in vacancy_events:
-            vacancies.append({"uid": ev["site_uid"], "position": np.array(ev["site_pos0"])})
+            vacancies.append(
+                {"uid": ev["site_uid"], "position": np.array(ev["site_pos0"])}
+            )
 
         # Get cell for periodic boundary calculations
-        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        pristine = container._structures[defect["pristine_structure_index"]][
+            "structure"
+        ]
         cell = pristine.get_cell()
         inv_cell = np.linalg.inv(cell)
 
@@ -1008,7 +1012,9 @@ def GetSubstitutionDistances(container: StructureContainer, defect_index: int):
             for ev in sub_events
         ]
 
-        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        pristine = container._structures[defect["pristine_structure_index"]][
+            "structure"
+        ]
         cell = pristine.get_cell()
         inv_cell = np.linalg.inv(cell)
 
@@ -1156,7 +1162,9 @@ def GetInterstitialDistances(container: StructureContainer, defect_index: int):
             for ev in int_events
         ]
 
-        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        pristine = container._structures[defect["pristine_structure_index"]][
+            "structure"
+        ]
         cell = pristine.get_cell()
         inv_cell = np.linalg.inv(cell)
 
@@ -1224,7 +1232,9 @@ def GetInterstitialDistancesRelaxed(atoms, events: list):
             idx = uid_to_index(atoms, uid) if uid is not None else None
             if idx is not None:
                 pos = atoms.positions[idx]
-                print(f"  interstitial {ev['element']} (atom_uid={uid}): located via uid")
+                print(
+                    f"  interstitial {ev['element']} (atom_uid={uid}): located via uid"
+                )
             else:
                 # fallback: nearest-neighbour from insertion position
                 original_pos = np.array(ev["pos0"])
@@ -1241,7 +1251,9 @@ def GetInterstitialDistancesRelaxed(atoms, events: list):
                     f"  interstitial {ev['element']}: located via nearest-neighbour ({reason})"
                 )
             relaxed_positions.append(pos)
-            interstitial_info.append({"element": ev["element"], "position_relaxed": pos})
+            interstitial_info.append(
+                {"element": ev["element"], "position_relaxed": pos}
+            )
 
         n = len(relaxed_positions)
         distances = {}
@@ -1869,9 +1881,7 @@ def ResolveDefectRow(
 
 
 @as_function_node("index")
-def ResolveAnyRow(
-    structure_container: StructureContainer, relative_index: int
-) -> int:
+def ResolveAnyRow(structure_container: StructureContainer, relative_index: int) -> int:
     """
     Convert a relative index to an absolute structure index.
 
@@ -2307,7 +2317,8 @@ def GetVoronoiInterstitialSitesPymatgen(
                     for j in range(n2):
                         for k in range(n3):
                             all_sites_list.append(
-                                cart_base + np.array([i, j, k], dtype=float) @ prim_lattice
+                                cart_base
+                                + np.array([i, j, k], dtype=float) @ prim_lattice
                             )
             all_sites = np.array(all_sites_list, dtype=float)
         else:
@@ -2438,7 +2449,9 @@ def GetVoronoiInterstitialSites(
                 used[mask] = True
                 clusters.append(candidates[mask].mean(axis=0))
 
-            all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
+            all_sites_prim = np.array(
+                clusters, dtype=float
+            )  # void centers in primitive cell
             unique_sites = all_sites_prim.copy()  # one per cluster
 
             if use_primitive:
@@ -2448,7 +2461,9 @@ def GetVoronoiInterstitialSites(
                     for i in range(n1):
                         for j in range(n2):
                             for k in range(n3):
-                                tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
+                                tiles.append(
+                                    f + np.array([i, j, k], dtype=float) @ cell
+                                )
                 all_sites = np.array(tiles, dtype=float)
             else:
                 all_sites = all_sites_prim
@@ -2594,7 +2609,9 @@ def GetDelaunayInterstitialSites(
                 used[mask] = True
                 clusters.append(candidates[mask].mean(axis=0))
 
-            all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
+            all_sites_prim = np.array(
+                clusters, dtype=float
+            )  # void centers in primitive cell
             unique_sites = all_sites_prim.copy()  # one per cluster
 
             if use_primitive:
@@ -2604,7 +2621,9 @@ def GetDelaunayInterstitialSites(
                     for i in range(n1):
                         for j in range(n2):
                             for k in range(n3):
-                                tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
+                                tiles.append(
+                                    f + np.array([i, j, k], dtype=float) @ cell
+                                )
                 all_sites = np.array(tiles, dtype=float)
             else:
                 all_sites = all_sites_prim
@@ -3742,4 +3761,3 @@ def CreateInterstitialBatchFromSeed(
             structure_counter += 1
 
     return container
-
