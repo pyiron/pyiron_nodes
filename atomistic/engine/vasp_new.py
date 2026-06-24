@@ -18,7 +18,7 @@ from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStatic
 
 # ── POTCAR config ─────────────────────────────────────────────────────────────
-
+# testing the comit
 
 def read_potcar_config(config_file: Path) -> dict:
     config_data = {}
