@@ -11,7 +11,11 @@ from lammpsparser.compatibility.constraints import set_selective_dynamics
 from lammpsparser.output import parse_lammps_output
 from lammpsparser.structure import LammpsStructure
 
-from pyiron_nodes.atomistic.calculator.data import InputCalcMD, InputCalcMinimize, InputCalcStatic
+from pyiron_nodes.atomistic.calculator.data import (
+    InputCalcMD,
+    InputCalcMinimize,
+    InputCalcStatic,
+)
 
 from core import as_function_node
 

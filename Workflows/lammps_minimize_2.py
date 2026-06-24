@@ -42,4 +42,6 @@ wf.ParseLammpsMinimizeOutput = ParseLammpsMinimizeOutput(
     io_bundle=wf.RunLammpsCalculation.outputs.io_bundle
 )
 
-wf.OutputCalcMinimize = OutputCalcMinimize(input=wf.ParseLammpsMinimizeOutput.outputs.out)
+wf.OutputCalcMinimize = OutputCalcMinimize(
+    input=wf.ParseLammpsMinimizeOutput.outputs.out
+)
