@@ -1,24 +1,10 @@
-"""
-Enhanced StructureContainer Module - GUI-Friendly Version
-
-This module provides an improved StructureContainer class for managing
-pristine and defect structures with enhanced features including:
-- Unambiguous operation tracking with pipe-separated short form
-- Clear lineage tracking with top-level parent/pristine indices
-- Duplicate checking for pristine structures
-- Table extraction methods
-- Structure lookup helpers
-- Support for both specific and random defect creation (GUI-friendly)
-- Single return pattern for all functions
-
-Version 3.0 - June 2026 (GUI-friendly refactor)
-"""
-
 from __future__ import annotations  # Enables lazy imports for type hints
 
 from ase import Atoms
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, Callable
+
+from core import as_function_node
 
 # Import for Voronoi interstitial site finding
 try:
@@ -887,7 +873,8 @@ def get_stoichiometry(atoms: Atoms) -> str:
     return "".join(f"{el}{counts[el]}" for el in sorted(counts))
 
 
-def get_vacancy_distances(container: StructureContainer, defect_index: int):
+@as_function_node
+def GetVacancyDistances(container: StructureContainer, defect_index: int):
     """
     Get pairwise distances between vacancies in a defect structure.
 
@@ -930,48 +917,50 @@ def get_vacancy_distances(container: StructureContainer, defect_index: int):
     vacancy_events = [e for e in events if e["type"] == "vacancy"]
 
     if len(vacancy_events) < 2:
-        return {
+        out = {
             "vacancies": [],
             "distances": {},
             "distance_matrix": np.array([]),
             "message": f"Need at least 2 vacancies, found {len(vacancy_events)}",
         }
+    else:
+        # Extract vacancy info
+        vacancies = []
+        for ev in vacancy_events:
+            vacancies.append({"uid": ev["site_uid"], "position": np.array(ev["site_pos0"])})
 
-    # Extract vacancy info
-    vacancies = []
-    for ev in vacancy_events:
-        vacancies.append({"uid": ev["site_uid"], "position": np.array(ev["site_pos0"])})
+        # Get cell for periodic boundary calculations
+        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        cell = pristine.get_cell()
+        inv_cell = np.linalg.inv(cell)
 
-    # Get cell for periodic boundary calculations
-    pristine = container._structures[defect["pristine_structure_index"]]["structure"]
-    cell = pristine.get_cell()
-    inv_cell = np.linalg.inv(cell)
+        # Calculate pairwise distances with PBC
+        n_vac = len(vacancies)
+        distances = {}
+        distance_matrix = np.zeros((n_vac, n_vac))
 
-    # Calculate pairwise distances with PBC
-    n_vac = len(vacancies)
-    distances = {}
-    distance_matrix = np.zeros((n_vac, n_vac))
+        for i in range(n_vac):
+            for j in range(i + 1, n_vac):
+                # Calculate minimum image distance
+                delta = vacancies[i]["position"] - vacancies[j]["position"]
+                # Apply minimum image convention
+                delta -= np.round(delta @ inv_cell) @ cell
+                dist = np.linalg.norm(delta)
 
-    for i in range(n_vac):
-        for j in range(i + 1, n_vac):
-            # Calculate minimum image distance
-            delta = vacancies[i]["position"] - vacancies[j]["position"]
-            # Apply minimum image convention
-            delta -= np.round(delta @ inv_cell) @ cell
-            dist = np.linalg.norm(delta)
+                key = f"{i}-{j}"
+                distances[key] = dist
+                distance_matrix[i, j] = distance_matrix[j, i] = dist
 
-            key = f"{i}-{j}"
-            distances[key] = dist
-            distance_matrix[i, j] = distance_matrix[j, i] = dist
-
-    return {
-        "vacancies": vacancies,
-        "distances": distances,
-        "distance_matrix": distance_matrix,
-    }
+        out = {
+            "vacancies": vacancies,
+            "distances": distances,
+            "distance_matrix": distance_matrix,
+        }
+    return out
 
 
-def get_substitution_distances(container: StructureContainer, defect_index: int):
+@as_function_node
+def GetSubstitutionDistances(container: StructureContainer, defect_index: int):
     """
     Get pairwise distances between substituted sites in a defect structure.
 
@@ -1002,47 +991,49 @@ def get_substitution_distances(container: StructureContainer, defect_index: int)
     sub_events = [e for e in events if e["type"] == "substitution"]
 
     if len(sub_events) < 2:
-        return {
+        out = {
             "substitutions": [],
             "distances": {},
             "distance_matrix": np.array([]),
             "message": f"Need at least 2 substitutions, found {len(sub_events)}",
         }
+    else:
+        substitutions = [
+            {
+                "uid": ev["site_uid"],
+                "from": ev["from"],
+                "to": ev["to"],
+                "position": np.array(ev["site_pos0"]),
+            }
+            for ev in sub_events
+        ]
 
-    substitutions = [
-        {
-            "uid": ev["site_uid"],
-            "from": ev["from"],
-            "to": ev["to"],
-            "position": np.array(ev["site_pos0"]),
+        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        cell = pristine.get_cell()
+        inv_cell = np.linalg.inv(cell)
+
+        n_sub = len(substitutions)
+        distances = {}
+        distance_matrix = np.zeros((n_sub, n_sub))
+
+        for i in range(n_sub):
+            for j in range(i + 1, n_sub):
+                delta = substitutions[i]["position"] - substitutions[j]["position"]
+                delta -= np.round(delta @ inv_cell) @ cell
+                dist = np.linalg.norm(delta)
+                distances[f"{i}-{j}"] = dist
+                distance_matrix[i, j] = distance_matrix[j, i] = dist
+
+        out = {
+            "substitutions": substitutions,
+            "distances": distances,
+            "distance_matrix": distance_matrix,
         }
-        for ev in sub_events
-    ]
-
-    pristine = container._structures[defect["pristine_structure_index"]]["structure"]
-    cell = pristine.get_cell()
-    inv_cell = np.linalg.inv(cell)
-
-    n_sub = len(substitutions)
-    distances = {}
-    distance_matrix = np.zeros((n_sub, n_sub))
-
-    for i in range(n_sub):
-        for j in range(i + 1, n_sub):
-            delta = substitutions[i]["position"] - substitutions[j]["position"]
-            delta -= np.round(delta @ inv_cell) @ cell
-            dist = np.linalg.norm(delta)
-            distances[f"{i}-{j}"] = dist
-            distance_matrix[i, j] = distance_matrix[j, i] = dist
-
-    return {
-        "substitutions": substitutions,
-        "distances": distances,
-        "distance_matrix": distance_matrix,
-    }
+    return out
 
 
-def get_substitution_distances_relaxed(atoms, events: list):
+@as_function_node
+def GetSubstitutionDistancesRelaxed(atoms, events: list):
     """
     Get pairwise distances between substituted atoms in a relaxed structure.
 
@@ -1073,56 +1064,58 @@ def get_substitution_distances_relaxed(atoms, events: list):
     sub_events = [e for e in events if e["type"] == "substitution"]
 
     if len(sub_events) < 2:
-        return {
+        out = {
             "substitutions": [],
             "distances": {},
             "distance_matrix": np.array([]),
             "message": f"Need at least 2 substitutions, found {len(sub_events)}",
         }
+    else:
+        cell = atoms.get_cell()
+        inv_cell = np.linalg.inv(cell)
 
-    cell = atoms.get_cell()
-    inv_cell = np.linalg.inv(cell)
+        # For each substitution, find the nearest atom in the relaxed structure
+        # to the original site position. Atoms never move far enough during
+        # relaxation to be closer to a different lattice site.
+        relaxed_positions = []
+        substitution_info = []
+        for ev in sub_events:
+            original_pos = np.array(ev["site_pos0"])
+            diffs = atoms.positions - original_pos
+            diffs -= np.round(diffs @ inv_cell) @ cell
+            dists = np.linalg.norm(diffs, axis=1)
+            closest_idx = np.argmin(dists)
+            relaxed_positions.append(atoms.positions[closest_idx])
+            substitution_info.append(
+                {
+                    "from": ev["from"],
+                    "to": ev["to"],
+                    "position_relaxed": atoms.positions[closest_idx],
+                }
+            )
 
-    # For each substitution, find the nearest atom in the relaxed structure
-    # to the original site position. Atoms never move far enough during
-    # relaxation to be closer to a different lattice site.
-    relaxed_positions = []
-    substitution_info = []
-    for ev in sub_events:
-        original_pos = np.array(ev["site_pos0"])
-        diffs = atoms.positions - original_pos
-        diffs -= np.round(diffs @ inv_cell) @ cell
-        dists = np.linalg.norm(diffs, axis=1)
-        closest_idx = np.argmin(dists)
-        relaxed_positions.append(atoms.positions[closest_idx])
-        substitution_info.append(
-            {
-                "from": ev["from"],
-                "to": ev["to"],
-                "position_relaxed": atoms.positions[closest_idx],
-            }
-        )
+        n = len(relaxed_positions)
+        distances = {}
+        distance_matrix = np.zeros((n, n))
 
-    n = len(relaxed_positions)
-    distances = {}
-    distance_matrix = np.zeros((n, n))
+        for i in range(n):
+            for j in range(i + 1, n):
+                delta = relaxed_positions[i] - relaxed_positions[j]
+                delta -= np.round(delta @ inv_cell) @ cell
+                dist = np.linalg.norm(delta)
+                distances[f"{i}-{j}"] = dist
+                distance_matrix[i, j] = distance_matrix[j, i] = dist
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            delta = relaxed_positions[i] - relaxed_positions[j]
-            delta -= np.round(delta @ inv_cell) @ cell
-            dist = np.linalg.norm(delta)
-            distances[f"{i}-{j}"] = dist
-            distance_matrix[i, j] = distance_matrix[j, i] = dist
-
-    return {
-        "substitutions": substitution_info,
-        "distances": distances,
-        "distance_matrix": distance_matrix,
-    }
+        out = {
+            "substitutions": substitution_info,
+            "distances": distances,
+            "distance_matrix": distance_matrix,
+        }
+    return out
 
 
-def get_interstitial_distances(container: StructureContainer, defect_index: int):
+@as_function_node
+def GetInterstitialDistances(container: StructureContainer, defect_index: int):
     """
     Get pairwise distances between interstitial sites in a defect structure.
 
@@ -1147,46 +1140,48 @@ def get_interstitial_distances(container: StructureContainer, defect_index: int)
     int_events = [e for e in events if e["type"] == "interstitial"]
 
     if len(int_events) < 2:
-        return {
+        out = {
             "interstitials": [],
             "distances": {},
             "distance_matrix": np.array([]),
             "message": f"Need at least 2 interstitials, found {len(int_events)}",
         }
+    else:
+        interstitials = [
+            {
+                "uid": ev["atom_uid"],
+                "element": ev["element"],
+                "position": np.array(ev["pos0"]),
+            }
+            for ev in int_events
+        ]
 
-    interstitials = [
-        {
-            "uid": ev["atom_uid"],
-            "element": ev["element"],
-            "position": np.array(ev["pos0"]),
+        pristine = container._structures[defect["pristine_structure_index"]]["structure"]
+        cell = pristine.get_cell()
+        inv_cell = np.linalg.inv(cell)
+
+        n = len(interstitials)
+        distances = {}
+        distance_matrix = np.zeros((n, n))
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                delta = interstitials[i]["position"] - interstitials[j]["position"]
+                delta -= np.round(delta @ inv_cell) @ cell
+                dist = np.linalg.norm(delta)
+                distances[f"{i}-{j}"] = dist
+                distance_matrix[i, j] = distance_matrix[j, i] = dist
+
+        out = {
+            "interstitials": interstitials,
+            "distances": distances,
+            "distance_matrix": distance_matrix,
         }
-        for ev in int_events
-    ]
-
-    pristine = container._structures[defect["pristine_structure_index"]]["structure"]
-    cell = pristine.get_cell()
-    inv_cell = np.linalg.inv(cell)
-
-    n = len(interstitials)
-    distances = {}
-    distance_matrix = np.zeros((n, n))
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            delta = interstitials[i]["position"] - interstitials[j]["position"]
-            delta -= np.round(delta @ inv_cell) @ cell
-            dist = np.linalg.norm(delta)
-            distances[f"{i}-{j}"] = dist
-            distance_matrix[i, j] = distance_matrix[j, i] = dist
-
-    return {
-        "interstitials": interstitials,
-        "distances": distances,
-        "distance_matrix": distance_matrix,
-    }
+    return out
 
 
-def get_interstitial_distances_relaxed(atoms, events: list):
+@as_function_node
+def GetInterstitialDistancesRelaxed(atoms, events: list):
     """
     Get pairwise distances between interstitial atoms in a relaxed structure.
 
@@ -1212,59 +1207,60 @@ def get_interstitial_distances_relaxed(atoms, events: list):
     int_events = [e for e in events if e["type"] == "interstitial"]
 
     if len(int_events) < 2:
-        return {
+        out = {
             "interstitials": [],
             "distances": {},
             "distance_matrix": np.array([]),
             "message": f"Need at least 2 interstitials, found {len(int_events)}",
         }
+    else:
+        cell = atoms.get_cell()
+        inv_cell = np.linalg.inv(cell)
 
-    cell = atoms.get_cell()
-    inv_cell = np.linalg.inv(cell)
+        relaxed_positions = []
+        interstitial_info = []
+        for ev in int_events:
+            uid = ev.get("atom_uid")
+            idx = uid_to_index(atoms, uid) if uid is not None else None
+            if idx is not None:
+                pos = atoms.positions[idx]
+                print(f"  interstitial {ev['element']} (atom_uid={uid}): located via uid")
+            else:
+                # fallback: nearest-neighbour from insertion position
+                original_pos = np.array(ev["pos0"])
+                diffs = atoms.positions - original_pos
+                diffs -= np.round(diffs @ inv_cell) @ cell
+                idx = np.argmin(np.linalg.norm(diffs, axis=1))
+                pos = atoms.positions[idx]
+                reason = (
+                    "no atom_uid in event"
+                    if uid is None
+                    else "uid not found in atoms.arrays"
+                )
+                print(
+                    f"  interstitial {ev['element']}: located via nearest-neighbour ({reason})"
+                )
+            relaxed_positions.append(pos)
+            interstitial_info.append({"element": ev["element"], "position_relaxed": pos})
 
-    relaxed_positions = []
-    interstitial_info = []
-    for ev in int_events:
-        uid = ev.get("atom_uid")
-        idx = uid_to_index(atoms, uid) if uid is not None else None
-        if idx is not None:
-            pos = atoms.positions[idx]
-            print(f"  interstitial {ev['element']} (atom_uid={uid}): located via uid")
-        else:
-            # fallback: nearest-neighbour from insertion position
-            original_pos = np.array(ev["pos0"])
-            diffs = atoms.positions - original_pos
-            diffs -= np.round(diffs @ inv_cell) @ cell
-            idx = np.argmin(np.linalg.norm(diffs, axis=1))
-            pos = atoms.positions[idx]
-            reason = (
-                "no atom_uid in event"
-                if uid is None
-                else "uid not found in atoms.arrays"
-            )
-            print(
-                f"  interstitial {ev['element']}: located via nearest-neighbour ({reason})"
-            )
-        relaxed_positions.append(pos)
-        interstitial_info.append({"element": ev["element"], "position_relaxed": pos})
+        n = len(relaxed_positions)
+        distances = {}
+        distance_matrix = np.zeros((n, n))
 
-    n = len(relaxed_positions)
-    distances = {}
-    distance_matrix = np.zeros((n, n))
+        for i in range(n):
+            for j in range(i + 1, n):
+                delta = relaxed_positions[i] - relaxed_positions[j]
+                delta -= np.round(delta @ inv_cell) @ cell
+                dist = np.linalg.norm(delta)
+                distances[f"{i}-{j}"] = dist
+                distance_matrix[i, j] = distance_matrix[j, i] = dist
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            delta = relaxed_positions[i] - relaxed_positions[j]
-            delta -= np.round(delta @ inv_cell) @ cell
-            dist = np.linalg.norm(delta)
-            distances[f"{i}-{j}"] = dist
-            distance_matrix[i, j] = distance_matrix[j, i] = dist
-
-    return {
-        "interstitials": interstitial_info,
-        "distances": distances,
-        "distance_matrix": distance_matrix,
-    }
+        out = {
+            "interstitials": interstitial_info,
+            "distances": distances,
+            "distance_matrix": distance_matrix,
+        }
+    return out
 
 
 def make_operations_short(events: List[dict]) -> str:
@@ -1325,7 +1321,8 @@ def make_operations_short(events: List[dict]) -> str:
 # ----------------------------------------------------------------------
 
 
-def get_structure_table(structure_container: StructureContainer) -> "pd.DataFrame":
+@as_function_node("table")
+def GetStructureTable(structure_container: StructureContainer) -> "pd.DataFrame":
     """
     Return a copy of the full structure table.
 
@@ -1349,7 +1346,8 @@ def get_structure_table(structure_container: StructureContainer) -> "pd.DataFram
     return structure_container.get_structure_table()
 
 
-def get_defect_table(structure_container: StructureContainer) -> "pd.DataFrame":
+@as_function_node("table")
+def GetDefectTable(structure_container: StructureContainer) -> "pd.DataFrame":
     """
     Return a filtered copy containing only defect rows (is_pristine == False).
 
@@ -1370,7 +1368,8 @@ def get_defect_table(structure_container: StructureContainer) -> "pd.DataFrame":
     return structure_container.get_defect_table()
 
 
-def get_pristine_table(structure_container: StructureContainer) -> "pd.DataFrame":
+@as_function_node("table")
+def GetPristineTable(structure_container: StructureContainer) -> "pd.DataFrame":
     """
     Return a filtered copy containing only pristine rows (is_pristine == True).
 
@@ -1396,7 +1395,8 @@ def get_pristine_table(structure_container: StructureContainer) -> "pd.DataFrame
 # ----------------------------------------------------------------------
 
 
-def add_pristine(
+@as_function_node
+def AddPristine(
     structure_container: Optional[StructureContainer] = None,
     atoms: Atoms = None,
     unique_id: Optional[str] = None,
@@ -1450,7 +1450,8 @@ def add_pristine(
 # ----------------------------------------------------------------------
 
 
-def filter_by_indices(
+@as_function_node("structures")
+def FilterByIndices(
     structure_container: StructureContainer, indices: List[int]
 ) -> List[dict]:
     """
@@ -1471,7 +1472,8 @@ def filter_by_indices(
     return structure_container.filter_by_indices(indices)
 
 
-def filter_by_generation(
+@as_function_node("structures")
+def FilterByGeneration(
     structure_container: StructureContainer, generation: int
 ) -> List[dict]:
     """
@@ -1496,7 +1498,8 @@ def filter_by_generation(
     return structure_container.filter_by_generation(generation)
 
 
-def filter_by_max_generation(
+@as_function_node("structures")
+def FilterByMaxGeneration(
     structure_container: StructureContainer, max_generation: int
 ) -> List[dict]:
     """
@@ -1521,7 +1524,8 @@ def filter_by_max_generation(
     return structure_container.filter_by_max_generation(max_generation)
 
 
-def filter_by_operations_short(
+@as_function_node("structures")
+def FilterByOperationsShort(
     structure_container: StructureContainer, pattern: str
 ) -> List[dict]:
     """
@@ -1547,7 +1551,8 @@ def filter_by_operations_short(
     return structure_container.filter_by_operations_short(pattern)
 
 
-def filter_by_operations_contains(
+@as_function_node("structures")
+def FilterByOperationsContains(
     structure_container: StructureContainer, operation_type: str
 ) -> List[dict]:
     """
@@ -1600,7 +1605,8 @@ def filter_by_condition(
     return structure_container.filter_by_condition(condition)
 
 
-def filter_by_unique_id(
+@as_function_node("structure")
+def FilterByUniqueId(
     structure_container: StructureContainer, unique_id: str
 ) -> Optional[dict]:
     """
@@ -1621,7 +1627,8 @@ def filter_by_unique_id(
     return structure_container.filter_by_unique_id(unique_id)
 
 
-def filter_by_number_of_atoms(
+@as_function_node("structures")
+def FilterByNumberOfAtoms(
     structure_container: StructureContainer, n_atoms: int
 ) -> List[dict]:
     """
@@ -1646,7 +1653,8 @@ def filter_by_number_of_atoms(
     return structure_container.filter_by_number_of_atoms(n_atoms)
 
 
-def filter_by_element_count(
+@as_function_node("structures")
+def FilterByElementCount(
     structure_container: StructureContainer,
     element: str,
     min_count: Optional[int] = None,
@@ -1684,7 +1692,8 @@ def filter_by_element_count(
     )
 
 
-def filter_by_stoichiometry(
+@as_function_node("structures")
+def FilterByStoichiometry(
     structure_container: StructureContainer, formula_pattern: Optional[str] = None
 ) -> List[dict]:
     """
@@ -1710,7 +1719,8 @@ def filter_by_stoichiometry(
     return structure_container.filter_by_stoichiometry(formula_pattern)
 
 
-def filter_by_parent(
+@as_function_node("structures")
+def FilterByParent(
     structure_container: StructureContainer, parent_index: int
 ) -> List[dict]:
     """
@@ -1740,7 +1750,8 @@ def filter_by_parent(
 # ----------------------------------------------------------------------
 
 
-def get_structure(structure_container: StructureContainer, index: int) -> dict:
+@as_function_node("structure")
+def GetStructure(structure_container: StructureContainer, index: int) -> dict:
     """
     Get structure by absolute index.
 
@@ -1764,7 +1775,8 @@ def get_structure(structure_container: StructureContainer, index: int) -> dict:
     return structure_container.get_structure(index)
 
 
-def get_pristine_structures(structure_container: StructureContainer) -> List[dict]:
+@as_function_node("structures")
+def GetPristineStructures(structure_container: StructureContainer) -> List[dict]:
     """
     Get all pristine structures.
 
@@ -1781,7 +1793,8 @@ def get_pristine_structures(structure_container: StructureContainer) -> List[dic
     return structure_container.get_pristine_structures()
 
 
-def get_defect_structures(structure_container: StructureContainer) -> List[dict]:
+@as_function_node("structures")
+def GetDefectStructures(structure_container: StructureContainer) -> List[dict]:
     """
     Get all defect structures.
 
@@ -1798,7 +1811,8 @@ def get_defect_structures(structure_container: StructureContainer) -> List[dict]
     return structure_container.get_defect_structures()
 
 
-def latest_pristine_index(structure_container: StructureContainer) -> int:
+@as_function_node("index")
+def LatestPristineIndex(structure_container: StructureContainer) -> int:
     """
     Absolute row index of the most recently added pristine structure.
 
@@ -1825,7 +1839,8 @@ def latest_pristine_index(structure_container: StructureContainer) -> int:
 # ----------------------------------------------------------------------
 
 
-def resolve_defect_row(
+@as_function_node("index")
+def ResolveDefectRow(
     structure_container: StructureContainer, relative_index: int
 ) -> int:
     """
@@ -1853,7 +1868,8 @@ def resolve_defect_row(
     return structure_container.resolve_defect_row(relative_index)
 
 
-def resolve_any_row(
+@as_function_node("index")
+def ResolveAnyRow(
     structure_container: StructureContainer, relative_index: int
 ) -> int:
     """
@@ -1972,7 +1988,8 @@ def _resolve_parent(
 # ============================================================================
 
 
-def create_vacancy_from_ids(
+@as_function_node
+def CreateVacancyFromIds(
     structure_container: StructureContainer,
     atom_ids: List[int],
     parent_defect_index: Optional[int] = None,
@@ -2137,7 +2154,8 @@ def _extract_defect_frac_coords(defects):
     return np.array(frac_list, dtype=float)
 
 
-def get_voronoi_interstitial_sites_pymatgen(
+@as_function_node
+def GetVoronoiInterstitialSitesPymatgen(
     atoms: Atoms,
     primitive_atoms: Optional[Atoms] = None,
     repeat: Optional[tuple] = None,
@@ -2255,49 +2273,51 @@ def get_voronoi_interstitial_sites_pymatgen(
     # Extract equivalent (symmetry-unique) fractional coordinates
     frac_equiv = _extract_defect_frac_coords(defects)
     if len(frac_equiv) == 0:
-        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=float)
-
-    # Use SpacegroupAnalyzer to get symmetry operations
-    sga = SpacegroupAnalyzer(
-        pmg_structure,
-        symprec=float(symprec),
-        angle_tolerance=float(angle_tolerance),
-    )
-    symmops = sga.get_space_group_operations()
-
-    # Expand to all symmetry-equivalent sites within the primitive cell
-    frac_all_prim = []
-    for f0 in frac_equiv:
-        for op in symmops:
-            frac_all_prim.append(_wrap_frac(op.operate(f0)))
-    frac_all_prim = _deduplicate_frac(frac_all_prim, tol=dedup_tol)
-
-    prim_lattice = pmg_structure.lattice.matrix
-
-    # unique_sites: one representative per distinct void type (never tiled)
-    equivalent_sites = frac_equiv @ prim_lattice
-
-    if use_primitive:
-        # Tile all primitive-cell void positions across the supercell by
-        # adding integer-lattice-vector shifts for every (i, j, k) image.
-        n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
-        all_sites_list = []
-        for f in frac_all_prim:
-            cart_base = f @ prim_lattice
-            for i in range(n1):
-                for j in range(n2):
-                    for k in range(n3):
-                        all_sites_list.append(
-                            cart_base + np.array([i, j, k], dtype=float) @ prim_lattice
-                        )
-        all_sites = np.array(all_sites_list, dtype=float)
+        equivalent_sites = np.empty((0, 3), dtype=float)
+        all_sites = np.empty((0, 3), dtype=float)
     else:
-        all_sites = frac_all_prim @ prim_lattice
+        # Use SpacegroupAnalyzer to get symmetry operations
+        sga = SpacegroupAnalyzer(
+            pmg_structure,
+            symprec=float(symprec),
+            angle_tolerance=float(angle_tolerance),
+        )
+        symmops = sga.get_space_group_operations()
+
+        # Expand to all symmetry-equivalent sites within the primitive cell
+        frac_all_prim = []
+        for f0 in frac_equiv:
+            for op in symmops:
+                frac_all_prim.append(_wrap_frac(op.operate(f0)))
+        frac_all_prim = _deduplicate_frac(frac_all_prim, tol=dedup_tol)
+
+        prim_lattice = pmg_structure.lattice.matrix
+
+        # unique_sites: one representative per distinct void type (never tiled)
+        equivalent_sites = frac_equiv @ prim_lattice
+
+        if use_primitive:
+            # Tile all primitive-cell void positions across the supercell by
+            # adding integer-lattice-vector shifts for every (i, j, k) image.
+            n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
+            all_sites_list = []
+            for f in frac_all_prim:
+                cart_base = f @ prim_lattice
+                for i in range(n1):
+                    for j in range(n2):
+                        for k in range(n3):
+                            all_sites_list.append(
+                                cart_base + np.array([i, j, k], dtype=float) @ prim_lattice
+                            )
+            all_sites = np.array(all_sites_list, dtype=float)
+        else:
+            all_sites = frac_all_prim @ prim_lattice
 
     return equivalent_sites, all_sites
 
 
-def get_voronoi_interstitial_sites(
+@as_function_node
+def GetVoronoiInterstitialSites(
     atoms: Atoms,
     primitive_atoms: Optional[Atoms] = None,
     repeat: Optional[tuple] = None,
@@ -2392,51 +2412,52 @@ def get_voronoi_interstitial_sites(
     candidates = candidates_all[inside]
 
     if len(candidates) == 0:
-        empty = np.empty((0, 3), dtype=float)
-        return empty, empty
-
-    # --- filter: too close to any host atom (minimum image convention) ---
-    diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
-    diff_frac = diff @ cell_inv
-    diff_frac -= np.round(diff_frac)
-    diff_cart = diff_frac @ cell
-    min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
-    candidates = candidates[min_dist >= r_min]
-
-    if len(candidates) == 0:
-        empty = np.empty((0, 3), dtype=float)
-        return empty, empty
-
-    # --- cluster: merge candidates within cluster_tol ---
-    used = np.zeros(len(candidates), dtype=bool)
-    clusters = []
-    for i in range(len(candidates)):
-        if used[i]:
-            continue
-        d = np.linalg.norm(candidates - candidates[i], axis=1)
-        mask = d < cluster_tol
-        used[mask] = True
-        clusters.append(candidates[mask].mean(axis=0))
-
-    all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
-    unique_sites = all_sites_prim.copy()  # one per cluster
-
-    if use_primitive:
-        n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
-        tiles = []
-        for f in all_sites_prim:
-            for i in range(n1):
-                for j in range(n2):
-                    for k in range(n3):
-                        tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
-        all_sites = np.array(tiles, dtype=float)
+        unique_sites = np.empty((0, 3), dtype=float)
+        all_sites = np.empty((0, 3), dtype=float)
     else:
-        all_sites = all_sites_prim
+        # --- filter: too close to any host atom (minimum image convention) ---
+        diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
+        diff_frac = diff @ cell_inv
+        diff_frac -= np.round(diff_frac)
+        diff_cart = diff_frac @ cell
+        min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
+        candidates = candidates[min_dist >= r_min]
+
+        if len(candidates) == 0:
+            unique_sites = np.empty((0, 3), dtype=float)
+            all_sites = np.empty((0, 3), dtype=float)
+        else:
+            # --- cluster: merge candidates within cluster_tol ---
+            used = np.zeros(len(candidates), dtype=bool)
+            clusters = []
+            for i in range(len(candidates)):
+                if used[i]:
+                    continue
+                d = np.linalg.norm(candidates - candidates[i], axis=1)
+                mask = d < cluster_tol
+                used[mask] = True
+                clusters.append(candidates[mask].mean(axis=0))
+
+            all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
+            unique_sites = all_sites_prim.copy()  # one per cluster
+
+            if use_primitive:
+                n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
+                tiles = []
+                for f in all_sites_prim:
+                    for i in range(n1):
+                        for j in range(n2):
+                            for k in range(n3):
+                                tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
+                all_sites = np.array(tiles, dtype=float)
+            else:
+                all_sites = all_sites_prim
 
     return unique_sites, all_sites
 
 
-def get_delaunay_interstitial_sites(
+@as_function_node
+def GetDelaunayInterstitialSites(
     atoms: Atoms,
     primitive_atoms: Optional[Atoms] = None,
     repeat: Optional[tuple] = None,
@@ -2547,51 +2568,52 @@ def get_delaunay_interstitial_sites(
     candidates = centers[inside]
 
     if len(candidates) == 0:
-        empty = np.empty((0, 3), dtype=float)
-        return empty, empty
-
-    # --- filter: too close to any host atom (minimum image convention) ---
-    diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
-    diff_frac = diff @ cell_inv
-    diff_frac -= np.round(diff_frac)
-    diff_cart = diff_frac @ cell
-    min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
-    candidates = candidates[min_dist >= r_min]
-
-    if len(candidates) == 0:
-        empty = np.empty((0, 3), dtype=float)
-        return empty, empty
-
-    # --- cluster: merge candidates within cluster_tol ---
-    used = np.zeros(len(candidates), dtype=bool)
-    clusters = []
-    for i in range(len(candidates)):
-        if used[i]:
-            continue
-        d = np.linalg.norm(candidates - candidates[i], axis=1)
-        mask = d < cluster_tol
-        used[mask] = True
-        clusters.append(candidates[mask].mean(axis=0))
-
-    all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
-    unique_sites = all_sites_prim.copy()  # one per cluster
-
-    if use_primitive:
-        n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
-        tiles = []
-        for f in all_sites_prim:
-            for i in range(n1):
-                for j in range(n2):
-                    for k in range(n3):
-                        tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
-        all_sites = np.array(tiles, dtype=float)
+        unique_sites = np.empty((0, 3), dtype=float)
+        all_sites = np.empty((0, 3), dtype=float)
     else:
-        all_sites = all_sites_prim
+        # --- filter: too close to any host atom (minimum image convention) ---
+        diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
+        diff_frac = diff @ cell_inv
+        diff_frac -= np.round(diff_frac)
+        diff_cart = diff_frac @ cell
+        min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
+        candidates = candidates[min_dist >= r_min]
+
+        if len(candidates) == 0:
+            unique_sites = np.empty((0, 3), dtype=float)
+            all_sites = np.empty((0, 3), dtype=float)
+        else:
+            # --- cluster: merge candidates within cluster_tol ---
+            used = np.zeros(len(candidates), dtype=bool)
+            clusters = []
+            for i in range(len(candidates)):
+                if used[i]:
+                    continue
+                d = np.linalg.norm(candidates - candidates[i], axis=1)
+                mask = d < cluster_tol
+                used[mask] = True
+                clusters.append(candidates[mask].mean(axis=0))
+
+            all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
+            unique_sites = all_sites_prim.copy()  # one per cluster
+
+            if use_primitive:
+                n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
+                tiles = []
+                for f in all_sites_prim:
+                    for i in range(n1):
+                        for j in range(n2):
+                            for k in range(n3):
+                                tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
+                all_sites = np.array(tiles, dtype=float)
+            else:
+                all_sites = all_sites_prim
 
     return unique_sites, all_sites
 
 
-def create_vacancy_from_seed(
+@as_function_node
+def CreateVacancyFromSeed(
     structure_container: StructureContainer,
     n: int = 1,
     seed: Optional[int] = None,
@@ -2736,7 +2758,8 @@ def create_vacancy_from_seed(
     return out_container
 
 
-def create_vacancy_batch_from_ids(
+@as_function_node
+def CreateVacancyBatchFromIds(
     structure_container: StructureContainer,
     target_indices: List[int],
     atom_ids: Optional[List[int]] = None,
@@ -2779,7 +2802,7 @@ def create_vacancy_batch_from_ids(
         # Create separate structures for each atom_id
         for parent_idx in rows_to_modify:
             for atom_id in atom_ids:
-                container = create_vacancy_from_ids(
+                container = CreateVacancyFromIds._original_func(
                     structure_container=container,
                     atom_ids=[atom_id],
                     parent_defect_index=(
@@ -2798,7 +2821,7 @@ def create_vacancy_batch_from_ids(
     else:
         # Apply all atom_ids to each target structure
         for parent_idx in rows_to_modify:
-            container = create_vacancy_from_ids(
+            container = CreateVacancyFromIds._original_func(
                 structure_container=container,
                 atom_ids=atom_ids,
                 parent_defect_index=(
@@ -2819,7 +2842,8 @@ def create_vacancy_batch_from_ids(
     return out_container
 
 
-def create_vacancy_batch_from_seed(
+@as_function_node
+def CreateVacancyBatchFromSeed(
     structure_container: StructureContainer,
     target_indices: List[int],
     n: int = 1,
@@ -2893,7 +2917,7 @@ def create_vacancy_batch_from_seed(
     for parent_idx in rows_to_modify:
         for copy_idx in range(n_structures):
             structure_seed = seed + structure_counter if seed is not None else None
-            container = create_vacancy_from_seed(
+            container = CreateVacancyFromSeed._original_func(
                 structure_container=container,
                 n=n,
                 seed=structure_seed,
@@ -2922,7 +2946,8 @@ def create_vacancy_batch_from_seed(
 # ============================================================================
 
 
-def create_substitution_from_ids(
+@as_function_node
+def CreateSubstitutionFromIds(
     structure_container: StructureContainer,
     atom_ids: List[int],
     to_element: str,
@@ -3038,7 +3063,8 @@ def create_substitution_from_ids(
     return out_container
 
 
-def create_substitution_from_seed(
+@as_function_node
+def CreateSubstitutionFromSeed(
     structure_container: StructureContainer,
     n: int = 1,
     seed: Optional[int] = None,
@@ -3163,7 +3189,8 @@ def create_substitution_from_seed(
     return out_container
 
 
-def create_substitution_batch_from_ids(
+@as_function_node
+def CreateSubstitutionBatchFromIds(
     structure_container: StructureContainer,
     target_indices: List[int],
     atom_ids: Optional[List[int]] = None,
@@ -3209,7 +3236,7 @@ def create_substitution_batch_from_ids(
         # Create separate structures for each atom_id
         for parent_idx in rows_to_modify:
             for atom_id in atom_ids:
-                container = create_substitution_from_ids(
+                container = CreateSubstitutionFromIds._original_func(
                     structure_container=container,
                     atom_ids=[atom_id],
                     to_element=to_element,
@@ -3229,7 +3256,7 @@ def create_substitution_batch_from_ids(
     else:
         # Apply all atom_ids to each target structure
         for parent_idx in rows_to_modify:
-            container = create_substitution_from_ids(
+            container = CreateSubstitutionFromIds._original_func(
                 structure_container=container,
                 atom_ids=atom_ids,
                 to_element=to_element,
@@ -3251,7 +3278,8 @@ def create_substitution_batch_from_ids(
     return out_container
 
 
-def create_substitution_batch_from_seed(
+@as_function_node
+def CreateSubstitutionBatchFromSeed(
     structure_container: StructureContainer,
     target_indices: List[int],
     n: int = 1,
@@ -3317,7 +3345,7 @@ def create_substitution_batch_from_seed(
     for parent_idx in rows_to_modify:
         for copy_idx in range(n_structures):
             structure_seed = seed + structure_counter if seed is not None else None
-            container = create_substitution_from_seed(
+            container = CreateSubstitutionFromSeed._original_func(
                 structure_container=container,
                 n=n,
                 seed=structure_seed,
@@ -3347,7 +3375,8 @@ def create_substitution_batch_from_seed(
 # ============================================================================
 
 
-def create_interstitial_from_ids(
+@as_function_node
+def CreateInterstitialFromIds(
     structure_container: StructureContainer,
     sublattice: "np.ndarray",
     site_ids: List[int],
@@ -3448,7 +3477,8 @@ def create_interstitial_from_ids(
     return container
 
 
-def create_interstitial_from_seed(
+@as_function_node
+def CreateInterstitialFromSeed(
     structure_container: StructureContainer,
     sublattice: "np.ndarray",
     element: str,
@@ -3557,7 +3587,8 @@ def create_interstitial_from_seed(
     return container
 
 
-def create_interstitial_batch_from_ids(
+@as_function_node
+def CreateInterstitialBatchFromIds(
     structure_container: StructureContainer,
     target_indices: List[int],
     sublattice: "np.ndarray",
@@ -3612,7 +3643,7 @@ def create_interstitial_batch_from_ids(
                 else None
             )
             for sid in effective_ids:
-                container = create_interstitial_from_ids(
+                container = CreateInterstitialFromIds._original_func(
                     structure_container=container,
                     sublattice=sublattice_arr,
                     site_ids=[sid],
@@ -3632,7 +3663,7 @@ def create_interstitial_batch_from_ids(
                 if container._structures[parent_idx]["is_pristine"]
                 else None
             )
-            container = create_interstitial_from_ids(
+            container = CreateInterstitialFromIds._original_func(
                 structure_container=container,
                 sublattice=sublattice_arr,
                 site_ids=effective_ids,
@@ -3644,7 +3675,8 @@ def create_interstitial_batch_from_ids(
     return container
 
 
-def create_interstitial_batch_from_seed(
+@as_function_node
+def CreateInterstitialBatchFromSeed(
     structure_container: StructureContainer,
     target_indices: List[int],
     sublattice: "np.ndarray",
@@ -3698,7 +3730,7 @@ def create_interstitial_batch_from_seed(
         )
         for _ in range(n_structures):
             structure_seed = seed + structure_counter if seed is not None else None
-            container = create_interstitial_from_seed(
+            container = CreateInterstitialFromSeed._original_func(
                 structure_container=container,
                 sublattice=sublattice_arr,
                 element=element,
@@ -3710,3 +3742,4 @@ def create_interstitial_batch_from_seed(
             structure_counter += 1
 
     return container
+
