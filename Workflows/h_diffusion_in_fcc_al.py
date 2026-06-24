@@ -8,7 +8,6 @@ from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 from core import Workflow
 
-
 wf = Workflow("h_diffusion_in_fcc_al")
 
 wf.al_unit = Bulk(name="Al", crystalstructure="fcc", a=4.05, cubic=True)
