@@ -151,31 +151,42 @@ class InputCalcStatic:
 
 
 @as_inp_dataclass_node
-class InputCalcDFT:
-    energy_cutoff: float = 400.0  # energy cutoff in eV
-    electronic_convergence: float = 1e-6  # electronic convergence criterion
-    ionic_convergence: float = -0.01  # ionic convergence (negative = forces in eV/Å)
-    max_ionic_steps: int = 0  # ionic steps (0 = static, >0 = relaxation)
-    ionic_relaxation: bool = False
-    ionic_update_algorithm: Optional[
-        Literal[
-            "MolecularDynamics",
-            "RMM-DIIS",
-            "ConjugateGradient",
-            "DampedMolecularDynamics",
-        ]
-    ] = None
-    # ibrion: int = -1            # ion update algorithm (-1 = none, 2 = CG, 1 = RMM-DIIS)
-    isif: int = 2  # stress/relaxation mask (2 = ions only, 3 = ions+cell)
-    ismear: int = (
-        1  # smearing method (1 = Methfessel-Paxton, 0 = Gaussian, -5 = tetrahedron)
-    )
-    sigma: float = 0.2  # smearing width in eV
-    ispin: int = 1  # spin polarization (1 = off, 2 = on)
-    algo: str = "Fast"  # electronic minimization algorithm
-    prec: str = "Normal"  # precision mode
-    ncore: int = 1  # number of cores per band
-    kpoints_mesh: str = (
-        "1 1 1"  # Optional[list] = None  # Gamma-centred mesh e.g. [4, 4, 4]; None → 1x1x1
-    )
-    functional: str = "PBE"  # exchange-correlation functional ("PBE" or "LDA")
+class InputSCF:
+    """
+    Basic inputs for a static (SCF) DFT calculation.
+    """
+
+    kpoints: str  
+    kpoint_offset: str = "0.5 0.5 0.5"
+    functional: str = "PBE"  
+    energy_cutoff: float = 400.0  
+    smearing_type: Literal[
+        "gaussian", "methfessel-paxton", "fermi-dirac"
+    ] = "gaussian" 
+    smearing_width: float = 0.2  
+    smearing_order: int = 1
+    electronic_convergence: float = 1e-6  
+    num_electronic_steps: int = 100 
+
+@as_inp_dataclass_node
+class InputMinimizationVASP:
+    """Ionic relaxation settings for VASP — minimization algorithms only (no MD).
+
+    ``algorithm`` maps to IBRION: ConjugateGradient → 2, RMM-DIIS → 1,
+    DampedMolecularDynamics → 3 (a damped relaxation scheme, not true MD).
+    """
+
+    algorithm: Literal[
+        "ConjugateGradient", "RMM-DIIS", "DampedMolecularDynamics"
+    ] = "ConjugateGradient"  # IBRION 2 / 1 / 3
+    max_ionic_steps: int = 100  # NSW, number of ionic steps
+    ionic_convergence: float = -0.01  # EDIFFG; negative = max force (eV/Å)
+    isif: int = 2  # ISIF: 2 = ions only, 3 = ions + cell shape + volume
+
+
+@as_inp_dataclass_node
+class InputDipoleCorrection:
+    """Dipole correction settings for VASP (e.g. asymmetric slabs)."""
+
+    direction: int = 3  # IDIPOL: 1 / 2 / 3 = a / b / c lattice direction
+    ldipol: bool = True  # LDIPOL: switch on the potential/dipole correction
