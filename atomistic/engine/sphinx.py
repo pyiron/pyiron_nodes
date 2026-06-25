@@ -40,10 +40,12 @@ def CreateSphinxInput(
     working_directory: str = ".",
 ):
     io_bundle = SphinxIOBundle(structure=structure, working_directory=working_directory)
-  
+
     ureg = UnitRegistry()
 
-    eCut = ureg.Quantity(scf_input.energy_cutoff, "eV").to("Ry").magnitude  # convert eV to Ry
+    eCut = (
+        ureg.Quantity(scf_input.energy_cutoff, "eV").to("Ry").magnitude
+    )  # convert eV to Ry
     xc = scf_input.functional
     smearing_width = scf_input.smearing_width
     smearing_type = scf_input.smearing_type
@@ -68,7 +70,9 @@ def CreateSphinxInput(
     pawPot_group = get_paw_from_structure(structure)
 
     basis_group = sphinx.basis(
-        eCut=eCut, kPoint=sphinx.basis.kPoint(coords=k_point_coords), folding=k_point_folding
+        eCut=eCut,
+        kPoint=sphinx.basis.kPoint(coords=k_point_coords),
+        folding=k_point_folding,
     )
 
     smearing_arg = {}
@@ -79,12 +83,14 @@ def CreateSphinxInput(
     elif smearing_type == "methfessel-paxton":
         smearing_arg = {"MethfesselPaxton": scf_input.smearing_order}
 
-    known_functionals = {"LDA" : 0, "PBE" : 1, "LDA_PW" :10}
+    known_functionals = {"LDA": 0, "PBE": 1, "LDA_PW": 10}
     if xc in known_functionals:
         xc = known_functionals[xc]
     else:
         xc = int(xc)  # assume user provided a valid integer functional code
-    paw_group = sphinx.PAWHamiltonian(xc=xc, spinPolarized=spinPolarized, ekt=smearing_width, **smearing_arg)
+    paw_group = sphinx.PAWHamiltonian(
+        xc=xc, spinPolarized=spinPolarized, ekt=smearing_width, **smearing_arg
+    )
 
     initial_guess_group = sphinx.initialGuess(
         waves=sphinx.initialGuess.waves(lcao=sphinx.initialGuess.waves.lcao()),
