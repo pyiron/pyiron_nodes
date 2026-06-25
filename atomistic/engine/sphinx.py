@@ -14,8 +14,13 @@ from ase import Atoms
 from core import as_function_node, as_out_dataclass_node
 from dataclasses import dataclass
 from sphinx_parser.toolkit import to_sphinx
-from sphinx_parser.jobs import set_base_parameters
+from sphinx_parser.ase import get_structure_group
+from sphinx_parser.input import sphinx
+from sphinx_parser.potential import get_paw_from_structure
+from pyiron_nodes.atomistic.calculator.data import InputSCF
 from sphinx_parser.output import collect_energy_dat
+from pint import UnitRegistry
+
 
 from core.data_fields import DataArray, EmptyArrayField
 
@@ -31,42 +36,61 @@ class SphinxIOBundle:
 @as_function_node
 def CreateSphinxInput(
     structure: Atoms,
-    k_point_folding: str,
-    eCut: float = 350.,
-    xc: str = "PBE",
-    smearing_width: float = 0.2,
-    smearing_type: Literal["gaussian", "fermi-dirac", "fermi-dirac-1", "methfessel-paxton"] = "gaussian",
-    k_point_coords: str = "0.5 0.5 0.5",
+    scf_input: Optional[InputSCF],
     working_directory: str = ".",
 ):
     io_bundle = SphinxIOBundle(structure=structure, working_directory=working_directory)
+  
+    ureg = UnitRegistry()
 
+    eCut = ureg.Quantity(scf_input.energy_cutoff, "eV").to("Ry").magnitude  # convert eV to Ry
+    xc = scf_input.functional
+    smearing_width = scf_input.smearing_width
+    smearing_type = scf_input.smearing_type
+    k_point_coords = scf_input.kpoint_offset
+    k_point_folding = scf_input.kpoints
+    num_electronic_steps = scf_input.num_electronic_steps
+
+    # normalize k-point coords to list of floats
     k_point_coords = [float(x) for x in k_point_coords.split()]
-    k_point_folding
+    k_point_folding = [int(x) for x in k_point_folding.split()]
+
+    struct_group, spin_lst = get_structure_group(structure)
+    spinPolarized = spin_lst is not None
+    # Build sphinx input using existing helpers where possible
+    # map number of electronic steps to the sphinx scfDiag value
     main_group = sphinx.main(
         scfDiag=sphinx.main.scfDiag(
-            maxSteps=maxSteps, blockCCG=sphinx.main.scfDiag.blockCCG()
+            maxSteps=num_electronic_steps, blockCCG=sphinx.main.scfDiag.blockCCG()
         )
     )
+
     pawPot_group = get_paw_from_structure(structure)
+
     basis_group = sphinx.basis(
         eCut=eCut, kPoint=sphinx.basis.kPoint(coords=k_point_coords), folding=k_point_folding
     )
-    smearing_arg={}
-    if smearing_type == "gaussian":
-        smearing_arg = { "MethfesselPaxton" : 0}
-    elif smearing_type == "fermi-dirac":
-        smearing_arg = { "FermiDirac" : 0}
-    elif smearing_type  == "fermi-dirac-1":
-        smearing_arg = { "FermiDirac" : 1}
-    elif smearing_type == "methfessel-paxton":
-        smearing_arg = { "MethfesselPaxton" : 1}
 
-    paw_group = sphinx.PAWHamiltonian(xc=xc, spinPolarized=spinPolarized, ekt=smearing_width,**smearing_arg)
+    smearing_arg = {}
+    if smearing_type == "gaussian":
+        smearing_arg = {"MethfesselPaxton": 0}
+    elif smearing_type == "fermi-dirac":
+        smearing_arg = {"FermiDirac": scf_input.smearing_order}
+    elif smearing_type == "methfessel-paxton":
+        smearing_arg = {"MethfesselPaxton": scf_input.smearing_order}
+
+    known_functionals = {"LDA" : 0, "PBE" : 1, "LDA_PW" :10}
+    if xc in known_functionals:
+        xc = known_functionals[xc]
+    else:
+        xc = int(xc)  # assume user provided a valid integer functional code
+    paw_group = sphinx.PAWHamiltonian(xc=xc, spinPolarized=spinPolarized, ekt=smearing_width, **smearing_arg)
+
     initial_guess_group = sphinx.initialGuess(
         waves=sphinx.initialGuess.waves(lcao=sphinx.initialGuess.waves.lcao()),
         rho=sphinx.initialGuess.rho(atomicOrbitals=True, atomicSpin=spin_lst),
     )
+
     input_sx = sphinx(
         pawPot=pawPot_group,
         structure=struct_group,
@@ -75,7 +99,7 @@ def CreateSphinxInput(
         PAWHamiltonian=paw_group,
         initialGuess=initial_guess_group,
     )
-    
+
     io_bundle.sphinx_input = input_sx
 
     return io_bundle
