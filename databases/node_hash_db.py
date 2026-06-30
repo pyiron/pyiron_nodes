@@ -466,5 +466,3 @@ def ShowVariedInputs(db, qualname: str = ""):
 
     result = inputs_df[varied_cols].reset_index(drop=True)
     return result
-
-    return graph

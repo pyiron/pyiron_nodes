@@ -11,15 +11,17 @@ from core import group_node
 
 wf = Workflow("EV_curve")
 
-wf.GRACE = GRACE(model='GRACE-1L-MP-r6')
+wf.GRACE = GRACE(model="GRACE-1L-MP-r6")
 
 wf.Linspace_1 = Linspace(x_min=3, x_max=5, num_points=5)
 
-wf.bulk = Bulk(name='Al', crystalstructure='fcc', cubic=True)
+wf.bulk = Bulk(name="Al", crystalstructure="fcc", cubic=True)
 
 wf.IterToDataFrame = IterToDataFrame(node=wf.bulk, input_label='a', values=wf.Linspace_1, debug=False, executor=None, store=False)
 
-wf.GetColumnFromDataFrame = GetColumnFromDataFrame(df=wf.IterToDataFrame, column_name='structure')
+wf.GetColumnFromDataFrame = GetColumnFromDataFrame(
+    df=wf.IterToDataFrame, column_name="structure"
+)
 
 wf.CreateSEFSContainer = CreateSEFSContainer(structures=wf.GetColumnFromDataFrame)
 
