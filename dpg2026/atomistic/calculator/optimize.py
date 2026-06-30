@@ -146,7 +146,7 @@ def MapCalculatorOnStructures(
 def Relax(
     structure: Atoms,
     engine,
-    opt_parameters: Optional[GenericOptimizerSettings] = GenericOptimizerSettings(),
+    opt_parameters: Optional[GenericOptimizerSettings] = None,
     opt_mode: Literal["volume", "full"] = "volume",
     store: bool = False,
 ) -> Atoms:
@@ -173,6 +173,8 @@ def Relax(
     """
     from ase.optimize import LBFGS
 
+    if opt_parameters is None:
+        opt_parameters = GenericOptimizerSettings()
     print("opt_parameters: ", opt_parameters)
     # print("mode: ", opt_mode, engine, structure)
     mode = RelaxMode(opt_mode.lower())
