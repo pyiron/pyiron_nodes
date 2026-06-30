@@ -17,7 +17,14 @@ wf.Linspace_1 = Linspace(x_min=3, x_max=5, num_points=5)
 
 wf.bulk = Bulk(name="Al", crystalstructure="fcc", cubic=True)
 
-wf.IterToDataFrame = IterToDataFrame(node=wf.bulk, input_label='a', values=wf.Linspace_1, debug=False, executor=None, store=False)
+wf.IterToDataFrame = IterToDataFrame(
+    node=wf.bulk,
+    input_label="a",
+    values=wf.Linspace_1,
+    debug=False,
+    executor=None,
+    store=False,
+)
 
 wf.GetColumnFromDataFrame = GetColumnFromDataFrame(
     df=wf.IterToDataFrame, column_name="structure"
@@ -25,7 +32,9 @@ wf.GetColumnFromDataFrame = GetColumnFromDataFrame(
 
 wf.CreateSEFSContainer = CreateSEFSContainer(structures=wf.GetColumnFromDataFrame)
 
-wf.ApplyEngine = ApplyEngine(sefs_container=wf.CreateSEFSContainer, engine=wf.GRACE, store=False)
+wf.ApplyEngine = ApplyEngine(
+    sefs_container=wf.CreateSEFSContainer, engine=wf.GRACE, store=False
+)
 
 wf.OutputSEFS = OutputSEFS(input=wf.ApplyEngine)
 
