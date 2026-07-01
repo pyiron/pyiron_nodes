@@ -389,10 +389,12 @@ def CreateLammpsMinimizeInput(
 def RunLammpsCalculation(
     io_bundle: LammpsIOBundle,
     lmp_command: Optional[str] = None,
-    cores: int = 1,
+    threads_per_core: int = 1,
     debug: bool = False,
+    executor=None
 ):
     # Writing
+    print(f"Running LAMMPS on {threads_per_core} cores")
     os.makedirs(io_bundle.working_directory, exist_ok=True)
     with open(
         os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w"
@@ -420,19 +422,34 @@ def RunLammpsCalculation(
             lmp_command = (
                 os.getenv(
                     "ASE_LAMMPSRUN_COMMAND",
-                    f"mpiexec -n {cores} --oversubscribe lmp_mpi",
+                    f"mpiexec -n {threads_per_core} --oversubscribe lmp_mpi",
                 )
                 + f" -in {io_bundle.lammps_input_filename}"
             )
-        result = subprocess.run(
-            lmp_command,
-            cwd=io_bundle.working_directory,
-            shell=True,
-            universal_newlines=True,
-            env=os.environ.copy(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        if executor is None:
+            result = subprocess.run(
+                lmp_command,
+                cwd=io_bundle.working_directory,
+                shell=True,
+                universal_newlines=True,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        else:
+            # Use the provided executor to run the command
+            future = executor.submit(
+                subprocess.run,
+                lmp_command,
+                cwd=io_bundle.working_directory,
+                shell=True,
+                universal_newlines=True,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            result = future.result()
+
         if result.returncode != 0:
             error_path = os.path.join(io_bundle.working_directory, "error.msg")
             with open(error_path, "w") as f:
@@ -447,8 +464,6 @@ def RunLammpsCalculation(
         output = io_bundle.working_directory
 
     return io_bundle, output
-
-
 @as_function_node
 def ParseLammpsMDOutput(
     io_bundle: LammpsIOBundle,
