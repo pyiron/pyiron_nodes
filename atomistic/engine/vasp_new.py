@@ -190,9 +190,9 @@ def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
     return Incar(tags)
 
 
-def _generate_hash(input_resources: VaspInputResources) -> str:
-    atoms = input_resources.structure
-    calc = input_resources.calc
+def _generate_hash(io_bundle: VaspInputResources) -> str:
+    atoms = io_bundle.structure
+    calc = io_bundle.calc
 
     flat_positions = [
         round(x, 6) for row in atoms.get_positions().tolist() for x in row
@@ -215,14 +215,14 @@ def _generate_hash(input_resources: VaspInputResources) -> str:
         str(calc.minimization),
         str(calc.md),
         str(calc.dipole_correction),
-        input_resources.potcar_lib_path,
+        io_bundle.potcar_lib_path,
     ]
 
-    if input_resources.potcar_symbols:
-        parts.append(str(input_resources.potcar_symbols))
+    if io_bundle.potcar_symbols:
+        parts.append(str(io_bundle.potcar_symbols))
 
-    if input_resources.extra_incar:
-        for k, v in sorted(input_resources.extra_incar.items()):
+    if io_bundle.extra_incar:
+        for k, v in sorted(io_bundle.extra_incar.items()):
             parts.append(f"{k}={v}")
 
     hash_string = "|".join(parts)
@@ -251,7 +251,7 @@ def MergeVaspInput(
         minimization=minimization,
         md=md,
         dipole_correction=dipole_correction,
-        extra_incar=specific_inputs.to_dict(),
+        extra_incar=specific_inputs.to_dict() if specific_inputs is not None else None,
     )
     return calc
 
@@ -264,7 +264,7 @@ def CreateVaspInputResources(
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
 ) -> VaspInputResources:
-    input_resources = VaspInputResources(
+    io_bundle = VaspInputResources(
         structure=structure,
         calc=calc,
         working_directory=working_directory,
@@ -274,35 +274,35 @@ def CreateVaspInputResources(
     )
 
     print("writing_input")
-    print("working dir: ", input_resources.working_directory)
+    print("working dir: ", io_bundle.working_directory)
 
-    if input_resources.working_directory is not None:
-        workdir = input_resources.working_directory
+    if io_bundle.working_directory is not None:
+        workdir = io_bundle.working_directory
     else:
-        workdir = _generate_hash(input_resources)
+        workdir = _generate_hash(io_bundle)
         print("giving the hash name:", workdir)
-    input_resources.working_directory = workdir
+    io_bundle.working_directory = workdir
     os.makedirs(workdir, exist_ok=True)
 
     # POSCAR
-    pmg_structure = AseAtomsAdaptor.get_structure(input_resources.structure)
+    pmg_structure = AseAtomsAdaptor.get_structure(io_bundle.structure)
     pmg_structure.to(fmt="poscar", filename=os.path.join(workdir, "POSCAR"))
 
     # INCAR
-    incar = _build_incar(input_resources.calc, input_resources.extra_incar)
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar)
     incar.write_file(os.path.join(workdir, "INCAR"))
 
     # POTCAR — look up paths from CSV, concatenate files into workdir/POTCAR
     potcar_paths = (
         [
-            os.path.join(input_resources.potcar_lib_path, s, "POTCAR")
-            for s in input_resources.potcar_symbols
+            os.path.join(io_bundle.potcar_lib_path, s, "POTCAR")
+            for s in io_bundle.potcar_symbols
         ]
-        if input_resources.potcar_symbols is not None
+        if io_bundle.potcar_symbols is not None
         else _get_potcar_paths(
-            input_resources.structure,
-            input_resources.calc.scf.functional,
-            input_resources.potcar_lib_path,
+            io_bundle.structure,
+            io_bundle.calc.scf.functional,
+            io_bundle.potcar_lib_path,
         )
     )
     with open(os.path.join(workdir, "POTCAR"), "wb") as wfd:
@@ -312,34 +312,34 @@ def CreateVaspInputResources(
 
     # KPOINTS — Gamma-centred mesh parsed from the "kx ky kz" string on InputSCF
     kpoints_path = os.path.join(workdir, "KPOINTS")
-    mesh = [int(k) for k in input_resources.calc.scf.kpoints.split()]
+    mesh = [int(k) for k in io_bundle.calc.scf.kpoints.split()]
     if len(mesh) != 3:
         raise ValueError(
             f'scf.kpoints must be three integers like "4 4 4", got: '
-            f"{input_resources.calc.scf.kpoints!r}"
+            f"{io_bundle.calc.scf.kpoints!r}"
         )
     Kpoints.gamma_automatic(mesh).write_file(kpoints_path)
 
-    return input_resources
+    return io_bundle
 
 
 @as_function_node
 def RunVaspCalculation(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
     vasp_command: str = _default_vasp_command,
-    cores: int = 1,
+    threads_per_core: int = 1,
     debug: bool = False,
 ):
     if not vasp_command:
-        vasp_command = f"module load vasp && mpiexec -n {cores} vasp_std"
+        vasp_command = f"module load vasp && mpiexec -n {threads_per_core} vasp_std"
 
     if debug:
-        stdout = input_resources.working_directory
-        return input_resources, stdout
+        stdout = io_bundle.working_directory
+        return io_bundle, stdout
 
     result = subprocess.run(
         vasp_command,
-        cwd=input_resources.working_directory,
+        cwd=io_bundle.working_directory,
         shell=True,
         universal_newlines=True,
         env=os.environ.copy(),
@@ -348,7 +348,7 @@ def RunVaspCalculation(
     )
 
     if result.returncode != 0:
-        error_path = os.path.join(input_resources.working_directory, "error.msg")
+        error_path = os.path.join(io_bundle.working_directory, "error.msg")
         with open(error_path, "w") as f:
             f.write(result.stdout)
             if result.stderr:
@@ -358,17 +358,17 @@ def RunVaspCalculation(
         )
 
     stdout = result.stdout
-    return input_resources, stdout
+    return io_bundle, stdout
 
 
 @as_function_node
 def ParseVaspOutput(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
     vasprun_filename: str = "vasprun.xml",
 ):
     from pymatgen.io.vasp.outputs import Vasprun
 
-    vasprun_path = os.path.join(input_resources.working_directory, vasprun_filename)
+    vasprun_path = os.path.join(io_bundle.working_directory, vasprun_filename)
     vr = Vasprun(filename=vasprun_path, parse_dos=False, parse_projected_eigen=False)
 
     trajectory = [AseAtomsAdaptor.get_atoms(s) for s in vr.structures]
