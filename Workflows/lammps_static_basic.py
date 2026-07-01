@@ -23,7 +23,9 @@ wf.ListPotentials = ListPotentials(structure=wf.Repeat)
 wf.pick_element = pick_element(lst=wf.ListPotentials, index=0)
 
 wf.CreateLammpsStructure = CreateLammpsStructure(
-    structure=wf.Repeat, potential=wf.pick_element, working_directory="./lammps_static_basic"
+    structure=wf.Repeat,
+    potential=wf.pick_element,
+    working_directory="./lammps_static_basic",
 )
 
 wf.CreateLammpsStaticInput = CreateLammpsStaticInput(io_bundle=wf.CreateLammpsStructure)
