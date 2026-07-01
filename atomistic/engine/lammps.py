@@ -391,7 +391,7 @@ def RunLammpsCalculation(
     lmp_command: Optional[str] = None,
     threads_per_core: int = 1,
     debug: bool = False,
-    executor=None
+    executor=None,
 ):
     # Writing
     print(f"Running LAMMPS on {threads_per_core} cores")
@@ -464,6 +464,8 @@ def RunLammpsCalculation(
         output = io_bundle.working_directory
 
     return io_bundle, output
+
+
 @as_function_node
 def ParseLammpsMDOutput(
     io_bundle: LammpsIOBundle,
