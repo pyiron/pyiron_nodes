@@ -30,6 +30,7 @@ from dataclasses import dataclass
 class LammpsIOBundle:
     structure: Atoms
     potential: str | pd.DataFrame
+    mode: Optional[str] = None
     working_directory: str = "."
     lammps_input_string: str = ""
     lammps_input_filename: str = "lmp.in"
@@ -259,6 +260,7 @@ def CreateLammpsMDInput(
         lmp_str_lst.append(f"write_restart {os.path.basename(write_restart_filename)}")
 
     io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "md"
 
     return io_bundle
 
@@ -314,6 +316,7 @@ def CreateLammpsStaticInput(
     lmp_str_lst += calc_static()
 
     io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "static"
 
     return io_bundle
 
@@ -381,6 +384,7 @@ def CreateLammpsMinimizeInput(
     io_bundle.structure = updated_structure
 
     io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "minimize"
 
     return io_bundle
 
@@ -466,13 +470,12 @@ def RunLammpsCalculation(
     return io_bundle, output
 
 
-@as_function_node
-def ParseLammpsMDOutput(
+def _parse_lammps_raw(
     io_bundle: LammpsIOBundle,
-    dump_h5_file_name: str = "dump.h5",
-    dump_out_file_name: str = "dump.out",
-    log_lammps_file_name: str = "log.lammps",
-):
+    dump_h5_file_name: str,
+    dump_out_file_name: str,
+    log_lammps_file_name: str,
+) -> dict:
     from lammpsparser.compatibility.file import _get_potential
 
     _, _, species = _get_potential(
@@ -488,116 +491,83 @@ def ParseLammpsMDOutput(
         dump_out_file_name=dump_out_file_name,
         log_lammps_file_name=log_lammps_file_name,
     )
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
-
-    out = OutputCalcMD.pure_dataclass()
-
-    out.cells = output["generic"].get("cells")
-    out.energies_tot = output["generic"].get("energy_tot")
-    out.energies_pot = output["generic"].get("energy_pot")
-    out.forces = output["generic"].get("forces")
-    out.indices = output["generic"].get("indices")
-    out.natoms = output["generic"].get("natoms")
-    out.positions = output["generic"].get("positions")
-    out.pressures = output["generic"].get("pressures")
-    out.steps = output["generic"].get("steps")
-    out.temperatures = output["generic"].get("temperature")
-    out.unwrapped_positions = output["generic"].get("unwrapped_positions")
-    out.velocities = output["generic"].get("velocities")
-    out.volumes = output["generic"].get("volume")
-    out.species = io_bundle.structure.get_chemical_symbols()
-
-    return out
+    return output["generic"]
 
 
 @as_function_node
-def ParseLammpsStaticOutput(
+def ParseLammpsOutput(
     io_bundle: LammpsIOBundle,
     dump_h5_file_name: str = "dump.h5",
     dump_out_file_name: str = "dump.out",
     log_lammps_file_name: str = "log.lammps",
 ):
-    from lammpsparser.compatibility.file import _get_potential
+    if io_bundle.mode is None:
+        raise ValueError(
+            "io_bundle.mode is not set — pass the bundle through "
+            "CreateLammpsMDInput, CreateLammpsStaticInput, or "
+            "CreateLammpsMinimizeInput before parsing."
+        )
 
-    _, _, species = _get_potential(
-        potential=io_bundle.potential, resource_path=io_bundle.resource_path
+    generic = _parse_lammps_raw(
+        io_bundle, dump_h5_file_name, dump_out_file_name, log_lammps_file_name
     )
-    output = parse_lammps_output(
-        working_directory=io_bundle.working_directory,
-        structure=io_bundle.structure,
-        potential_elements=species,
-        units=io_bundle.units,
-        prism=None,
-        dump_h5_file_name=dump_h5_file_name,
-        dump_out_file_name=dump_out_file_name,
-        log_lammps_file_name=log_lammps_file_name,
-    )
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
 
-    generic = output["generic"]
-    out = OutputCalcStatic.pure_dataclass()
-    energies_pot = generic.get("energy_pot")
-    out.energy = energies_pot[-1] if energies_pot is not None else None
-    forces = generic.get("forces")
-    out.force = forces[-1] if forces is not None else None
-    stresses = generic.get("pressures")
-    out.stress = stresses[-1] if stresses is not None else None
-    out.structure = io_bundle.structure
+    if io_bundle.mode == "md":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 
-    return out
+        out = OutputCalcMD.pure_dataclass()
+        out.cells = generic.get("cells")
+        out.energies_tot = generic.get("energy_tot")
+        out.energies_pot = generic.get("energy_pot")
+        out.forces = generic.get("forces")
+        out.indices = generic.get("indices")
+        out.natoms = generic.get("natoms")
+        out.positions = generic.get("positions")
+        out.pressures = generic.get("pressures")
+        out.steps = generic.get("steps")
+        out.temperatures = generic.get("temperature")
+        out.unwrapped_positions = generic.get("unwrapped_positions")
+        out.velocities = generic.get("velocities")
+        out.volumes = generic.get("volume")
+        out.species = io_bundle.structure.get_chemical_symbols()
+    elif io_bundle.mode == "static":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
 
+        out = OutputCalcStatic.pure_dataclass()
+        energies_pot = generic.get("energy_pot")
+        out.energy = energies_pot[-1] if energies_pot is not None else None
+        forces = generic.get("forces")
+        out.force = forces[-1] if forces is not None else None
+        stresses = generic.get("pressures")
+        out.stress = stresses[-1] if stresses is not None else None
+        out.structure = io_bundle.structure
+    elif io_bundle.mode == "minimize":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize
 
-@as_function_node
-def ParseLammpsMinimizeOutput(
-    io_bundle: LammpsIOBundle,
-    dump_h5_file_name: str = "dump.h5",
-    dump_out_file_name: str = "dump.out",
-    log_lammps_file_name: str = "log.lammps",
-):
-    from lammpsparser.compatibility.file import _get_potential
+        energies_pot = generic.get("energy_pot")
+        forces = generic.get("forces")
+        stresses = generic.get("pressures")
+        positions = generic.get("positions")
+        cells = generic.get("cells")
 
-    _, _, species = _get_potential(
-        potential=io_bundle.potential, resource_path=io_bundle.resource_path
-    )
-    output = parse_lammps_output(
-        working_directory=io_bundle.working_directory,
-        structure=io_bundle.structure,
-        potential_elements=species,
-        units=io_bundle.units,
-        prism=None,
-        dump_h5_file_name=dump_h5_file_name,
-        dump_out_file_name=dump_out_file_name,
-        log_lammps_file_name=log_lammps_file_name,
-    )
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize
-
-    generic = output["generic"]
-    energies_pot = generic.get("energy_pot")
-    forces = generic.get("forces")
-    stresses = generic.get("pressures")
-    positions = generic.get("positions")
-    cells = generic.get("cells")
-
-    out = OutputCalcMinimize.pure_dataclass()
-
-    out.initial.energy = energies_pot[0] if energies_pot is not None else None
-    out.initial.force = forces[0] if forces is not None else None
-    out.initial.stress = stresses[0] if stresses is not None else None
-    out.initial.structure = io_bundle.structure
-
-    out.final.energy = energies_pot[-1] if energies_pot is not None else None
-    out.final.force = forces[-1] if forces is not None else None
-    out.final.stress = stresses[-1] if stresses is not None else None
-
-    if positions is not None and cells is not None:
-        relaxed = io_bundle.structure.copy()
-        relaxed.set_positions(positions[-1])
-        relaxed.set_cell(cells[-1], scale_atoms=False)
-        out.final.structure = relaxed
+        out = OutputCalcMinimize.pure_dataclass()
+        out.initial.energy = energies_pot[0] if energies_pot is not None else None
+        out.initial.force = forces[0] if forces is not None else None
+        out.initial.stress = stresses[0] if stresses is not None else None
+        out.initial.structure = io_bundle.structure
+        out.final.energy = energies_pot[-1] if energies_pot is not None else None
+        out.final.force = forces[-1] if forces is not None else None
+        out.final.stress = stresses[-1] if stresses is not None else None
+        if positions is not None and cells is not None:
+            relaxed = io_bundle.structure.copy()
+            relaxed.set_positions(positions[-1])
+            relaxed.set_cell(cells[-1], scale_atoms=False)
+            out.final.structure = relaxed
+        else:
+            out.final.structure = io_bundle.structure
+        out.iter_steps = len(energies_pot) if energies_pot is not None else 0
     else:
-        out.final.structure = io_bundle.structure
-
-    out.iter_steps = len(energies_pot) if energies_pot is not None else 0
+        raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
 
     return out
 

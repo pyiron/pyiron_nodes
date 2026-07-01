@@ -3,7 +3,7 @@ from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsMDInput,
     CreateLammpsStructure,
     ListPotentials,
-    ParseLammpsMDOutput,
+    ParseLammpsOutput,
     RunLammpsCalculation,
 )
 from pyiron_nodes.atomistic.structure.build import Bulk
@@ -13,23 +13,22 @@ from pyiron_nodes.plotting import Plot
 from core import Workflow
 from core import group_node
 
-wf = Workflow("lammps_MD")
+wf = Workflow("lammps_md_basic")
 
 wf.Bulk = Bulk(name="Al", cubic=True)
 
 wf.InputCalcMD = InputCalcMD(initial_temperature=600, langevin=True)
 
-wf.ListPotentials = ListPotentials(
-    structure=wf.Bulk,
-    resource_path="/cmmc/ptmp/janj/mambaforge/envs/aiflow/share/iprpy",
-)
+wf.ListPotentials = ListPotentials(structure=wf.Bulk)
 
 wf.Repeat = Repeat(structure=wf.Bulk, repeat_scalar="4")
 
 wf.pick_element = pick_element(lst=wf.ListPotentials, index=5)
 
 wf.CreateLammpsStructure = CreateLammpsStructure(
-    structure=wf.Repeat, potential=wf.pick_element, working_directory="./test_1"
+    structure=wf.Repeat,
+    potential=wf.pick_element,
+    working_directory="./lammps_md_basic",
 )
 
 wf.CreateLammpsMDInput = CreateLammpsMDInput(
@@ -40,14 +39,14 @@ wf.CreateLammpsMDInput = CreateLammpsMDInput(
 )
 
 wf.RunLammpsCalculation = RunLammpsCalculation(
-    io_bundle=wf.CreateLammpsMDInput, debug=False
+    io_bundle=wf.CreateLammpsMDInput, debug=False, executor=None
 )
 
-wf.ParseLammpsMDOutput = ParseLammpsMDOutput(
+wf.ParseLammpsOutput = ParseLammpsOutput(
     io_bundle=wf.RunLammpsCalculation.outputs.io_bundle
 )
 
-wf.OutputCalcMD = OutputCalcMD(input=wf.ParseLammpsMDOutput)
+wf.OutputCalcMD = OutputCalcMD(input=wf.ParseLammpsOutput)
 
 wf.Plot = Plot(y=wf.OutputCalcMD.outputs.temperatures)
 

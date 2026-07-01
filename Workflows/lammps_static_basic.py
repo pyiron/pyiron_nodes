@@ -3,7 +3,7 @@ from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsStaticInput,
     CreateLammpsStructure,
     ListPotentials,
-    ParseLammpsStaticOutput,
+    ParseLammpsOutput,
     RunLammpsCalculation,
 )
 from pyiron_nodes.atomistic.structure.build import Bulk
@@ -12,7 +12,7 @@ from pyiron_nodes.controls import pick_element
 from core import Workflow
 from core import group_node
 
-wf = Workflow("lammps_static")
+wf = Workflow("lammps_static_basic")
 
 wf.Bulk = Bulk(name="Al", cubic=True)
 
@@ -23,7 +23,7 @@ wf.ListPotentials = ListPotentials(structure=wf.Repeat)
 wf.pick_element = pick_element(lst=wf.ListPotentials, index=0)
 
 wf.CreateLammpsStructure = CreateLammpsStructure(
-    structure=wf.Repeat, potential=wf.pick_element, working_directory="./lammps_static"
+    structure=wf.Repeat, potential=wf.pick_element, working_directory="./lammps_static_basic"
 )
 
 wf.CreateLammpsStaticInput = CreateLammpsStaticInput(io_bundle=wf.CreateLammpsStructure)
@@ -32,8 +32,8 @@ wf.RunLammpsCalculation = RunLammpsCalculation(
     io_bundle=wf.CreateLammpsStaticInput, debug=False
 )
 
-wf.ParseLammpsStaticOutput = ParseLammpsStaticOutput(
+wf.ParseLammpsOutput = ParseLammpsOutput(
     io_bundle=wf.RunLammpsCalculation.outputs.io_bundle
 )
 
-wf.OutputCalcStatic = OutputCalcStatic(input=wf.ParseLammpsStaticOutput)
+wf.OutputCalcStatic = OutputCalcStatic(input=wf.ParseLammpsOutput)
