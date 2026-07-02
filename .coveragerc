@@ -1,0 +1,3 @@
+[run]
+source = pyiron_nodes
+command_line = -m unittest discover pyiron_nodes/tests
