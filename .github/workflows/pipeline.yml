@@ -90,7 +90,7 @@ jobs:
         env:
           TOKEN: ${{ secrets.PYIRON_AIFLOW_TOKEN_PC }}
         run: |
-          pip install --no-deps --no-build-isolation "git+https://${TOKEN}@github.com/prabhath-c/pyiron_aiflow.git#subdirectory=pyiron_core"
+          pip install --no-deps --no-build-isolation "git+https://${TOKEN}@github.com/JNmpi/pyiron_aiflow.git#subdirectory=pyiron_core"
       - name: Test
         shell: bash -l {0}
         run: |
