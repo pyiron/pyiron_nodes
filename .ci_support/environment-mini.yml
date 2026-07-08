@@ -44,3 +44,4 @@ dependencies:
 - chromadb =1.5.5
 - openai =2.29.0
 - pytest =7.4.2
+- coverage =7.14.3
