@@ -228,9 +228,7 @@ class TestCreateVaspInputResources(unittest.TestCase):
         io_bundle = self._create()
         self.assertEqual(io_bundle.working_directory, self.workdir)
         for name in ("POSCAR", "INCAR", "KPOINTS", "POTCAR"):
-            self.assertTrue(
-                os.path.exists(os.path.join(self.workdir, name)), msg=name
-            )
+            self.assertTrue(os.path.exists(os.path.join(self.workdir, name)), msg=name)
 
     def test_incar_roundtrips(self):
         self._create(scf=make_scf(energy_cutoff=350.0))
@@ -309,9 +307,7 @@ class TestRunVaspCalculation(unittest.TestCase):
     def test_nonzero_exit_raises_and_writes_error_msg(self):
         with self.assertRaises(RuntimeError):
             RunVaspCalculation._original_func(self.io, vasp_command="false")
-        self.assertTrue(
-            os.path.exists(os.path.join(self._tmp.name, "error.msg"))
-        )
+        self.assertTrue(os.path.exists(os.path.join(self._tmp.name, "error.msg")))
 
 
 # ── ParseVaspOutput (static fixture) ───────────────────────────────────────────
