@@ -194,10 +194,7 @@ def CCESetup(
 
     # nelect_neutral = sum of ZVAL over all atoms
     nelect_neutral = int(
-        sum(
-            zval_per_element[sym]
-            for sym in io_bundle.structure.get_chemical_symbols()
-        )
+        sum(zval_per_element[sym] for sym in io_bundle.structure.get_chemical_symbols())
     )
 
     # -------------------------------------------------------------------------
@@ -238,9 +235,7 @@ def CCESetup(
         [
             [
                 i
-                for i, sym in enumerate(
-                    io_bundle.structure.get_chemical_symbols()
-                )
+                for i, sym in enumerate(io_bundle.structure.get_chemical_symbols())
                 if sym in electrode_elements
             ]
         ]
@@ -386,10 +381,7 @@ def CDCESetup(
 
     # nelect_neutral = sum of ZVAL over all atoms
     nelect_neutral = int(
-        sum(
-            zval_per_element[sym]
-            for sym in io_bundle.structure.get_chemical_symbols()
-        )
+        sum(zval_per_element[sym] for sym in io_bundle.structure.get_chemical_symbols())
     )
 
     # -------------------------------------------------------------------------
@@ -413,9 +405,7 @@ def CDCESetup(
         [
             [
                 i
-                for i, sym in enumerate(
-                    io_bundle.structure.get_chemical_symbols()
-                )
+                for i, sym in enumerate(io_bundle.structure.get_chemical_symbols())
                 if sym in electrode_elements
             ]
         ]
@@ -424,8 +414,7 @@ def CDCESetup(
     Q_pos = np.array([ax * 0.5, ay * 0.5, az * pos_right_wall - 2.0])
 
     d_electrode = float(
-        Q_pos[2]
-        - float(np.max(io_bundle.structure[electrode_indices].positions[:, 2]))
+        Q_pos[2] - float(np.max(io_bundle.structure[electrode_indices].positions[:, 2]))
     )
 
     # Conwering to string to ensure the format in vasp_plugin.py is correct
@@ -528,9 +517,7 @@ def ParsePotential(
     # --- Check for NSW ---
     nsw = None
     if io_bundle.extra_incar is not None:
-        nsw = io_bundle.extra_incar.get("NSW") or io_bundle.extra_incar.get(
-            "nsw"
-        )
+        nsw = io_bundle.extra_incar.get("NSW") or io_bundle.extra_incar.get("nsw")
     if nsw is None and io_bundle.calc is not None:
         md = io_bundle.calc.md
         if md is not None:
