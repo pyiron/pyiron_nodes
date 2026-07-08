@@ -69,25 +69,35 @@ jobs:
   #     - name: Install mypy
   #       run: python -m pip install --upgrade pip && pip install mypy
   #     - name: Run mypy
-  #       run: mypy --config-file mypy.ini .
+  #       run: mypy --config-file .mypy.ini .
 
   minimal:
     needs: [black]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: pyiron_nodes
       - uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: "3.12"
           miniforge-version: latest
           channels: conda-forge
           conda-remove-defaults: "true"
-          environment-file: .ci_support/environment-mini.yml
-      # - name: Install
-      #   shell: bash -l {0}
-      #   run: |
-      #     pip install . --no-deps --no-build-isolation
+          environment-file: pyiron_nodes/.ci_support/environment-mini.yml
+      - name: Install pyiron core
+        shell: bash -l {0}
+        env:
+          TOKEN: ${{ secrets.PYIRON_AIFLOW_TOKEN }}
+        run: |
+          pip install --no-deps --no-build-isolation "git+https://${TOKEN}@github.com/JNmpi/pyiron_aiflow.git#subdirectory=pyiron_core"
       - name: Test
         shell: bash -l {0}
         run: |
-          python -m unittest discover tests
+          coverage run --rcfile=pyiron_nodes/.coveragerc
+          coverage report --rcfile=pyiron_nodes/.coveragerc
+          coverage xml --rcfile=pyiron_nodes/.coveragerc
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
