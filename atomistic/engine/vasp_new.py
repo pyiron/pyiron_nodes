@@ -328,16 +328,19 @@ def CreateVaspInputResources(
 
     return io_bundle
 
-
 @as_function_node
 def RunVaspCalculation(
     io_bundle: VaspInputResources,
     vasp_command: str = _default_vasp_command,
+    run_script_path: Optional[str] = None,
     threads_per_core: int = 1,
     debug: bool = False,
 ):
     if not vasp_command:
         vasp_command = f"module load vasp && mpiexec -n {threads_per_core} vasp_std"
+
+    if os.path.exists(run_script_path):
+        vasp_command = f"bash {run_script_path} {threads_per_core}"
 
     if debug:
         stdout = io_bundle.working_directory

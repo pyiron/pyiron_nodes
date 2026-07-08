@@ -133,12 +133,10 @@ def CCESetup(
     io_bundle: VaspInputResources,
     electrode: Atoms,
     phi0: float,
-    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CCE.py",
+    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CCE.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
-    temperature: float = 300.0,
-    n_steps: int = 500,
     potim: float = 0.5,
     langevin_gamma: float = 5.0,
     tau: float = 50.0,
@@ -164,6 +162,9 @@ def CCESetup(
     # Calculate nelect_neutral from individual POTCAR files
     # Uses existing _get_potcar_paths() helper — reads before concatenation
     # -------------------------------------------------------------------------
+    temperature = io_bundle.calc.md.temperature
+    n_steps = io_bundle.calc.md.n_ionic_steps
+
     potcar_paths = _get_potcar_paths(
         io_bundle.structure,
         io_bundle.calc.scf.functional,
@@ -324,14 +325,12 @@ def CDCESetup(
     io_bundle: VaspInputResources,
     electrode: Atoms,
     phi0: float,
-    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.py",
+    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
     pos_right_wall: float = 0.75,  # for now this is in fractional coordinates
     width_wall: float = 6.5,
-    temperature: float = 300.0,
-    n_steps: int = 500,
     potim: float = 0.5,
     langevin_gamma: float = 5.0,
     tau: float = 50.0,
@@ -352,6 +351,9 @@ def CDCESetup(
             "found on the calc. Set an InputCalcMD on the `md` port of "
             "MergeVaspInput before running CDCESetup."
         )
+    
+    temperature = io_bundle.calc.md.temperature
+    n_steps = io_bundle.calc.md.n_ionic_steps
 
     # -------------------------------------------------------------------------
     # Calculate nelect_neutral from individual POTCAR files
