@@ -351,7 +351,7 @@ def CDCESetup(
             "found on the calc. Set an InputCalcMD on the `md` port of "
             "MergeVaspInput before running CDCESetup."
         )
-    
+
     temperature = io_bundle.calc.md.temperature
     n_steps = io_bundle.calc.md.n_ionic_steps
 

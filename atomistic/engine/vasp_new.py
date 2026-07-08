@@ -328,6 +328,7 @@ def CreateVaspInputResources(
 
     return io_bundle
 
+
 @as_function_node
 def RunVaspCalculation(
     io_bundle: VaspInputResources,
