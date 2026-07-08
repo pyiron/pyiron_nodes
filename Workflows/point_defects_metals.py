@@ -61,6 +61,4 @@ wf.CreateVacancyNearInterstitial = CreateDefectFromIds(
 wf.GetStructureTable = GetStructureTable(
     structure_container=wf.CreateVacancyNearInterstitial
 )
-wf.GetDefectTable = GetDefectTable(
-    structure_container=wf.CreateVacancyNearInterstitial
-)
+wf.GetDefectTable = GetDefectTable(structure_container=wf.CreateVacancyNearInterstitial)

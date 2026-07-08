@@ -1406,9 +1406,7 @@ def ValidateStructure(atoms: Atoms, min_distance: float = 0.5) -> bool:
 
 
 @as_function_node("uids")
-def ElementUids(
-    atoms: Atoms, element: str, uid_key: str = UID_KEY
-) -> List[int]:
+def ElementUids(atoms: Atoms, element: str, uid_key: str = UID_KEY) -> List[int]:
     """
     Get all UIDs for a given element.
 
@@ -2230,9 +2228,7 @@ def CreateDefectFromIds(
         # Build operation string
         if len(valid_indices) > 1:
             # Use first substitution as reference
-            operation_str = (
-                f"substitution[{len(valid_indices)}:{new_events[0]['from']}->{to_element}]"
-            )
+            operation_str = f"substitution[{len(valid_indices)}:{new_events[0]['from']}->{to_element}]"
         else:
             operation_str = f"substitution[{new_events[0]['from']}->{to_element}]"
 
@@ -2541,9 +2537,7 @@ def CreateDefectFromSeed(
                 cand = [
                     i
                     for i in range(len(atoms_copy))
-                    if syms[i] == elem
-                    and int(uids[i]) not in forbid
-                    and i not in used
+                    if syms[i] == elem and int(uids[i]) not in forbid and i not in used
                 ]
                 if len(cand) == 0:
                     raise ValueError(f"No candidates left for element '{elem}'")
@@ -3327,5 +3321,3 @@ def GetDelaunayInterstitialSites(
     )
 
     return unique_sites, all_sites
-
-
