@@ -5,7 +5,7 @@ from core import as_function_node
 
 
 @as_function_node("water")
-def build_water(n_mols: int = 10) -> Atoms:
+def BuildWater(n_mols: int = 10) -> Atoms:
     """
     Construct a bulk water super‑cell with a target number of water molecules.
 
@@ -64,11 +64,13 @@ def build_water(n_mols: int = 10) -> Atoms:
     # )
 
     water = water.repeat([n, n, n])
-    return water
+    structure = water.copy()
+
+    return structure
 
 
 @as_function_node
-def add_water_film(
+def AddWaterFilm(
     electrode: Atoms,
     water_width: float = 10.0,
     hydrophobic_gap: float = 3.0,
@@ -134,11 +136,13 @@ def add_water_film(
 
     electrochemical_cell = electrode + H2O
 
-    return electrochemical_cell
+    structure = electrochemical_cell.copy()
+
+    return structure
 
 
 @as_function_node
-def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
+def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     """
     Add a single layer of neon atoms to the input structure above the maximum z value of an atom.
 
@@ -187,15 +191,17 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     # Add the neon layer to the modified structure
     modified_structure.extend(neon_layer)
 
-    return modified_structure
+    structure = modified_structure.copy()
+
+    return structure
 
 
 @as_function_node
-def add_ion_pair(
+def AddIonPair(
     structure: Atoms,
     anion: str = "Na",
     cation: str = "Cl",
-    number: int = 0,
+    no_of_pairs: int = 0,
     seed: int = 1234,
 ) -> Atoms:
     """
@@ -203,8 +209,8 @@ def add_ion_pair(
 
     The function selects ``number`` oxygen atoms at random, replaces the first
     half with the provided ``anion`` species and the second half with the
-    ``cation`` species.  After the substitution, two atoms immediately above
-    each selected oxygen are removed – this mimics the removal of water
+    ``cation`` species.  After the substitution, two H atoms closest to the
+    selected oxygen atoms are also removed – this mimics the removal of water
     molecules that would otherwise coordinate the ion.
 
     Parameters
@@ -219,9 +225,8 @@ def add_ion_pair(
     cation : str
         Chemical symbol of the cation to place on the second half of the
         selected oxygen sites.
-    number : int
-        Total number of oxygen atoms to be replaced.  Must be an even number;
-        otherwise the integer division ``number // 2`` determines the split.
+    no_of_pairs : int
+        Number of ion pairs to be put in the structure.
     seed : int, optional
         Random seed for reproducible selection of oxygen atoms.  Default is
         ``1234``.
@@ -238,6 +243,7 @@ def add_ion_pair(
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()
+    number = 2 * no_of_pairs  # number of O atoms to be replaced
 
     # Indices of all oxygen atoms in the structure
     # ind_O = electrolyte.select_index("O")
