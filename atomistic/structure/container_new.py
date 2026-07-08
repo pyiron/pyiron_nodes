@@ -2,7 +2,7 @@ from __future__ import annotations  # Enables lazy imports for type hints
 
 from ase import Atoms
 from dataclasses import dataclass, field
-from typing import List, Optional, Union, Callable
+from typing import List, Literal, Optional, Union, Callable
 
 from core import as_function_node
 
@@ -146,6 +146,82 @@ def validate_structure(atoms: Atoms, min_distance: float = 0.5) -> bool:
                     f"This may cause numerical issues in calculations."
                 )
     return True
+
+
+def get_stoichiometry(atoms: Atoms) -> str:
+    """
+    Get stoichiometry string from an Atoms object.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        Atomic structure
+
+    Returns
+    -------
+    str
+        Chemical formula (e.g., "Al107Mg1")
+
+    Examples
+    --------
+    >>> from ase.build import bulk
+    >>> atoms = bulk('Al', cubic=True)
+    >>> get_stoichiometry(atoms)
+    'Al4'
+    """
+    from collections import Counter
+
+    counts = Counter(atoms.get_chemical_symbols())
+    return "".join(f"{el}{counts[el]}" for el in sorted(counts))
+
+
+def make_operations_short(events: List[dict]) -> str:
+    """
+    Create pipe-separated short form from events.
+
+    Examples
+    --------
+    >>> events = [{"type": "vacancy", "site_uid": 5}]
+    >>> make_operations_short(events)
+    'vacancy[5]'
+
+    >>> multiple = [
+    ...     {"type": "vacancy", "site_uid": 5},
+    ...     {"type": "substitution", "from": "Al", "to": "Mg", "site_uid": 10}
+    ... ]
+    >>> make_operations_short(multiple)
+    'vacancy[5]|substitution[Al->Mg]'
+
+    Parameters
+    ----------
+    events : List[dict]
+        List of defect events
+
+    Returns
+    -------
+    str
+        Pipe-separated operation short form
+    """
+    if not events:
+        return "no_operations"
+
+    short_ops = []
+    for ev in events:
+        t = ev.get("type")
+        if t == "vacancy":
+            uid = ev.get("site_uid", "?")
+            short_ops.append(f"vacancy[{uid}]")
+        elif t == "substitution":
+            from_el = ev.get("from", "?")
+            to_el = ev.get("to", "?")
+            uid = ev.get("site_uid", "?")
+            short_ops.append(f"substitution[{from_el}->{to_el}]")
+        elif t == "interstitial":
+            el = ev.get("element", "?")
+            uid = ev.get("atom_uid", "?")
+            short_ops.append(f"interstitial[{el}]")
+
+    return "|".join(short_ops) if short_ops else "no_operations"
 
 
 # ============================================================================
@@ -377,45 +453,11 @@ class StructureContainer:
 
     @staticmethod
     def _make_operations_short(events: List[dict]) -> str:
-        """
-        Create pipe-separated short form from events.
-
-        Examples:
-          - "vacancy[5]"
-          - "substitution[10->Mg]"
-          - "vacancy[5]|substitution[10->Mg]"
-          - "vacancy[5]|vacancy[10]|substitution[15->Cu]"
-
-        This is unambiguous and clearly shows the sequence of operations.
-        """
-        if not events:
-            return "no_operations"
-
-        short_ops = []
-        for ev in events:
-            t = ev.get("type")
-            if t == "vacancy":
-                uid = ev.get("site_uid", "?")
-                short_ops.append(f"vacancy[{uid}]")
-            elif t == "substitution":
-                from_el = ev.get("from", "?")
-                to_el = ev.get("to", "?")
-                uid = ev.get("site_uid", "?")
-                short_ops.append(f"substitution[{from_el}->{to_el}]")
-            elif t == "interstitial":
-                el = ev.get("element", "?")
-                uid = ev.get("atom_uid", "?")
-                short_ops.append(f"interstitial[{el}]")
-
-        return "|".join(short_ops) if short_ops else "no_operations"
+        return make_operations_short(events)
 
     @staticmethod
     def _get_stoichiometry(atoms: Atoms) -> str:
-        """Get stoichiometry string."""
-        from collections import Counter
-
-        counts = Counter(atoms.get_chemical_symbols())
-        return "".join(f"{el}{counts[el]}" for el in sorted(counts))
+        return get_stoichiometry(atoms)
 
     def find_structure_index(
         self, atoms: Atoms, tolerance: float = 1e-6
@@ -846,31 +888,33 @@ class StructureContainer:
 # ============================================================================
 
 
-def get_stoichiometry(atoms: Atoms) -> str:
+def _pairwise_pbc_distances(positions: List["np.ndarray"], cell) -> tuple:
     """
-    Get stoichiometry string from an Atoms object.
-
-    Parameters
-    ----------
-    atoms : Atoms
-        Atomic structure
+    Compute all pairwise minimum-image distances for a list of Cartesian
+    positions under periodic boundary conditions.
 
     Returns
     -------
-    str
-        Chemical formula (e.g., "Al107Mg1")
-
-    Examples
-    --------
-    >>> from ase.build import bulk
-    >>> atoms = bulk('Al', cubic=True)
-    >>> get_stoichiometry(atoms)
-    'Al4'
+    distances : dict
+        ``{"0-1": float, "0-2": float, ...}``
+    distance_matrix : (N, N) ndarray
     """
-    from collections import Counter
+    import numpy as np
 
-    counts = Counter(atoms.get_chemical_symbols())
-    return "".join(f"{el}{counts[el]}" for el in sorted(counts))
+    inv_cell = np.linalg.inv(cell)
+    n = len(positions)
+    distances = {}
+    distance_matrix = np.zeros((n, n))
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            delta = positions[i] - positions[j]
+            delta -= np.round(delta @ inv_cell) @ cell
+            dist = np.linalg.norm(delta)
+            distances[f"{i}-{j}"] = dist
+            distance_matrix[i, j] = distance_matrix[j, i] = dist
+
+    return distances, distance_matrix
 
 
 @as_function_node
@@ -936,24 +980,10 @@ def GetVacancyDistances(container: StructureContainer, defect_index: int):
             "structure"
         ]
         cell = pristine.get_cell()
-        inv_cell = np.linalg.inv(cell)
 
-        # Calculate pairwise distances with PBC
-        n_vac = len(vacancies)
-        distances = {}
-        distance_matrix = np.zeros((n_vac, n_vac))
-
-        for i in range(n_vac):
-            for j in range(i + 1, n_vac):
-                # Calculate minimum image distance
-                delta = vacancies[i]["position"] - vacancies[j]["position"]
-                # Apply minimum image convention
-                delta -= np.round(delta @ inv_cell) @ cell
-                dist = np.linalg.norm(delta)
-
-                key = f"{i}-{j}"
-                distances[key] = dist
-                distance_matrix[i, j] = distance_matrix[j, i] = dist
+        distances, distance_matrix = _pairwise_pbc_distances(
+            [v["position"] for v in vacancies], cell
+        )
 
         out = {
             "vacancies": vacancies,
@@ -1016,19 +1046,10 @@ def GetSubstitutionDistances(container: StructureContainer, defect_index: int):
             "structure"
         ]
         cell = pristine.get_cell()
-        inv_cell = np.linalg.inv(cell)
 
-        n_sub = len(substitutions)
-        distances = {}
-        distance_matrix = np.zeros((n_sub, n_sub))
-
-        for i in range(n_sub):
-            for j in range(i + 1, n_sub):
-                delta = substitutions[i]["position"] - substitutions[j]["position"]
-                delta -= np.round(delta @ inv_cell) @ cell
-                dist = np.linalg.norm(delta)
-                distances[f"{i}-{j}"] = dist
-                distance_matrix[i, j] = distance_matrix[j, i] = dist
+        distances, distance_matrix = _pairwise_pbc_distances(
+            [s["position"] for s in substitutions], cell
+        )
 
         out = {
             "substitutions": substitutions,
@@ -1100,17 +1121,7 @@ def GetSubstitutionDistancesRelaxed(atoms, events: list):
                 }
             )
 
-        n = len(relaxed_positions)
-        distances = {}
-        distance_matrix = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(i + 1, n):
-                delta = relaxed_positions[i] - relaxed_positions[j]
-                delta -= np.round(delta @ inv_cell) @ cell
-                dist = np.linalg.norm(delta)
-                distances[f"{i}-{j}"] = dist
-                distance_matrix[i, j] = distance_matrix[j, i] = dist
+        distances, distance_matrix = _pairwise_pbc_distances(relaxed_positions, cell)
 
         out = {
             "substitutions": substitution_info,
@@ -1166,19 +1177,10 @@ def GetInterstitialDistances(container: StructureContainer, defect_index: int):
             "structure"
         ]
         cell = pristine.get_cell()
-        inv_cell = np.linalg.inv(cell)
 
-        n = len(interstitials)
-        distances = {}
-        distance_matrix = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(i + 1, n):
-                delta = interstitials[i]["position"] - interstitials[j]["position"]
-                delta -= np.round(delta @ inv_cell) @ cell
-                dist = np.linalg.norm(delta)
-                distances[f"{i}-{j}"] = dist
-                distance_matrix[i, j] = distance_matrix[j, i] = dist
+        distances, distance_matrix = _pairwise_pbc_distances(
+            [it["position"] for it in interstitials], cell
+        )
 
         out = {
             "interstitials": interstitials,
@@ -1255,17 +1257,7 @@ def GetInterstitialDistancesRelaxed(atoms, events: list):
                 {"element": ev["element"], "position_relaxed": pos}
             )
 
-        n = len(relaxed_positions)
-        distances = {}
-        distance_matrix = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(i + 1, n):
-                delta = relaxed_positions[i] - relaxed_positions[j]
-                delta -= np.round(delta @ inv_cell) @ cell
-                dist = np.linalg.norm(delta)
-                distances[f"{i}-{j}"] = dist
-                distance_matrix[i, j] = distance_matrix[j, i] = dist
+        distances, distance_matrix = _pairwise_pbc_distances(relaxed_positions, cell)
 
         out = {
             "interstitials": interstitial_info,
@@ -1273,55 +1265,6 @@ def GetInterstitialDistancesRelaxed(atoms, events: list):
             "distance_matrix": distance_matrix,
         }
     return out
-
-
-def make_operations_short(events: List[dict]) -> str:
-    """
-    Create pipe-separated short form from events.
-
-    Examples
-    --------
-    >>> events = [{"type": "vacancy", "site_uid": 5}]
-    >>> make_operations_short(events)
-    'vacancy[5]'
-
-    >>> multiple = [
-    ...     {"type": "vacancy", "site_uid": 5},
-    ...     {"type": "substitution", "from": "Al", "to": "Mg", "site_uid": 10}
-    ... ]
-    >>> make_operations_short(multiple)
-    'vacancy[5]|substitution[Al->Mg]'
-
-    Parameters
-    ----------
-    events : List[dict]
-        List of defect events
-
-    Returns
-    -------
-    str
-        Pipe-separated operation short form
-    """
-    if not events:
-        return "no_operations"
-
-    short_ops = []
-    for ev in events:
-        t = ev.get("type")
-        if t == "vacancy":
-            uid = ev.get("site_uid", "?")
-            short_ops.append(f"vacancy[{uid}]")
-        elif t == "substitution":
-            from_el = ev.get("from", "?")
-            to_el = ev.get("to", "?")
-            uid = ev.get("site_uid", "?")
-            short_ops.append(f"substitution[{from_el}->{to_el}]")
-        elif t == "interstitial":
-            el = ev.get("element", "?")
-            uid = ev.get("atom_uid", "?")
-            short_ops.append(f"interstitial[{el}]")
-
-    return "|".join(short_ops) if short_ops else "no_operations"
 
 
 # ============================================================================
@@ -1400,6 +1343,94 @@ def GetPristineTable(structure_container: StructureContainer) -> "pd.DataFrame":
     >>> df = get_pristine_table(container)
     """
     return structure_container.get_pristine_table()
+
+
+# ----------------------------------------------------------------------
+# Structure Utility Functions
+# ----------------------------------------------------------------------
+
+
+@as_function_node("stoichiometry")
+def GetStoichiometry(atoms: Atoms) -> str:
+    """
+    Get stoichiometry string from an Atoms object.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        Atomic structure
+
+    Returns
+    -------
+    str
+        Chemical formula (e.g., "Al107Mg1")
+
+    Examples
+    --------
+    >>> from ase.build import bulk
+    >>> atoms = bulk('Al', cubic=True)
+    >>> get_stoichiometry(atoms)
+    'Al4'
+    """
+    return get_stoichiometry(atoms)
+
+
+@as_function_node("is_valid")
+def ValidateStructure(atoms: Atoms, min_distance: float = 0.5) -> bool:
+    """
+    Validate a structure for common issues like atoms too close together.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        The structure to validate
+    min_distance : float
+        Minimum allowed interatomic distance in Angstroms
+
+    Returns
+    -------
+    bool
+        True if structure is valid
+
+    Raises
+    ------
+    ValueError
+        If atoms are too close together
+
+    Examples
+    --------
+    >>> validate_structure(atoms_Al)  # Returns True if valid
+    >>> validate_structure(atoms_bad, min_distance=0.8)  # Check with strict cutoff
+    """
+    return validate_structure(atoms, min_distance)
+
+
+@as_function_node("uids")
+def ElementUids(
+    atoms: Atoms, element: str, uid_key: str = UID_KEY
+) -> List[int]:
+    """
+    Get all UIDs for a given element.
+
+    Parameters
+    ----------
+    atoms : Atoms
+        Structure with uid tracking (added automatically if missing)
+    element : str
+        Chemical symbol (e.g., 'Al', 'Mg')
+    uid_key : str
+        Key under which uids are stored in atoms.arrays
+
+    Returns
+    -------
+    List[int]
+        UIDs of all atoms matching the given element
+
+    Examples
+    --------
+    >>> mg_uids = element_uids(atoms, 'Mg')
+    """
+    return element_uids(atoms, element, uid_key)
 
 
 # ----------------------------------------------------------------------
@@ -1589,34 +1620,6 @@ def FilterByOperationsContains(
     return structure_container.filter_by_operations_contains(operation_type)
 
 
-def filter_by_condition(
-    structure_container: StructureContainer, condition: Callable[[dict], bool]
-) -> List[dict]:
-    """
-    Filter by custom function.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container to filter
-    condition : Callable[[dict], bool]
-        Function that takes a structure dict and returns True/False
-
-    Returns
-    -------
-    List[dict]
-        Structures matching the condition
-
-    Examples
-    --------
-    >>> gen1_vacancies = filter_by_condition(
-    ...     container,
-    ...     lambda s: s['generation'] == 1 and 'vacancy' in s['operations_short']
-    ... )
-    """
-    return structure_container.filter_by_condition(condition)
-
-
 @as_function_node("structure")
 def FilterByUniqueId(
     structure_container: StructureContainer, unique_id: str
@@ -1757,6 +1760,36 @@ def FilterByParent(
     return structure_container.filter_by_parent(parent_index)
 
 
+# Not exposed as @as_function_node: takes a Callable, which can't cross a
+# node-graph port. Plain Python helper for direct scripting use only.
+def filter_by_condition(
+    structure_container: StructureContainer, condition: Callable[[dict], bool]
+) -> List[dict]:
+    """
+    Filter by custom function.
+
+    Parameters
+    ----------
+    structure_container : StructureContainer
+        The container to filter
+    condition : Callable[[dict], bool]
+        Function that takes a structure dict and returns True/False
+
+    Returns
+    -------
+    List[dict]
+        Structures matching the condition
+
+    Examples
+    --------
+    >>> gen1_vacancies = filter_by_condition(
+    ...     container,
+    ...     lambda s: s['generation'] == 1 and 'vacancy' in s['operations_short']
+    ... )
+    """
+    return structure_container.filter_by_condition(condition)
+
+
 # ----------------------------------------------------------------------
 # Selection Functions
 # ----------------------------------------------------------------------
@@ -1785,6 +1818,33 @@ def GetStructure(structure_container: StructureContainer, index: int) -> dict:
         If index is out of range
     """
     return structure_container.get_structure(index)
+
+
+@as_function_node("index")
+def FindStructureIndex(
+    structure_container: StructureContainer, atoms: Atoms, tolerance: float = 1e-6
+) -> Optional[int]:
+    """
+    Return the absolute row index of a structure, or None if absent.
+
+    Checks for identity, then numerical equality of stoichiometry,
+    positions, cell, and chemical symbols.
+
+    Parameters
+    ----------
+    structure_container : StructureContainer
+        The container to search
+    atoms : Atoms
+        Structure to look for
+    tolerance : float
+        Numerical tolerance for comparing positions and cell
+
+    Returns
+    -------
+    int or None
+        Absolute row index of the matching structure, or None if not found
+    """
+    return structure_container.find_structure_index(atoms, tolerance)
 
 
 @as_function_node("structures")
@@ -1906,7 +1966,7 @@ def ResolveAnyRow(structure_container: StructureContainer, relative_index: int) 
 
 
 # ============================================================================
-# Helper Functions for StructureContainer
+# Combined Defect Creation Functions
 # ============================================================================
 
 
@@ -1993,41 +2053,59 @@ def _resolve_parent(
     return pristine_indices[-1]
 
 
-# ============================================================================
-# Vacancy Creation Functions
-# ============================================================================
-
-
 @as_function_node
-def CreateVacancyFromIds(
+def CreateDefectFromIds(
     structure_container: StructureContainer,
-    atom_ids: List[int],
+    defect_type: Literal["vacancy", "substitution", "interstitial"],
+    atom_ids: Optional[List[int]] = None,
+    to_element: Optional[str] = None,
+    sublattice: Optional["np.ndarray"] = None,
+    site_ids: Optional[List[int]] = None,
+    element: Optional[str] = None,
     parent_defect_index: Optional[int] = None,
     input_structure: Optional[Atoms] = None,
     forbid_atom_ids: Optional[List[int]] = None,
     protect_history: bool = False,
 ) -> StructureContainer:
     """
-    Create vacancies at specific atom indices.
+    Create defects at specific, explicitly chosen sites. Merges
+    ``create_vacancy_from_ids``, ``create_substitution_from_ids``, and
+    ``create_interstitial_from_ids`` into a single dispatcher; the
+    per-type logic is unchanged, only the entry point is shared.
 
     Parameters
     ----------
     structure_container : StructureContainer
         The container with structures to modify
-    atom_ids : List[int]
-        Specific atom indices to remove (can determine element type from structure)
+    defect_type : {"vacancy", "substitution", "interstitial"}
+        Which kind of defect to create. Determines which of the
+        type-specific parameters below apply.
+    atom_ids : List[int] or None
+        Vacancy / substitution only, required. Specific atom indices in the
+        host structure to remove or substitute.
+    to_element : str or None
+        Substitution only, required. Element to substitute with.
+    sublattice : (N, 3) array-like or None
+        Interstitial only, required. Cartesian coordinates (Å) of the
+        interstitial sublattice — e.g. the output of
+        ``get_voronoi_interstitial_sites``.
+    site_ids : List[int] or None
+        Interstitial only, required. Indices into ``sublattice`` selecting
+        which sites to occupy.
+    element : str or None
+        Interstitial only, required. Chemical symbol of the atom to insert.
     parent_defect_index : int or None
         Index of defect structure to build on (None = use default parent)
     input_structure : Atoms or None
         Structure to use as parent (None = use container default)
     forbid_atom_ids : list of int or None
-        Atom IDs to exclude from removal
+        Vacancy / substitution only. Atom IDs to exclude from selection.
     protect_history : bool
-        Protect atoms from previous defects
+        Vacancy / substitution only. Protect atoms from previous defects.
 
     Returns
     -------
-    StructureContainer with new vacancies added
+    StructureContainer with new defect added
     """
     import numpy as np
 
@@ -2043,66 +2121,715 @@ def CreateVacancyFromIds(
     # Find pristine ancestor
     pristine_idx = container._find_pristine_index(parent_idx)
 
-    # Validate indices
-    atoms_for_validation = ensure_uids(atoms).copy()
-    validate_atoms_arrays(atoms_for_validation)
-    uids = atoms_for_validation.arrays[UID_KEY].astype(int)
-    syms = np.array(atoms_for_validation.get_chemical_symbols(), dtype=object)
+    if defect_type == "vacancy":
+        if atom_ids is None:
+            raise ValueError("atom_ids is required for defect_type='vacancy'")
 
-    # Check all indices are valid
-    for idx in atom_ids:
-        if not (0 <= idx < len(atoms_for_validation)):
-            raise IndexError(
-                f"Vacancy index {idx} is out of range for a structure with {len(atoms_for_validation)} atoms."
+        # Validate indices
+        atoms_for_validation = ensure_uids(atoms).copy()
+        validate_atoms_arrays(atoms_for_validation)
+        uids = atoms_for_validation.arrays[UID_KEY].astype(int)
+        syms = np.array(atoms_for_validation.get_chemical_symbols(), dtype=object)
+
+        # Check all indices are valid
+        for idx in atom_ids:
+            if not (0 <= idx < len(atoms_for_validation)):
+                raise IndexError(
+                    f"Vacancy index {idx} is out of range for a structure with {len(atoms_for_validation)} atoms."
+                )
+
+        # Build forbid set
+        forbid = set() if forbid_atom_ids is None else set(map(int, forbid_atom_ids))
+        if protect_history:
+            forbid |= _protected_uids_from_events(existing_events)
+
+        # Filter out forbidden indices
+        valid_indices = [idx for idx in atom_ids if int(uids[idx]) not in forbid]
+
+        if len(valid_indices) == 0:
+            raise ValueError("No valid indices after applying forbid_atom_ids filters.")
+
+        # Record all events
+        new_events = []
+        for i in valid_indices:
+            site_uid = int(uids[i])
+            new_events.append(
+                {
+                    "type": "vacancy",
+                    "removed_element": str(syms[i]),
+                    "site_uid": site_uid,
+                    "site_pos0": atoms_for_validation.positions[i].tolist(),
+                    "pos_at_removal": atoms_for_validation.positions[i].tolist(),
+                }
             )
 
-    # Build forbid set
-    forbid = set() if forbid_atom_ids is None else set(map(int, forbid_atom_ids))
-    if protect_history:
-        forbid |= _protected_uids_from_events(existing_events)
+        # Delete atoms (in reverse order to maintain indices)
+        for i in sorted(map(int, valid_indices), reverse=True):
+            del atoms_for_validation[i]
 
-    # Filter out forbidden indices
-    valid_indices = [idx for idx in atom_ids if int(uids[idx]) not in forbid]
+        validate_atoms_arrays(atoms_for_validation)
 
-    if len(valid_indices) == 0:
-        raise ValueError("No valid indices after applying forbid_atom_ids filters.")
+        # Build operation string
+        if len(valid_indices) > 1:
+            operation_str = f"vacancy[{len(valid_indices)}]"
+        else:
+            operation_str = f"vacancy[{new_events[0]['site_uid']}]"
 
-    # Record all events
-    new_events = []
-    for i in valid_indices:
-        site_uid = int(uids[i])
-        new_events.append(
-            {
-                "type": "vacancy",
-                "removed_element": str(syms[i]),
-                "site_uid": site_uid,
-                "site_pos0": atoms_for_validation.positions[i].tolist(),
-                "pos_at_removal": atoms_for_validation.positions[i].tolist(),
-            }
+        result_atoms = atoms_for_validation
+
+    elif defect_type == "substitution":
+        if atom_ids is None:
+            raise ValueError("atom_ids is required for defect_type='substitution'")
+        if to_element is None:
+            raise ValueError("to_element is required for defect_type='substitution'")
+
+        # Validate indices
+        uids = atoms.arrays[UID_KEY].astype(int)
+        syms = np.array(atoms.get_chemical_symbols(), dtype=object)
+
+        # Check all indices are valid
+        for idx in atom_ids:
+            if not (0 <= idx < len(atoms)):
+                raise IndexError(
+                    f"Substitution index {idx} is out of range for a structure with {len(atoms)} atoms."
+                )
+
+        # Build forbid set
+        forbid = set() if forbid_atom_ids is None else set(map(int, forbid_atom_ids))
+        if protect_history:
+            forbid |= _protected_uids_from_events(existing_events)
+
+        # Filter out forbidden indices
+        valid_indices = [idx for idx in atom_ids if int(uids[idx]) not in forbid]
+
+        if len(valid_indices) == 0:
+            raise ValueError("No valid indices after applying forbid_atom_ids filters.")
+
+        # Record all events and apply substitutions
+        new_events = []
+        for i in valid_indices:
+            atom_uid = int(uids[i])
+            site_uid = atom_uid
+            from_element = str(syms[i])
+            site_pos0 = atoms.positions[i].tolist()
+
+            new_events.append(
+                {
+                    "type": "substitution",
+                    "from": from_element,
+                    "to": str(to_element),
+                    "atom_uid": atom_uid,
+                    "site_uid": site_uid,
+                    "site_pos0": site_pos0,
+                    "pos_at_creation": atoms.positions[i].tolist(),
+                }
+            )
+
+            atoms[i].symbol = to_element
+
+        # Build operation string
+        if len(valid_indices) > 1:
+            # Use first substitution as reference
+            operation_str = (
+                f"substitution[{len(valid_indices)}:{new_events[0]['from']}->{to_element}]"
+            )
+        else:
+            operation_str = f"substitution[{new_events[0]['from']}->{to_element}]"
+
+        result_atoms = atoms
+
+    elif defect_type == "interstitial":
+        if sublattice is None or site_ids is None or element is None:
+            raise ValueError(
+                "sublattice, site_ids, and element are required for defect_type='interstitial'"
+            )
+
+        # Validate sublattice and site_ids
+        sublattice_arr = np.asarray(sublattice, float)
+        if sublattice_arr.ndim != 2 or sublattice_arr.shape[1] != 3:
+            raise ValueError(
+                f"sublattice must have shape (N, 3), got {sublattice_arr.shape}."
+            )
+        if len(site_ids) == 0:
+            raise ValueError("site_ids is empty — provide at least one site index.")
+        for sid in site_ids:
+            if not (0 <= sid < len(sublattice_arr)):
+                raise IndexError(
+                    f"site_id {sid} is out of range for sublattice with {len(sublattice_arr)} sites."
+                )
+
+        validate_atoms_arrays(atoms)
+
+        # Insert one atom per requested site
+        new_events = []
+        for sid in site_ids:
+            pos = sublattice_arr[int(sid)].tolist()
+            new_uid = next_uid(atoms)
+            atoms = append_atom_with_uid(atoms, element, pos)
+            validate_atoms_arrays(atoms)
+            new_events.append(
+                {
+                    "type": "interstitial",
+                    "element": str(element),
+                    "atom_uid": int(new_uid),
+                    "pos0": pos,
+                    "site_label": f"site_{int(sid)}",
+                }
+            )
+
+        n = len(site_ids)
+        operation_str = (
+            f"interstitial[{n}:{element}]" if n > 1 else f"interstitial[{element}]"
         )
 
-    # Delete atoms (in reverse order to maintain indices)
-    for i in sorted(map(int, valid_indices), reverse=True):
-        del atoms_for_validation[i]
+        result_atoms = atoms
 
-    validate_atoms_arrays(atoms_for_validation)
-    all_new_events = existing_events + new_events
-
-    # Build operation string
-    if len(valid_indices) > 1:
-        operation_str = f"vacancy[{len(valid_indices)}]"
     else:
-        operation_str = f"vacancy[{new_events[0]['site_uid']}]"
+        raise ValueError(
+            f"Unknown defect_type '{defect_type}'. "
+            "Must be one of 'vacancy', 'substitution', 'interstitial'."
+        )
+
+    all_new_events = existing_events + new_events
 
     # Store in container
     container.add_defect(
-        atoms=atoms_for_validation,
+        atoms=result_atoms,
         operation=operation_str,
         pristine_index=pristine_idx,
         parent_index=parent_idx,
         events=all_new_events,
         metadata={"parent_index": parent_idx, "pristine_index": pristine_idx},
     )
+
+    out_container = container
+    return out_container
+
+
+@as_function_node
+def CreateDefectBatchFromIds(
+    structure_container: StructureContainer,
+    defect_type: Literal["vacancy", "substitution", "interstitial"],
+    target_indices: List[int],
+    atom_ids: Optional[List[int]] = None,
+    to_element: str = "Mg",
+    sublattice: Optional["np.ndarray"] = None,
+    element: Optional[str] = None,
+    site_ids: Optional[List[int]] = None,
+    separate_structures: bool = True,
+    forbid_atom_ids: Optional[List[int]] = None,
+    protect_history: bool = False,
+) -> StructureContainer:
+    """
+    Apply specific defect sites to multiple parent structures. Merges
+    ``create_vacancy_batch_from_ids``, ``create_substitution_batch_from_ids``,
+    and ``create_interstitial_batch_from_ids`` into a single dispatcher around
+    :func:`CreateDefectFromIds`; the per-type logic is unchanged.
+
+    Parameters
+    ----------
+    structure_container : StructureContainer
+        The container with structures to modify
+    defect_type : {"vacancy", "substitution", "interstitial"}
+        Which kind of defect to create. Determines which of the
+        type-specific parameters below apply.
+    target_indices : List[int]
+        Absolute indices of structures to modify
+    atom_ids : List[int] or None
+        Vacancy / substitution only, required. Specific atom indices to
+        remove or substitute for each target structure.
+    to_element : str
+        Substitution only. Element to substitute with.
+    sublattice : (N, 3) array-like or None
+        Interstitial only, required. Cartesian coordinates (Å) of the
+        interstitial sublattice.
+    element : str or None
+        Interstitial only, required. Chemical symbol of the atom to insert.
+    site_ids : list of int or None
+        Interstitial only. Indices into ``sublattice`` selecting which sites
+        to use. ``None`` (default) uses every site in ``sublattice``.
+    separate_structures : bool (default=True)
+        True: Create separate structures for each id in atom_ids/site_ids
+        False: Create one structure with all defects per target
+    forbid_atom_ids : list of int or None
+        Vacancy / substitution only. Atom IDs to exclude from selection.
+    protect_history : bool
+        Vacancy / substitution only. Protect atoms from previous defects.
+
+    Returns
+    -------
+    StructureContainer with all new structures added
+
+    Notes
+    -----
+    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
+    etc. to get the target_indices before calling this function.
+    """
+    import numpy as np
+
+    container = structure_container
+    rows_to_modify = target_indices
+
+    if defect_type == "interstitial":
+        if sublattice is None or element is None:
+            raise ValueError(
+                "sublattice and element are required for defect_type='interstitial'"
+            )
+        sublattice_arr = np.asarray(sublattice, float)
+        effective_ids = (
+            list(range(len(sublattice_arr))) if site_ids is None else list(site_ids)
+        )
+    else:
+        sublattice_arr = None
+        effective_ids = atom_ids
+
+    if separate_structures:
+        # Create separate structures for each id
+        for parent_idx in rows_to_modify:
+            _pd = (
+                parent_idx
+                if not container._structures[parent_idx]["is_pristine"]
+                else None
+            )
+            _is = (
+                container._structures[parent_idx]["structure"]
+                if container._structures[parent_idx]["is_pristine"]
+                else None
+            )
+            for single_id in effective_ids:
+                container = CreateDefectFromIds._original_func(
+                    structure_container=container,
+                    defect_type=defect_type,
+                    atom_ids=[single_id] if defect_type != "interstitial" else None,
+                    to_element=to_element,
+                    sublattice=sublattice_arr,
+                    site_ids=[single_id] if defect_type == "interstitial" else None,
+                    element=element,
+                    parent_defect_index=_pd,
+                    input_structure=_is,
+                    forbid_atom_ids=forbid_atom_ids,
+                    protect_history=protect_history,
+                )
+    else:
+        # Apply all ids to each target structure
+        for parent_idx in rows_to_modify:
+            _pd = (
+                parent_idx
+                if not container._structures[parent_idx]["is_pristine"]
+                else None
+            )
+            _is = (
+                container._structures[parent_idx]["structure"]
+                if container._structures[parent_idx]["is_pristine"]
+                else None
+            )
+            container = CreateDefectFromIds._original_func(
+                structure_container=container,
+                defect_type=defect_type,
+                atom_ids=effective_ids if defect_type != "interstitial" else None,
+                to_element=to_element,
+                sublattice=sublattice_arr,
+                site_ids=effective_ids if defect_type == "interstitial" else None,
+                element=element,
+                parent_defect_index=_pd,
+                input_structure=_is,
+                forbid_atom_ids=forbid_atom_ids,
+                protect_history=protect_history,
+            )
+
+    out_container = container
+    return out_container
+
+
+@as_function_node
+def CreateDefectFromSeed(
+    structure_container: StructureContainer,
+    defect_type: Literal["vacancy", "substitution", "interstitial"],
+    n: int = 1,
+    seed: Optional[int] = None,
+    vacancy_element: Optional[Union[str, List[str]]] = None,
+    from_element: str = "Al",
+    to_element: str = "Mg",
+    sublattice: Optional["np.ndarray"] = None,
+    element: Optional[str] = None,
+    parent_defect_index: Optional[int] = None,
+    input_structure: Optional[Atoms] = None,
+    forbid_uids: Optional[List[int]] = None,
+    protect_history: bool = False,
+) -> StructureContainer:
+    """
+    Create random defects with a reproducible seed. Merges
+    ``create_vacancy_from_seed``, ``create_substitution_from_seed``, and
+    ``create_interstitial_from_seed`` into a single dispatcher; the
+    per-type logic is unchanged, only the entry point is shared.
+
+    Parameters
+    ----------
+    structure_container : StructureContainer
+        The container with structures to modify
+    defect_type : {"vacancy", "substitution", "interstitial"}
+        Which kind of defect to create. Determines which of the
+        type-specific parameters below apply.
+    n : int
+        Number of defects to create
+    seed : int or None
+        Random seed for reproducibility
+    vacancy_element : str, list of str, or None
+        Vacancy only. Element to remove (e.g., 'Al'). None = any element.
+        Pass a list to specify the exact per-vacancy elements
+        (e.g., ['Al', 'Mg'] removes one Al and one Mg).
+        When a list is given, n must equal len(vacancy_element).
+    from_element : str
+        Substitution only. Element to replace.
+    to_element : str
+        Substitution only. Element to substitute with.
+    sublattice : (N, 3) array-like or None
+        Interstitial only, required. Cartesian coordinates (Å) of all
+        candidate interstitial sites — e.g. the ``all_sites`` output of
+        ``get_voronoi_interstitial_sites``.
+    element : str or None
+        Interstitial only, required. Chemical symbol of the atom to insert.
+    parent_defect_index : int or None
+        Index of defect structure to build on (None = use default parent)
+    input_structure : Atoms or None
+        Structure to use as parent (None = use container default)
+    forbid_uids : list of int or None
+        Vacancy / substitution only. UIDs to exclude from selection.
+    protect_history : bool
+        Vacancy / substitution only. Protect atoms from previous defects.
+
+    Returns
+    -------
+    StructureContainer with new defect added
+    """
+    import numpy as np
+
+    container = structure_container
+
+    # Resolve parent structure
+    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
+    parent = container.get_structure(parent_idx)
+
+    atoms = ensure_uids(parent["structure"]).copy()
+    existing_events = parent["events"].copy()
+
+    # Find pristine ancestor
+    pristine_idx = container._find_pristine_index(parent_idx)
+
+    if defect_type == "vacancy":
+        # Set up random selection
+        rng = np.random.default_rng(seed if seed is not None else 0)
+        atoms_copy = ensure_uids(atoms).copy()
+        validate_atoms_arrays(atoms_copy)
+        uids = atoms_copy.arrays[UID_KEY].astype(int)
+        syms = np.array(atoms_copy.get_chemical_symbols(), dtype=object)
+
+        # Build forbid set
+        forbid = set() if forbid_uids is None else set(map(int, forbid_uids))
+        if protect_history:
+            forbid |= _protected_uids_from_events(existing_events)
+
+        # Find candidates
+        if isinstance(vacancy_element, list):
+            if n != len(vacancy_element):
+                raise ValueError(
+                    f"n={n} must equal len(vacancy_element)={len(vacancy_element)} when vacancy_element is a list"
+                )
+            pick_idx = []
+            used = set()
+            for elem in vacancy_element:
+                cand = [
+                    i
+                    for i in range(len(atoms_copy))
+                    if syms[i] == elem
+                    and int(uids[i]) not in forbid
+                    and i not in used
+                ]
+                if len(cand) == 0:
+                    raise ValueError(f"No candidates left for element '{elem}'")
+                chosen = int(rng.choice(cand))
+                pick_idx.append(chosen)
+                used.add(chosen)
+        elif vacancy_element is None:
+            cand = [i for i in range(len(atoms_copy)) if int(uids[i]) not in forbid]
+            if len(cand) < n:
+                raise ValueError(f"Not enough candidates: need {n}, have {len(cand)}")
+            pick_idx = rng.choice(cand, size=int(n), replace=False).tolist()
+        else:
+            cand = [
+                i
+                for i in range(len(atoms_copy))
+                if syms[i] == vacancy_element and int(uids[i]) not in forbid
+            ]
+            if len(cand) < n:
+                raise ValueError(f"Not enough candidates: need {n}, have {len(cand)}")
+            pick_idx = rng.choice(cand, size=int(n), replace=False).tolist()
+
+        # Record all events
+        new_events = []
+        for i in pick_idx:
+            site_uid = int(uids[i])
+            new_events.append(
+                {
+                    "type": "vacancy",
+                    "removed_element": str(syms[i]),
+                    "site_uid": site_uid,
+                    "site_pos0": atoms_copy.positions[i].tolist(),
+                    "pos_at_removal": atoms_copy.positions[i].tolist(),
+                }
+            )
+
+        # Delete atoms
+        for i in sorted(map(int, pick_idx), reverse=True):
+            del atoms_copy[i]
+
+        validate_atoms_arrays(atoms_copy)
+
+        # Build operation string
+        if n > 1:
+            operation_str = f"vacancy[{n}]"
+        else:
+            operation_str = f"vacancy[{new_events[0]['site_uid']}]"
+
+        result_atoms = atoms_copy
+
+    elif defect_type == "substitution":
+        # Set up random selection
+        rng = np.random.default_rng(seed if seed is not None else 0)
+        uids = atoms.arrays[UID_KEY].astype(int)
+        syms = np.array(atoms.get_chemical_symbols(), dtype=object)
+
+        # Build forbid set
+        forbid = set() if forbid_uids is None else set(map(int, forbid_uids))
+        if protect_history:
+            forbid |= _protected_uids_from_events(existing_events)
+
+        # Find candidates
+        cand = [
+            i
+            for i in range(len(atoms))
+            if syms[i] == from_element and int(uids[i]) not in forbid
+        ]
+
+        if n > len(cand):
+            raise ValueError(
+                f"Not enough candidates to substitute {from_element}->{to_element}: need {n}, have {len(cand)}"
+            )
+
+        pick_idx = rng.choice(cand, size=int(n), replace=False)
+
+        # Record events and apply substitutions
+        new_events = []
+        for i in pick_idx:
+            atom_uid = int(uids[i])
+            site_uid = atom_uid
+            site_pos0 = atoms.positions[i].tolist()
+
+            new_events.append(
+                {
+                    "type": "substitution",
+                    "from": str(from_element),
+                    "to": str(to_element),
+                    "atom_uid": atom_uid,
+                    "site_uid": site_uid,
+                    "site_pos0": site_pos0,
+                    "pos_at_creation": atoms.positions[i].tolist(),
+                }
+            )
+
+        syms[pick_idx] = to_element
+        atoms.set_chemical_symbols(syms.tolist())
+
+        # Build operation string
+        if n > 1:
+            operation_str = f"substitution[{n}:{from_element}->{to_element}]"
+        else:
+            operation_str = f"substitution[{from_element}->{to_element}]"
+
+        result_atoms = atoms
+
+    elif defect_type == "interstitial":
+        if sublattice is None or element is None:
+            raise ValueError(
+                "sublattice and element are required for defect_type='interstitial'"
+            )
+
+        # Validate sublattice
+        sublattice_arr = np.asarray(sublattice, float)
+        if sublattice_arr.ndim != 2 or sublattice_arr.shape[1] != 3:
+            raise ValueError(
+                f"sublattice must have shape (N, 3), got {sublattice_arr.shape}."
+            )
+        if len(sublattice_arr) == 0:
+            raise ValueError("sublattice is empty — no candidate sites to sample from.")
+        if n > len(sublattice_arr):
+            raise ValueError(
+                f"Requested n={n} interstitials but sublattice only has {len(sublattice_arr)} sites."
+            )
+
+        arrays_copy = ensure_uids(atoms).copy()
+        validate_atoms_arrays(arrays_copy)
+
+        # Sample without replacement
+        rng = np.random.default_rng(seed if seed is not None else 0)
+        picked_ids = rng.choice(len(sublattice_arr), size=int(n), replace=False)
+
+        new_events = []
+        for sid in picked_ids:
+            pos = sublattice_arr[int(sid)].tolist()
+            new_uid = next_uid(arrays_copy)
+            arrays_copy = append_atom_with_uid(arrays_copy, element, pos)
+            validate_atoms_arrays(arrays_copy)
+            new_events.append(
+                {
+                    "type": "interstitial",
+                    "element": str(element),
+                    "atom_uid": int(new_uid),
+                    "pos0": pos,
+                    "site_label": f"site_{int(sid)}",
+                }
+            )
+
+        operation_str = (
+            f"interstitial[{n}:{element}]" if n > 1 else f"interstitial[{element}]"
+        )
+
+        result_atoms = arrays_copy
+
+    else:
+        raise ValueError(
+            f"Unknown defect_type '{defect_type}'. "
+            "Must be one of 'vacancy', 'substitution', 'interstitial'."
+        )
+
+    all_new_events = existing_events + new_events
+
+    # Store in container
+    container.add_defect(
+        atoms=result_atoms,
+        operation=operation_str,
+        pristine_index=pristine_idx,
+        parent_index=parent_idx,
+        events=all_new_events,
+        metadata={
+            "parent_index": parent_idx,
+            "pristine_index": pristine_idx,
+            "seed": seed,
+        },
+    )
+
+    out_container = container
+    return out_container
+
+
+@as_function_node
+def CreateDefectBatchFromSeed(
+    structure_container: StructureContainer,
+    defect_type: Literal["vacancy", "substitution", "interstitial"],
+    target_indices: List[int],
+    n: int = 1,
+    seed: Optional[int] = None,
+    vacancy_element: Optional[Union[str, List[str]]] = None,
+    from_element: str = "Al",
+    to_element: str = "Mg",
+    sublattice: Optional["np.ndarray"] = None,
+    element: Optional[str] = None,
+    forbid_uids: Optional[List[int]] = None,
+    protect_history: bool = False,
+    n_structures: int = 1,
+) -> StructureContainer:
+    """
+    Apply random defects to multiple structures with reproducible seeds.
+    Merges ``create_vacancy_batch_from_seed``, ``create_substitution_batch_from_seed``,
+    and ``create_interstitial_batch_from_seed`` into a single dispatcher around
+    :func:`CreateDefectFromSeed`; the per-type logic is unchanged.
+
+    Parameters
+    ----------
+    structure_container : StructureContainer
+        The container with structures to modify
+    defect_type : {"vacancy", "substitution", "interstitial"}
+        Which kind of defect to create. Determines which of the
+        type-specific parameters below apply.
+    target_indices : List[int]
+        Absolute indices of structures to modify
+    n : int
+        Number of defects to create per structure.
+        When vacancy_element is a list, n must equal len(vacancy_element).
+    seed : int or None
+        Base random seed (each structure uses different seeds)
+    vacancy_element : str, list of str, or None
+        Vacancy only. Element to remove (e.g., 'Al'). None = any element.
+        Pass a list to fix per-vacancy elements (e.g., ['Al', 'Mg']).
+    from_element : str
+        Substitution only. Element to replace.
+    to_element : str
+        Substitution only. Element to substitute with.
+    sublattice : (N, 3) array-like or None
+        Interstitial only, required. Cartesian coordinates (Å) of all
+        candidate interstitial sites — e.g. the ``all_sites`` output of
+        ``get_voronoi_interstitial_sites``.
+    element : str or None
+        Interstitial only, required. Chemical symbol of the atom to insert.
+    forbid_uids : list of int or None
+        Vacancy / substitution only. UIDs to exclude from selection.
+    protect_history : bool
+        Vacancy / substitution only. Protect atoms from previous defects.
+    n_structures : int
+        Number of structures to create from each parent. Default=1 (backward compatible).
+        If n_structures > 1, creates n_structures copies from each parent index
+        with incrementing seeds: seed, seed+1, seed+2, etc.
+
+    Returns
+    -------
+    StructureContainer with all new structures added
+
+    Notes
+    -----
+    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
+    etc. to get the target_indices before calling this function.
+    """
+    import numpy as np
+
+    container = structure_container
+    rows_to_modify = target_indices
+
+    sublattice_arr = None
+    if defect_type == "interstitial":
+        if sublattice is None or element is None:
+            raise ValueError(
+                "sublattice and element are required for defect_type='interstitial'"
+            )
+        sublattice_arr = np.asarray(sublattice, float)
+
+    structure_counter = 0
+    for parent_idx in rows_to_modify:
+        for copy_idx in range(n_structures):
+            structure_seed = seed + structure_counter if seed is not None else None
+            container = CreateDefectFromSeed._original_func(
+                structure_container=container,
+                defect_type=defect_type,
+                n=n,
+                seed=structure_seed,
+                vacancy_element=vacancy_element,
+                from_element=from_element,
+                to_element=to_element,
+                sublattice=sublattice_arr,
+                element=element,
+                parent_defect_index=(
+                    parent_idx
+                    if not container._structures[parent_idx]["is_pristine"]
+                    else None
+                ),
+                input_structure=(
+                    container._structures[parent_idx]["structure"]
+                    if container._structures[parent_idx]["is_pristine"]
+                    else None
+                ),
+                forbid_uids=forbid_uids,
+                protect_history=protect_history,
+            )
+            structure_counter += 1
 
     out_container = container
     return out_container
@@ -2162,6 +2889,91 @@ def _extract_defect_frac_coords(defects):
     if len(frac_list) == 0:
         return np.empty((0, 3), dtype=float)
     return np.array(frac_list, dtype=float)
+
+
+def _periodic_image_points(pos, cell, n_images: int):
+    """Extend a point set with periodic images out to n_images shells."""
+    import numpy as np
+
+    offsets = np.array(
+        [
+            [i, j, k]
+            for i in range(-n_images, n_images + 1)
+            for j in range(-n_images, n_images + 1)
+            for k in range(-n_images, n_images + 1)
+        ],
+        dtype=float,
+    )
+    return np.vstack([pos + off @ cell for off in offsets])  # (N*(2n+1)^3, 3)
+
+
+def _filter_cluster_tile_interstitial_candidates(
+    raw_candidates,
+    pos,
+    cell,
+    r_min: float,
+    cluster_tol: float,
+    use_primitive: bool,
+    repeat,
+):
+    """
+    Reduce raw tessellation void-center candidates (Voronoi vertices or
+    Delaunay circumcenters) to unique, non-overlapping interstitial sites.
+
+    Keeps only candidates inside the primitive cell, drops any closer than
+    ``r_min`` to a host atom, merges near-duplicates within ``cluster_tol``,
+    and tiles the result across the supercell when ``use_primitive`` is set.
+    """
+    import numpy as np
+
+    cell_inv = np.linalg.inv(cell)
+
+    # --- keep only candidates inside the primitive unit cell ---
+    frac = raw_candidates @ cell_inv
+    inside = np.all((frac >= -1e-8) & (frac < 1 - 1e-8), axis=1)
+    candidates = raw_candidates[inside]
+
+    if len(candidates) == 0:
+        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=float)
+
+    # --- filter: too close to any host atom (minimum image convention) ---
+    diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
+    diff_frac = diff @ cell_inv
+    diff_frac -= np.round(diff_frac)
+    diff_cart = diff_frac @ cell
+    min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
+    candidates = candidates[min_dist >= r_min]
+
+    if len(candidates) == 0:
+        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=float)
+
+    # --- cluster: merge candidates within cluster_tol ---
+    used = np.zeros(len(candidates), dtype=bool)
+    clusters = []
+    for i in range(len(candidates)):
+        if used[i]:
+            continue
+        d = np.linalg.norm(candidates - candidates[i], axis=1)
+        mask = d < cluster_tol
+        used[mask] = True
+        clusters.append(candidates[mask].mean(axis=0))
+
+    all_sites_prim = np.array(clusters, dtype=float)  # void centers in primitive cell
+    unique_sites = all_sites_prim.copy()  # one per cluster
+
+    if use_primitive:
+        n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
+        tiles = []
+        for f in all_sites_prim:
+            for i in range(n1):
+                for j in range(n2):
+                    for k in range(n3):
+                        tiles.append(f + np.array([i, j, k], dtype=float) @ cell)
+        all_sites = np.array(tiles, dtype=float)
+    else:
+        all_sites = all_sites_prim
+
+    return unique_sites, all_sites
 
 
 @as_function_node
@@ -2398,75 +3210,18 @@ def GetVoronoiInterstitialSites(
     work_atoms = primitive_atoms if use_primitive else atoms
 
     cell = work_atoms.get_cell().array  # (3, 3)
-    cell_inv = np.linalg.inv(cell)
     pos = work_atoms.get_positions()  # (N, 3)
 
     # --- build extended point set with periodic images ---
-    offsets = np.array(
-        [
-            [i, j, k]
-            for i in range(-n_images, n_images + 1)
-            for j in range(-n_images, n_images + 1)
-            for k in range(-n_images, n_images + 1)
-        ],
-        dtype=float,
-    )
-    pos_ext = np.vstack([pos + off @ cell for off in offsets])  # (N*(2n+1)^3, 3)
+    pos_ext = _periodic_image_points(pos, cell, n_images)
 
     # --- Voronoi tessellation: vertices are the void centers ---
     vor = Voronoi(pos_ext)
     candidates_all = vor.vertices  # (V, 3)
 
-    # --- keep only candidates inside the primitive unit cell ---
-    frac = candidates_all @ cell_inv
-    inside = np.all((frac >= -1e-8) & (frac < 1 - 1e-8), axis=1)
-    candidates = candidates_all[inside]
-
-    if len(candidates) == 0:
-        unique_sites = np.empty((0, 3), dtype=float)
-        all_sites = np.empty((0, 3), dtype=float)
-    else:
-        # --- filter: too close to any host atom (minimum image convention) ---
-        diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
-        diff_frac = diff @ cell_inv
-        diff_frac -= np.round(diff_frac)
-        diff_cart = diff_frac @ cell
-        min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
-        candidates = candidates[min_dist >= r_min]
-
-        if len(candidates) == 0:
-            unique_sites = np.empty((0, 3), dtype=float)
-            all_sites = np.empty((0, 3), dtype=float)
-        else:
-            # --- cluster: merge candidates within cluster_tol ---
-            used = np.zeros(len(candidates), dtype=bool)
-            clusters = []
-            for i in range(len(candidates)):
-                if used[i]:
-                    continue
-                d = np.linalg.norm(candidates - candidates[i], axis=1)
-                mask = d < cluster_tol
-                used[mask] = True
-                clusters.append(candidates[mask].mean(axis=0))
-
-            all_sites_prim = np.array(
-                clusters, dtype=float
-            )  # void centers in primitive cell
-            unique_sites = all_sites_prim.copy()  # one per cluster
-
-            if use_primitive:
-                n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
-                tiles = []
-                for f in all_sites_prim:
-                    for i in range(n1):
-                        for j in range(n2):
-                            for k in range(n3):
-                                tiles.append(
-                                    f + np.array([i, j, k], dtype=float) @ cell
-                                )
-                all_sites = np.array(tiles, dtype=float)
-            else:
-                all_sites = all_sites_prim
+    unique_sites, all_sites = _filter_cluster_tile_interstitial_candidates(
+        candidates_all, pos, cell, r_min, cluster_tol, use_primitive, repeat
+    )
 
     return unique_sites, all_sites
 
@@ -2542,20 +3297,10 @@ def GetDelaunayInterstitialSites(
     work_atoms = primitive_atoms if use_primitive else atoms
 
     cell = work_atoms.get_cell().array  # (3, 3)
-    cell_inv = np.linalg.inv(cell)
     pos = work_atoms.get_positions()  # (N, 3)
 
     # --- build extended point set with periodic images ---
-    offsets = np.array(
-        [
-            [i, j, k]
-            for i in range(-n_images, n_images + 1)
-            for j in range(-n_images, n_images + 1)
-            for k in range(-n_images, n_images + 1)
-        ],
-        dtype=float,
-    )
-    pos_ext = np.vstack([pos + off @ cell for off in offsets])  # (N*(2n+1)^3, 3)
+    pos_ext = _periodic_image_points(pos, cell, n_images)
 
     # --- Delaunay tessellation ---
     tri = Delaunay(pos_ext)
@@ -2577,1187 +3322,10 @@ def GetDelaunayInterstitialSites(
     x = np.linalg.solve(At_nd, b_nd[..., None])[..., 0]  # (T', 3)
     centers = x + v0_nd  # (T', 3)
 
-    # --- keep only candidates inside the primitive unit cell ---
-    frac = centers @ cell_inv
-    inside = np.all((frac >= -1e-8) & (frac < 1 - 1e-8), axis=1)
-    candidates = centers[inside]
-
-    if len(candidates) == 0:
-        unique_sites = np.empty((0, 3), dtype=float)
-        all_sites = np.empty((0, 3), dtype=float)
-    else:
-        # --- filter: too close to any host atom (minimum image convention) ---
-        diff = candidates[:, None, :] - pos[None, :, :]  # (C, N, 3)
-        diff_frac = diff @ cell_inv
-        diff_frac -= np.round(diff_frac)
-        diff_cart = diff_frac @ cell
-        min_dist = np.linalg.norm(diff_cart, axis=-1).min(axis=1)  # (C,)
-        candidates = candidates[min_dist >= r_min]
-
-        if len(candidates) == 0:
-            unique_sites = np.empty((0, 3), dtype=float)
-            all_sites = np.empty((0, 3), dtype=float)
-        else:
-            # --- cluster: merge candidates within cluster_tol ---
-            used = np.zeros(len(candidates), dtype=bool)
-            clusters = []
-            for i in range(len(candidates)):
-                if used[i]:
-                    continue
-                d = np.linalg.norm(candidates - candidates[i], axis=1)
-                mask = d < cluster_tol
-                used[mask] = True
-                clusters.append(candidates[mask].mean(axis=0))
-
-            all_sites_prim = np.array(
-                clusters, dtype=float
-            )  # void centers in primitive cell
-            unique_sites = all_sites_prim.copy()  # one per cluster
-
-            if use_primitive:
-                n1, n2, n3 = int(repeat[0]), int(repeat[1]), int(repeat[2])
-                tiles = []
-                for f in all_sites_prim:
-                    for i in range(n1):
-                        for j in range(n2):
-                            for k in range(n3):
-                                tiles.append(
-                                    f + np.array([i, j, k], dtype=float) @ cell
-                                )
-                all_sites = np.array(tiles, dtype=float)
-            else:
-                all_sites = all_sites_prim
+    unique_sites, all_sites = _filter_cluster_tile_interstitial_candidates(
+        centers, pos, cell, r_min, cluster_tol, use_primitive, repeat
+    )
 
     return unique_sites, all_sites
 
 
-@as_function_node
-def CreateVacancyFromSeed(
-    structure_container: StructureContainer,
-    n: int = 1,
-    seed: Optional[int] = None,
-    vacancy_element: Optional[Union[str, List[str]]] = None,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-    forbid_uids: Optional[List[int]] = None,
-    protect_history: bool = False,
-) -> StructureContainer:
-    """
-    Create random vacancies with reproducible seed.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    n : int
-        Number of vacancies to create
-    seed : int or None
-        Random seed for reproducibility
-    vacancy_element : str, list of str, or None
-        Element to remove (e.g., 'Al'). None = any element.
-        Pass a list to specify the exact per-vacancy elements
-        (e.g., ['Al', 'Mg'] removes one Al and one Mg).
-        When a list is given, n must equal len(vacancy_element).
-    parent_defect_index : int or None
-        Index of defect structure to build on (None = use default parent)
-    input_structure : Atoms or None
-        Structure to use as parent (None = use container default)
-    forbid_uids : list of int or None
-        UIDs to exclude from removal
-    protect_history : bool
-        Protect atoms from previous defects
-
-    Returns
-    -------
-    StructureContainer with new vacancy added
-    """
-
-    import numpy as np
-
-    container = structure_container
-
-    # Resolve parent structure
-    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
-    parent = container.get_structure(parent_idx)
-
-    atoms = ensure_uids(parent["structure"]).copy()
-    existing_events = parent["events"].copy()
-
-    # Find pristine ancestor
-    pristine_idx = container._find_pristine_index(parent_idx)
-
-    # Set up random selection
-    rng = np.random.default_rng(seed if seed is not None else 0)
-    atoms_copy = ensure_uids(atoms).copy()
-    validate_atoms_arrays(atoms_copy)
-    uids = atoms_copy.arrays[UID_KEY].astype(int)
-    syms = np.array(atoms_copy.get_chemical_symbols(), dtype=object)
-
-    # Build forbid set
-    forbid = set() if forbid_uids is None else set(map(int, forbid_uids))
-    if protect_history:
-        forbid |= _protected_uids_from_events(existing_events)
-
-    # Find candidates
-    if isinstance(vacancy_element, list):
-        if n != len(vacancy_element):
-            raise ValueError(
-                f"n={n} must equal len(vacancy_element)={len(vacancy_element)} when vacancy_element is a list"
-            )
-        pick_idx = []
-        used = set()
-        for elem in vacancy_element:
-            cand = [
-                i
-                for i in range(len(atoms_copy))
-                if syms[i] == elem and int(uids[i]) not in forbid and i not in used
-            ]
-            if len(cand) == 0:
-                raise ValueError(f"No candidates left for element '{elem}'")
-            chosen = int(rng.choice(cand))
-            pick_idx.append(chosen)
-            used.add(chosen)
-    elif vacancy_element is None:
-        cand = [i for i in range(len(atoms_copy)) if int(uids[i]) not in forbid]
-        if len(cand) < n:
-            raise ValueError(f"Not enough candidates: need {n}, have {len(cand)}")
-        pick_idx = rng.choice(cand, size=int(n), replace=False).tolist()
-    else:
-        cand = [
-            i
-            for i in range(len(atoms_copy))
-            if syms[i] == vacancy_element and int(uids[i]) not in forbid
-        ]
-        if len(cand) < n:
-            raise ValueError(f"Not enough candidates: need {n}, have {len(cand)}")
-        pick_idx = rng.choice(cand, size=int(n), replace=False).tolist()
-
-    # Record all events
-    new_events = []
-    for i in pick_idx:
-        site_uid = int(uids[i])
-        new_events.append(
-            {
-                "type": "vacancy",
-                "removed_element": str(syms[i]),
-                "site_uid": site_uid,
-                "site_pos0": atoms_copy.positions[i].tolist(),
-                "pos_at_removal": atoms_copy.positions[i].tolist(),
-            }
-        )
-
-    # Delete atoms
-    for i in sorted(map(int, pick_idx), reverse=True):
-        del atoms_copy[i]
-
-    validate_atoms_arrays(atoms_copy)
-    all_new_events = existing_events + new_events
-
-    # Build operation string
-    if n > 1:
-        operation_str = f"vacancy[{n}]"
-    else:
-        operation_str = f"vacancy[{new_events[0]['site_uid']}]"
-
-    # Store in container
-    container.add_defect(
-        atoms=atoms_copy,
-        operation=operation_str,
-        pristine_index=pristine_idx,
-        parent_index=parent_idx,
-        events=all_new_events,
-        metadata={
-            "parent_index": parent_idx,
-            "pristine_index": pristine_idx,
-            "seed": seed,
-        },
-    )
-
-    out_container = container
-    return out_container
-
-
-@as_function_node
-def CreateVacancyBatchFromIds(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    atom_ids: Optional[List[int]] = None,
-    separate_structures: bool = True,
-    forbid_atom_ids: Optional[List[int]] = None,
-    protect_history: bool = False,
-) -> StructureContainer:
-    """
-    Apply specific vacancy indices to multiple structures.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    target_indices : List[int]
-        Absolute indices of structures to modify
-    atom_ids : List[int]
-        Specific atom indices to remove for each target structure
-    separate_structures : bool (default=True)
-        True: Create separate structures for each atom in atom_ids
-        False: Create one structure with all vacancies per target
-    forbid_atom_ids : list of int or None
-        Atom IDs to exclude from removal
-    protect_history : bool
-        Protect atoms from previous defects
-
-    Returns
-    -------
-    StructureContainer with all new structures added
-
-    Notes
-    -----
-    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
-    etc. to get the target_indices before calling this function.
-    """
-    container = structure_container
-    rows_to_modify = target_indices
-
-    if separate_structures:
-        # Create separate structures for each atom_id
-        for parent_idx in rows_to_modify:
-            for atom_id in atom_ids:
-                container = CreateVacancyFromIds._original_func(
-                    structure_container=container,
-                    atom_ids=[atom_id],
-                    parent_defect_index=(
-                        parent_idx
-                        if not container._structures[parent_idx]["is_pristine"]
-                        else None
-                    ),
-                    input_structure=(
-                        container._structures[parent_idx]["structure"]
-                        if container._structures[parent_idx]["is_pristine"]
-                        else None
-                    ),
-                    forbid_atom_ids=forbid_atom_ids,
-                    protect_history=protect_history,
-                )
-    else:
-        # Apply all atom_ids to each target structure
-        for parent_idx in rows_to_modify:
-            container = CreateVacancyFromIds._original_func(
-                structure_container=container,
-                atom_ids=atom_ids,
-                parent_defect_index=(
-                    parent_idx
-                    if not container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                input_structure=(
-                    container._structures[parent_idx]["structure"]
-                    if container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                forbid_atom_ids=forbid_atom_ids,
-                protect_history=protect_history,
-            )
-
-    out_container = container
-    return out_container
-
-
-@as_function_node
-def CreateVacancyBatchFromSeed(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    n: int = 1,
-    seed: Optional[int] = None,
-    vacancy_element: Optional[Union[str, List[str]]] = None,
-    forbid_uids: Optional[List[int]] = None,
-    protect_history: bool = False,
-    n_structures: int = 1,
-) -> StructureContainer:
-    """
-    Apply random vacancies to multiple structures with reproducible seeds.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    target_indices : List[int]
-        Absolute indices of structures to modify
-    n : int
-        Number of vacancies to create per structure.
-        When vacancy_element is a list, n must equal len(vacancy_element).
-    seed : int or None
-        Base random seed (each structure uses different seeds)
-    vacancy_element : str, list of str, or None
-        Element to remove (e.g., 'Al'). None = any element.
-        Pass a list to fix per-vacancy elements (e.g., ['Al', 'Mg']).
-    forbid_uids : list of int or None
-        UIDs to exclude from removal
-    protect_history : bool
-        Protect atoms from previous defects
-    n_structures : int
-        Number of structures to create from each parent. Default=1 (backward compatible).
-        If n_structures > 1, creates n_structures copies from each parent index
-        with incrementing seeds: seed, seed+1, seed+2, etc.
-
-    Returns
-    -------
-    StructureContainer with all new structures added
-
-    Notes
-    -----
-    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
-    etc. to get the target_indices before calling this function.
-
-    Examples
-    --------
-    >>> # Create 100 structures from pristine, each with 2 random vacancies
-    >>> container = create_vacancy_batch_from_seed(
-    ...     structure_container=container,
-    ...     target_indices=[0],  # pristine
-    ...     n=2,                 # 2 vacancies per structure
-    ...     n_structures=100,    # Create 100 separate structures
-    ...     seed=0
-    ... )
-
-    >>> # Create 50 structures from two different parents
-    >>> container = create_vacancy_batch_from_seed(
-    ...     structure_container=container,
-    ...     target_indices=[0, 5],  # Two different structures
-    ...     n=2,
-    ...     n_structures=50,         # 50 from each = 100 total
-    ...     seed=0
-    ... )
-    """
-    container = structure_container
-    rows_to_modify = target_indices
-
-    # Apply vacancy to each selected structure
-    # For each parent, create n_structures copies with incrementing seeds
-    structure_counter = 0
-    for parent_idx in rows_to_modify:
-        for copy_idx in range(n_structures):
-            structure_seed = seed + structure_counter if seed is not None else None
-            container = CreateVacancyFromSeed._original_func(
-                structure_container=container,
-                n=n,
-                seed=structure_seed,
-                vacancy_element=vacancy_element,
-                parent_defect_index=(
-                    parent_idx
-                    if not container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                input_structure=(
-                    container._structures[parent_idx]["structure"]
-                    if container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                forbid_uids=forbid_uids,
-                protect_history=protect_history,
-            )
-            structure_counter += 1
-
-    out_container = container
-    return out_container
-
-
-# ============================================================================
-# Substitution Creation Functions
-# ============================================================================
-
-
-@as_function_node
-def CreateSubstitutionFromIds(
-    structure_container: StructureContainer,
-    atom_ids: List[int],
-    to_element: str,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-    forbid_atom_ids: Optional[List[int]] = None,
-    protect_history: bool = False,
-) -> StructureContainer:
-    """
-    Create substitutions at specific atom indices.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    atom_ids : List[int]
-        Specific atom indices to substitute (can determine from_element from structure)
-    to_element : str
-        Element to substitute with
-    parent_defect_index : int or None
-        Index of defect structure to build on (None = use default parent)
-    input_structure : Atoms or None
-        Structure to use as parent (None = use container default)
-    forbid_atom_ids : list of int or None
-        Atom IDs to exclude from substitution
-    protect_history : bool
-        Protect atoms from previous defects
-
-    Returns
-    -------
-    StructureContainer with new substitution added
-    """
-    import numpy as np
-
-    container = structure_container
-
-    # Resolve parent structure
-    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
-    parent = container.get_structure(parent_idx)
-
-    atoms = ensure_uids(parent["structure"]).copy()
-    existing_events = parent["events"].copy()
-
-    # Find pristine ancestor
-    pristine_idx = container._find_pristine_index(parent_idx)
-
-    # Validate indices
-    uids = atoms.arrays[UID_KEY].astype(int)
-    syms = np.array(atoms.get_chemical_symbols(), dtype=object)
-
-    # Check all indices are valid
-    for idx in atom_ids:
-        if not (0 <= idx < len(atoms)):
-            raise IndexError(
-                f"Substitution index {idx} is out of range for a structure with {len(atoms)} atoms."
-            )
-
-    # Build forbid set
-    forbid = set() if forbid_atom_ids is None else set(map(int, forbid_atom_ids))
-    if protect_history:
-        forbid |= _protected_uids_from_events(existing_events)
-
-    # Filter out forbidden indices
-    valid_indices = [idx for idx in atom_ids if int(uids[idx]) not in forbid]
-
-    if len(valid_indices) == 0:
-        raise ValueError("No valid indices after applying forbid_atom_ids filters.")
-
-    # Record all events and apply substitutions
-    new_events = []
-    for i in valid_indices:
-        atom_uid = int(uids[i])
-        site_uid = atom_uid
-        from_element = str(syms[i])
-        site_pos0 = atoms.positions[i].tolist()
-
-        new_events.append(
-            {
-                "type": "substitution",
-                "from": from_element,
-                "to": str(to_element),
-                "atom_uid": atom_uid,
-                "site_uid": site_uid,
-                "site_pos0": site_pos0,
-                "pos_at_creation": atoms.positions[i].tolist(),
-            }
-        )
-
-        atoms[i].symbol = to_element
-
-    all_new_events = existing_events + new_events
-
-    # Build operation string
-    if len(valid_indices) > 1:
-        # Use first substitution as reference
-        operation_str = (
-            f"substitution[{len(valid_indices)}:{new_events[0]['from']}->{to_element}]"
-        )
-    else:
-        operation_str = f"substitution[{new_events[0]['from']}->{to_element}]"
-
-    # Store in container
-    container.add_defect(
-        atoms=atoms,
-        operation=operation_str,
-        pristine_index=pristine_idx,
-        parent_index=parent_idx,
-        events=all_new_events,
-        metadata={"parent_index": parent_idx, "pristine_index": pristine_idx},
-    )
-
-    out_container = container
-    return out_container
-
-
-@as_function_node
-def CreateSubstitutionFromSeed(
-    structure_container: StructureContainer,
-    n: int = 1,
-    seed: Optional[int] = None,
-    from_element: str = "Al",
-    to_element: str = "Mg",
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-    forbid_uids: Optional[List[int]] = None,
-    protect_history: bool = False,
-) -> StructureContainer:
-    """
-    Create random substitutions with reproducible seed.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    n : int
-        Number of substitutions to create
-    seed : int or None
-        Random seed for reproducibility
-    from_element : str
-        Element to replace
-    to_element : str
-        Element to substitute with
-    parent_defect_index : int or None
-        Index of defect structure to build on (None = use default parent)
-    input_structure : Atoms or None
-        Structure to use as parent (None = use container default)
-    forbid_uids : list of int or None
-        UIDs to exclude from substitution
-    protect_history : bool
-        Protect atoms from previous defects
-
-    Returns
-    -------
-    StructureContainer with new substitution added
-    """
-    import numpy as np
-
-    container = structure_container
-
-    # Resolve parent structure
-    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
-    parent = container.get_structure(parent_idx)
-
-    atoms = ensure_uids(parent["structure"]).copy()
-    existing_events = parent["events"].copy()
-
-    # Find pristine ancestor
-    pristine_idx = container._find_pristine_index(parent_idx)
-
-    # Set up random selection
-    rng = np.random.default_rng(seed if seed is not None else 0)
-    uids = atoms.arrays[UID_KEY].astype(int)
-    syms = np.array(atoms.get_chemical_symbols(), dtype=object)
-
-    # Build forbid set
-    forbid = set() if forbid_uids is None else set(map(int, forbid_uids))
-    if protect_history:
-        forbid |= _protected_uids_from_events(existing_events)
-
-    # Find candidates
-    cand = [
-        i
-        for i in range(len(atoms))
-        if syms[i] == from_element and int(uids[i]) not in forbid
-    ]
-
-    if n > len(cand):
-        raise ValueError(
-            f"Not enough candidates to substitute {from_element}->{to_element}: need {n}, have {len(cand)}"
-        )
-
-    pick_idx = rng.choice(cand, size=int(n), replace=False)
-
-    # Record events and apply substitutions
-    new_events = []
-    for i in pick_idx:
-        atom_uid = int(uids[i])
-        site_uid = atom_uid
-        site_pos0 = atoms.positions[i].tolist()
-
-        new_events.append(
-            {
-                "type": "substitution",
-                "from": str(from_element),
-                "to": str(to_element),
-                "atom_uid": atom_uid,
-                "site_uid": site_uid,
-                "site_pos0": site_pos0,
-                "pos_at_creation": atoms.positions[i].tolist(),
-            }
-        )
-
-    syms[pick_idx] = to_element
-    atoms.set_chemical_symbols(syms.tolist())
-
-    all_new_events = existing_events + new_events
-
-    # Build operation string
-    if n > 1:
-        operation_str = f"substitution[{n}:{from_element}->{to_element}]"
-    else:
-        operation_str = f"substitution[{from_element}->{to_element}]"
-
-    # Store in container
-    container.add_defect(
-        atoms=atoms,
-        operation=operation_str,
-        pristine_index=pristine_idx,
-        parent_index=parent_idx,
-        events=all_new_events,
-        metadata={
-            "parent_index": parent_idx,
-            "pristine_index": pristine_idx,
-            "seed": seed,
-        },
-    )
-
-    out_container = container
-    return out_container
-
-
-@as_function_node
-def CreateSubstitutionBatchFromIds(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    atom_ids: Optional[List[int]] = None,
-    to_element: str = "Mg",
-    separate_structures: bool = True,
-    forbid_atom_ids: Optional[List[int]] = None,
-    protect_history: bool = False,
-) -> StructureContainer:
-    """
-    Apply specific substitution indices to multiple structures.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    target_indices : List[int]
-        Absolute indices of structures to modify
-    atom_ids : List[int]
-        Specific atom indices to substitute for each target structure
-    to_element : str
-        Element to substitute with
-    separate_structures : bool (default=True)
-        True: Create separate structures for each atom in atom_ids
-        False: Create one structure with all substitutions per target
-    forbid_atom_ids : list of int or None
-        Atom IDs to exclude from substitution
-    protect_history : bool
-        Protect atoms from previous defects
-
-    Returns
-    -------
-    StructureContainer with all new structures added
-
-    Notes
-    -----
-    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
-    etc. to get the target_indices before calling this function.
-    """
-    container = structure_container
-    rows_to_modify = target_indices
-
-    if separate_structures:
-        # Create separate structures for each atom_id
-        for parent_idx in rows_to_modify:
-            for atom_id in atom_ids:
-                container = CreateSubstitutionFromIds._original_func(
-                    structure_container=container,
-                    atom_ids=[atom_id],
-                    to_element=to_element,
-                    parent_defect_index=(
-                        parent_idx
-                        if not container._structures[parent_idx]["is_pristine"]
-                        else None
-                    ),
-                    input_structure=(
-                        container._structures[parent_idx]["structure"]
-                        if container._structures[parent_idx]["is_pristine"]
-                        else None
-                    ),
-                    forbid_atom_ids=forbid_atom_ids,
-                    protect_history=protect_history,
-                )
-    else:
-        # Apply all atom_ids to each target structure
-        for parent_idx in rows_to_modify:
-            container = CreateSubstitutionFromIds._original_func(
-                structure_container=container,
-                atom_ids=atom_ids,
-                to_element=to_element,
-                parent_defect_index=(
-                    parent_idx
-                    if not container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                input_structure=(
-                    container._structures[parent_idx]["structure"]
-                    if container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                forbid_atom_ids=forbid_atom_ids,
-                protect_history=protect_history,
-            )
-
-    out_container = container
-    return out_container
-
-
-@as_function_node
-def CreateSubstitutionBatchFromSeed(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    n: int = 1,
-    seed: Optional[int] = None,
-    from_element: str = "Al",
-    to_element: str = "Mg",
-    forbid_uids: Optional[List[int]] = None,
-    protect_history: bool = False,
-    n_structures: int = 1,
-) -> StructureContainer:
-    """
-    Apply random substitutions to multiple structures with reproducible seeds.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify
-    target_indices : List[int]
-        Absolute indices of structures to modify
-    n : int
-        Number of substitutions to create per structure
-    seed : int or None
-        Base random seed (each structure uses different seeds)
-    from_element : str
-        Element to replace
-    to_element : str
-        Element to substitute with
-    forbid_uids : list of int or None
-        UIDs to exclude from substitution
-    protect_history : bool
-        Protect atoms from previous defects
-    n_structures : int
-        Number of structures to create from each parent. Default=1 (backward compatible).
-        If n_structures > 1, creates n_structures copies from each parent index
-        with incrementing seeds: seed, seed+1, seed+2, etc.
-
-    Returns
-    -------
-    StructureContainer with all new structures added
-
-    Notes
-    -----
-    Use container methods like filter_by_generation(), filter_by_pristine_structures(),
-    etc. to get the target_indices before calling this function.
-
-    Examples
-    --------
-    >>> # Create 100 structures from pristine, each with 2 random Al→Mg substitutions
-    >>> container = create_substitution_batch_from_seed(
-    ...     structure_container=container,
-    ...     target_indices=[0],  # pristine
-    ...     n=2,                 # 2 substitutions per structure
-    ...     n_structures=100,    # Create 100 separate structures
-    ...     seed=0,
-    ...     from_element='Al',
-    ...     to_element='Mg',
-    ... )
-    """
-    container = structure_container
-    rows_to_modify = target_indices
-
-    structure_counter = 0
-    for parent_idx in rows_to_modify:
-        for copy_idx in range(n_structures):
-            structure_seed = seed + structure_counter if seed is not None else None
-            container = CreateSubstitutionFromSeed._original_func(
-                structure_container=container,
-                n=n,
-                seed=structure_seed,
-                from_element=from_element,
-                to_element=to_element,
-                parent_defect_index=(
-                    parent_idx
-                    if not container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                input_structure=(
-                    container._structures[parent_idx]["structure"]
-                    if container._structures[parent_idx]["is_pristine"]
-                    else None
-                ),
-                forbid_uids=forbid_uids,
-                protect_history=protect_history,
-            )
-            structure_counter += 1
-
-    out_container = container
-    return out_container
-
-
-# ============================================================================
-# Interstitial Creation Functions
-# ============================================================================
-
-
-@as_function_node
-def CreateInterstitialFromIds(
-    structure_container: StructureContainer,
-    sublattice: "np.ndarray",
-    site_ids: List[int],
-    element: str,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-) -> StructureContainer:
-    """
-    Create interstitials at specific sites from an interstitial sublattice.
-
-    Mirrors ``create_vacancy_from_ids`` / ``create_substitution_from_ids``:
-    ``site_ids`` are indices into ``sublattice``, exactly as ``atom_ids`` are
-    indices into the host structure for the other defect types.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify.
-    sublattice : (N, 3) array-like
-        Cartesian coordinates (Å) of the interstitial sublattice — e.g. the
-        output of ``get_voronoi_interstitial_sites`` or ``get_voronoi_interstitial_sites_pymatgen``.
-    site_ids : list of int
-        Indices into ``sublattice`` selecting which sites to occupy.
-    element : str
-        Chemical symbol of the atom to insert (e.g. ``'Mg'``).
-    parent_defect_index : int or None
-        Index of a defect structure to build on (None = use pristine).
-    input_structure : Atoms or None
-        Explicit parent structure (alternative to ``parent_defect_index``).
-
-    Returns
-    -------
-    StructureContainer with the new interstitial structure added.
-    """
-    import numpy as np
-
-    container = structure_container
-
-    # Resolve parent structure
-    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
-    parent = container.get_structure(parent_idx)
-
-    atoms = ensure_uids(parent["structure"]).copy()
-    existing_events = parent["events"].copy()
-
-    # Find pristine ancestor
-    pristine_idx = container._find_pristine_index(parent_idx)
-
-    # Validate sublattice and site_ids
-    sublattice_arr = np.asarray(sublattice, float)
-    if sublattice_arr.ndim != 2 or sublattice_arr.shape[1] != 3:
-        raise ValueError(
-            f"sublattice must have shape (N, 3), got {sublattice_arr.shape}."
-        )
-    if len(site_ids) == 0:
-        raise ValueError("site_ids is empty — provide at least one site index.")
-    for sid in site_ids:
-        if not (0 <= sid < len(sublattice_arr)):
-            raise IndexError(
-                f"site_id {sid} is out of range for sublattice with {len(sublattice_arr)} sites."
-            )
-
-    validate_atoms_arrays(atoms)
-
-    # Insert one atom per requested site
-    new_events = []
-    for sid in site_ids:
-        pos = sublattice_arr[int(sid)].tolist()
-        new_uid = next_uid(atoms)
-        atoms = append_atom_with_uid(atoms, element, pos)
-        validate_atoms_arrays(atoms)
-        new_events.append(
-            {
-                "type": "interstitial",
-                "element": str(element),
-                "atom_uid": int(new_uid),
-                "pos0": pos,
-                "site_label": f"site_{int(sid)}",
-            }
-        )
-
-    all_new_events = existing_events + new_events
-
-    n = len(site_ids)
-    operation_str = (
-        f"interstitial[{n}:{element}]" if n > 1 else f"interstitial[{element}]"
-    )
-
-    container.add_defect(
-        atoms=atoms,
-        operation=operation_str,
-        pristine_index=pristine_idx,
-        parent_index=parent_idx,
-        events=all_new_events,
-        metadata={"parent_index": parent_idx, "pristine_index": pristine_idx},
-    )
-
-    return container
-
-
-@as_function_node
-def CreateInterstitialFromSeed(
-    structure_container: StructureContainer,
-    sublattice: "np.ndarray",
-    element: str,
-    n: int = 1,
-    seed: Optional[int] = None,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-) -> StructureContainer:
-    """
-    Create interstitials by randomly sampling from an interstitial sublattice.
-
-    Mirrors ``create_vacancy_from_seed`` / ``create_substitution_from_seed``:
-    ``sublattice`` defines the candidate pool; ``n`` and ``seed`` control
-    random selection without replacement.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify.
-    sublattice : (N, 3) array-like
-        Cartesian coordinates (Å) of all candidate interstitial sites — e.g.
-        the ``all_sites`` output of ``get_voronoi_interstitial_sites``.
-    element : str
-        Chemical symbol of the atom to insert (e.g. ``'Mg'``).
-    n : int
-        Number of interstitial atoms to insert (default 1).
-    seed : int or None
-        Random seed for reproducibility.
-    parent_defect_index : int or None
-        Index of a defect structure to build on (None = use pristine).
-    input_structure : Atoms or None
-        Explicit parent structure (alternative to ``parent_defect_index``).
-
-    Returns
-    -------
-    StructureContainer with the new interstitial structure added.
-    """
-    import numpy as np
-
-    container = structure_container
-
-    # Resolve parent structure
-    parent_idx = _resolve_parent(container, parent_defect_index, input_structure)
-    parent = container.get_structure(parent_idx)
-
-    atoms = ensure_uids(parent["structure"]).copy()
-    existing_events = parent["events"].copy()
-
-    # Find pristine ancestor
-    pristine_idx = container._find_pristine_index(parent_idx)
-
-    # Validate sublattice
-    sublattice_arr = np.asarray(sublattice, float)
-    if sublattice_arr.ndim != 2 or sublattice_arr.shape[1] != 3:
-        raise ValueError(
-            f"sublattice must have shape (N, 3), got {sublattice_arr.shape}."
-        )
-    if len(sublattice_arr) == 0:
-        raise ValueError("sublattice is empty — no candidate sites to sample from.")
-    if n > len(sublattice_arr):
-        raise ValueError(
-            f"Requested n={n} interstitials but sublattice only has {len(sublattice_arr)} sites."
-        )
-
-    arrays_copy = ensure_uids(atoms).copy()
-    validate_atoms_arrays(arrays_copy)
-
-    # Sample without replacement
-    rng = np.random.default_rng(seed if seed is not None else 0)
-    picked_ids = rng.choice(len(sublattice_arr), size=int(n), replace=False)
-
-    new_events = []
-    for sid in picked_ids:
-        pos = sublattice_arr[int(sid)].tolist()
-        new_uid = next_uid(arrays_copy)
-        arrays_copy = append_atom_with_uid(arrays_copy, element, pos)
-        validate_atoms_arrays(arrays_copy)
-        new_events.append(
-            {
-                "type": "interstitial",
-                "element": str(element),
-                "atom_uid": int(new_uid),
-                "pos0": pos,
-                "site_label": f"site_{int(sid)}",
-            }
-        )
-
-    all_new_events = existing_events + new_events
-    operation_str = (
-        f"interstitial[{n}:{element}]" if n > 1 else f"interstitial[{element}]"
-    )
-
-    container.add_defect(
-        atoms=arrays_copy,
-        operation=operation_str,
-        pristine_index=pristine_idx,
-        parent_index=parent_idx,
-        events=all_new_events,
-        metadata={
-            "parent_index": parent_idx,
-            "pristine_index": pristine_idx,
-            "seed": seed,
-        },
-    )
-
-    return container
-
-
-@as_function_node
-def CreateInterstitialBatchFromIds(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    sublattice: "np.ndarray",
-    element: str,
-    site_ids: Optional[List[int]] = None,
-    separate_structures: bool = True,
-) -> StructureContainer:
-    """
-    Apply specific interstitial sites to multiple parent structures.
-
-    Mirrors ``create_vacancy_batch_from_ids`` / ``create_substitution_batch_from_ids``.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify.
-    target_indices : List[int]
-        Absolute indices of parent structures in the container.
-    sublattice : (N, 3) array-like
-        Cartesian coordinates (Å) of the interstitial sublattice.
-    element : str
-        Chemical symbol of the atom to insert.
-    site_ids : list of int or None
-        Indices into ``sublattice`` selecting which sites to use.
-        ``None`` (default) uses every site in ``sublattice``.
-    separate_structures : bool
-        ``True`` (default): one new structure per site per parent.
-        ``False``: one new structure per parent containing all selected sites.
-
-    Returns
-    -------
-    StructureContainer with all new structures added.
-    """
-    import numpy as np
-
-    container = structure_container
-    sublattice_arr = np.asarray(sublattice, float)
-    effective_ids = (
-        list(range(len(sublattice_arr))) if site_ids is None else list(site_ids)
-    )
-
-    if separate_structures:
-        for parent_idx in target_indices:
-            _pd = (
-                parent_idx
-                if not container._structures[parent_idx]["is_pristine"]
-                else None
-            )
-            _is = (
-                container._structures[parent_idx]["structure"]
-                if container._structures[parent_idx]["is_pristine"]
-                else None
-            )
-            for sid in effective_ids:
-                container = CreateInterstitialFromIds._original_func(
-                    structure_container=container,
-                    sublattice=sublattice_arr,
-                    site_ids=[sid],
-                    element=element,
-                    parent_defect_index=_pd,
-                    input_structure=_is,
-                )
-    else:
-        for parent_idx in target_indices:
-            _pd = (
-                parent_idx
-                if not container._structures[parent_idx]["is_pristine"]
-                else None
-            )
-            _is = (
-                container._structures[parent_idx]["structure"]
-                if container._structures[parent_idx]["is_pristine"]
-                else None
-            )
-            container = CreateInterstitialFromIds._original_func(
-                structure_container=container,
-                sublattice=sublattice_arr,
-                site_ids=effective_ids,
-                element=element,
-                parent_defect_index=_pd,
-                input_structure=_is,
-            )
-
-    return container
-
-
-@as_function_node
-def CreateInterstitialBatchFromSeed(
-    structure_container: StructureContainer,
-    target_indices: List[int],
-    sublattice: "np.ndarray",
-    element: str,
-    n: int = 1,
-    seed: Optional[int] = None,
-    n_structures: int = 1,
-) -> StructureContainer:
-    """
-    Randomly sample interstitial sites for multiple parent structures.
-
-    Mirrors ``create_vacancy_batch_from_seed`` / ``create_substitution_batch_from_seed``.
-
-    Parameters
-    ----------
-    structure_container : StructureContainer
-        The container with structures to modify.
-    target_indices : List[int]
-        Absolute indices of parent structures in the container.
-    sublattice : (N, 3) array-like
-        Cartesian coordinates (Å) of all candidate interstitial sites — e.g.
-        the ``all_sites`` output of ``get_voronoi_interstitial_sites``.
-    element : str
-        Chemical symbol of the atom to insert.
-    n : int
-        Number of interstitial atoms per structure (default 1).
-    seed : int or None
-        Base random seed; increments by 1 for each new structure so every
-        structure is reproducibly distinct.
-    n_structures : int
-        Number of structures to generate from each parent (default 1).
-
-    Returns
-    -------
-    StructureContainer with all new structures added.
-    """
-    import numpy as np
-
-    container = structure_container
-    sublattice_arr = np.asarray(sublattice, float)
-
-    structure_counter = 0
-    for parent_idx in target_indices:
-        _pd = (
-            parent_idx if not container._structures[parent_idx]["is_pristine"] else None
-        )
-        _is = (
-            container._structures[parent_idx]["structure"]
-            if container._structures[parent_idx]["is_pristine"]
-            else None
-        )
-        for _ in range(n_structures):
-            structure_seed = seed + structure_counter if seed is not None else None
-            container = CreateInterstitialFromSeed._original_func(
-                structure_container=container,
-                sublattice=sublattice_arr,
-                element=element,
-                n=n,
-                seed=structure_seed,
-                parent_defect_index=_pd,
-                input_structure=_is,
-            )
-            structure_counter += 1
-
-    return container
