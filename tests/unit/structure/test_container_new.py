@@ -40,7 +40,9 @@ class TestAddPristine(unittest.TestCase):
     def test_duplicate_pristine_is_not_re_added(self):
         atoms = make_atoms()
         container = AddPristine._original_func(atoms=atoms)
-        container = AddPristine._original_func(structure_container=container, atoms=atoms)
+        container = AddPristine._original_func(
+            structure_container=container, atoms=atoms
+        )
         self.assertEqual(len(container), 1)
 
     def test_duplicate_check_disabled(self):
@@ -167,7 +169,10 @@ class TestCreateDefectFromIds(unittest.TestCase):
             atom_ids=[5],
             to_element="Mg",
         )
-        vacancy_row, substitution_row = container._structures[1], container._structures[2]
+        vacancy_row, substitution_row = (
+            container._structures[1],
+            container._structures[2],
+        )
         self.assertEqual(vacancy_row["generation"], 1)
         self.assertEqual(substitution_row["generation"], 1)
         self.assertEqual(vacancy_row["parent_index"], 0)
@@ -196,7 +201,8 @@ class TestCreateDefectFromSeed(unittest.TestCase):
             seed=7,
         )
         self.assertEqual(
-            c1._structures[-1]["operations_short"], c2._structures[-1]["operations_short"]
+            c1._structures[-1]["operations_short"],
+            c2._structures[-1]["operations_short"],
         )
 
     def test_different_seed_differs(self):
@@ -217,7 +223,8 @@ class TestCreateDefectFromSeed(unittest.TestCase):
             seed=2,
         )
         self.assertNotEqual(
-            c1._structures[-1]["operations_short"], c2._structures[-1]["operations_short"]
+            c1._structures[-1]["operations_short"],
+            c2._structures[-1]["operations_short"],
         )
 
     def test_vacancy_element_list_mode(self):

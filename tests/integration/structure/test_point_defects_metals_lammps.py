@@ -109,7 +109,9 @@ class TestPointDefectsMetalsWithLammps(unittest.TestCase):
         # Running LAMMPS on the extracted `structure` objects must not have
         # mutated the container's own bookkeeping.
         self.assertEqual(len(self.container), 3)
-        self.assertEqual(self.container._structures[1]["operations_short"], "vacancy[0]")
+        self.assertEqual(
+            self.container._structures[1]["operations_short"], "vacancy[0]"
+        )
         self.assertEqual(
             self.container._structures[2]["operations_short"], "interstitial[Al]"
         )
