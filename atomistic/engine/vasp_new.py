@@ -36,6 +36,11 @@ def _ISMEAR(smearing_type, smearing_order):
         if smearing_order < 1:
             raise ValueError("Methfessel-Paxton order must be >= 1")
         return smearing_order
+    else:
+        raise ValueError(
+            f"Unknown smearing_type {smearing_type!r}; expected one of "
+            "'gaussian', 'methfessel-paxton', 'fermi-dirac'"
+        )
 
 
 _IBRION_MINIMIZE = {
@@ -207,10 +212,11 @@ def _generate_hash(io_bundle: VaspInputResources) -> str:
         str(scf.functional),
         str(scf.energy_cutoff),
         str(scf.kpoints),
+        str(scf.kpoint_offset),
         str(scf.electronic_convergence),
         str(scf.smearing_type),
         str(scf.smearing_width),
-        str(scf.algorithm),
+        str(scf.smearing_order),
         str(scf.num_electronic_steps),
         str(calc.minimization),
         str(calc.md),
