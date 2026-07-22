@@ -506,6 +506,8 @@ def ParseLammpsOutput(
             "CreateLammpsMDInput, CreateLammpsStaticInput, or "
             "CreateLammpsMinimizeInput before parsing."
         )
+    if io_bundle.mode not in ("md", "static", "minimize"):
+        raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
 
     generic = _parse_lammps_raw(
         io_bundle, dump_h5_file_name, dump_out_file_name, log_lammps_file_name
