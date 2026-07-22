@@ -1042,12 +1042,17 @@ class TestCreateDefectFromSeedMoreEdgeCases(unittest.TestCase):
             to_element="Mg",
             protect_history=True,
         )
-        self.assertEqual(container._structures[-1]["operation"], "substitution[2:Al->Mg]")
+        self.assertEqual(
+            container._structures[-1]["operation"], "substitution[2:Al->Mg]"
+        )
 
     def test_interstitial_missing_sublattice_raises(self):
         with self.assertRaises(ValueError):
             CreateDefectFromSeed._original_func(
-                structure_container=self.container, defect_type="interstitial", n=1, seed=0
+                structure_container=self.container,
+                defect_type="interstitial",
+                n=1,
+                seed=0,
             )
 
     def test_interstitial_bad_shape_raises(self):
@@ -1202,7 +1207,9 @@ class TestSiteFinderPrimitiveRepeat(unittest.TestCase):
     def test_voronoi_mismatched_primitive_repeat_raises(self):
         prim = bulk("Al", cubic=True)
         with self.assertRaises(ValueError):
-            GetVoronoiInterstitialSites._original_func(make_atoms(), primitive_atoms=prim)
+            GetVoronoiInterstitialSites._original_func(
+                make_atoms(), primitive_atoms=prim
+            )
 
     def test_delaunay_primitive_and_repeat_tiles(self):
         prim = bulk("Al", cubic=True)
