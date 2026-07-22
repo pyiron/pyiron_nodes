@@ -1,8 +1,13 @@
+import subprocess
+import sys
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 from ase.build import bulk
 
+import pyiron_nodes.atomistic.structure.container_new as container_new
 from pyiron_nodes.atomistic.structure.container_new import (
     StructureContainer,
     AddPristine,
@@ -24,6 +29,16 @@ from pyiron_nodes.atomistic.structure.container_new import (
     GetDelaunayInterstitialSites,
     FilterByGeneration,
     FilterByStoichiometry,
+    FilterByIndices,
+    FilterByMaxGeneration,
+    FilterByOperationsShort,
+    FilterByOperationsContains,
+    FilterByUniqueId,
+    FilterByNumberOfAtoms,
+    FilterByElementCount,
+    FilterByParent,
+    filter_by_condition,
+    GetStructure,
     GetStructureTable,
     GetDefectTable,
     GetPristineTable,
@@ -32,6 +47,16 @@ from pyiron_nodes.atomistic.structure.container_new import (
     LatestPristineIndex,
     ResolveDefectRow,
     ResolveAnyRow,
+    ensure_uids,
+    next_uid,
+    uid_to_index,
+    validate_atoms_arrays,
+    make_operations_short,
+    _protected_uids_from_events,
+    _resolve_parent,
+    _filter_cluster_tile_interstitial_candidates,
+    _deduplicate_frac,
+    _extract_defect_frac_coords,
 )
 
 try:
@@ -631,6 +656,599 @@ class TestGetVoronoiInterstitialSitesPymatgen(unittest.TestCase):
             atoms
         )
         self.assertGreater(len(all_sites), 0)
+
+
+class TestModuleLevelHelperEdgeCases(unittest.TestCase):
+    def test_next_uid_returns_zero_when_key_absent(self):
+        atoms = bulk("Al", cubic=True)
+        self.assertEqual(next_uid(atoms), 0)
+
+    def test_uid_to_index_returns_none_when_key_absent(self):
+        atoms = bulk("Al", cubic=True)
+        self.assertIsNone(uid_to_index(atoms, 0))
+
+    def test_validate_atoms_arrays_raises_on_length_mismatch(self):
+        atoms = ensure_uids(bulk("Al", cubic=True))
+        atoms.arrays["uid"] = atoms.arrays["uid"][:-1]
+        with self.assertRaises(ValueError):
+            validate_atoms_arrays(atoms)
+
+    def test_make_operations_short_empty_events(self):
+        self.assertEqual(make_operations_short([]), "no_operations")
+
+    def test_protected_uids_from_events_substitution_atom_uid(self):
+        events = [{"type": "substitution", "atom_uid": 5}]
+        self.assertEqual(_protected_uids_from_events(events), {5})
+
+    def test_protected_uids_from_events_substitution_site_uid_fallback(self):
+        # Real substitution events always carry both atom_uid and site_uid;
+        # this exercises the defensive fallback for the case they don't.
+        events = [{"type": "substitution", "site_uid": 7}]
+        self.assertEqual(_protected_uids_from_events(events), {7})
+
+    def test_protected_uids_from_events_interstitial(self):
+        events = [{"type": "interstitial", "atom_uid": 9}]
+        self.assertEqual(_protected_uids_from_events(events), {9})
+
+    def test_protected_uids_from_events_unknown_type_ignored(self):
+        events = [{"type": "vacancy", "site_uid": 3}]
+        self.assertEqual(_protected_uids_from_events(events), set())
+
+
+class TestFilterAndSelectionNodeWrappers(unittest.TestCase):
+    """Covers the remaining Filter*/GetStructure node wrappers and the
+    underlying StructureContainer methods that TestFilterFunctions and
+    TestTableAndSelectionWrappers didn't already exercise."""
+
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+        self.container = CreateDefectFromIds._original_func(
+            structure_container=self.container, defect_type="vacancy", atom_ids=[0]
+        )
+        self.container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[5],
+            to_element="Mg",
+        )
+
+    def test_filter_by_indices(self):
+        rows = FilterByIndices._original_func(self.container, [0, 2])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1]["stoichiometry"], "Al107Mg1")
+
+    def test_filter_by_max_generation(self):
+        rows = FilterByMaxGeneration._original_func(self.container, 0)
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_by_operations_short_exact(self):
+        # A pattern with no "*"/"?"/"[" routes through the exact-match
+        # branch. Note "vacancy[0]" itself would NOT work here: fnmatch
+        # treats "[0]" as a character class (matches a single "0"), so any
+        # operations_short value with bracket notation can only be matched
+        # via the wildcard branch below, never exactly.
+        rows = FilterByOperationsShort._original_func(self.container, "pristine")
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["is_pristine"])
+
+    def test_filter_by_operations_short_wildcard(self):
+        rows = FilterByOperationsShort._original_func(self.container, "vacancy*")
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_by_operations_contains(self):
+        rows = FilterByOperationsContains._original_func(self.container, "substitution")
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_by_unique_id(self):
+        uid = self.container._structures[1]["unique_id"]
+        row = FilterByUniqueId._original_func(self.container, uid)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["unique_id"], uid)
+
+    def test_filter_by_number_of_atoms(self):
+        rows = FilterByNumberOfAtoms._original_func(self.container, 107)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["operations_short"], "vacancy[0]")
+
+    def test_filter_by_element_count_exact(self):
+        rows = FilterByElementCount._original_func(self.container, "Mg", exact_count=1)
+        self.assertEqual(len(rows), 1)
+
+    def test_filter_by_element_count_range(self):
+        rows = FilterByElementCount._original_func(
+            self.container, "Al", min_count=100, max_count=200
+        )
+        self.assertEqual(len(rows), 3)
+
+    def test_filter_by_parent(self):
+        rows = FilterByParent._original_func(self.container, 0)
+        self.assertEqual(len(rows), 2)
+
+    def test_filter_by_stoichiometry_none_returns_all(self):
+        rows = FilterByStoichiometry._original_func(self.container, None)
+        self.assertEqual(len(rows), 3)
+
+    def test_filter_by_condition(self):
+        rows = filter_by_condition(self.container, lambda s: s["generation"] == 1)
+        self.assertEqual(len(rows), 2)
+
+    def test_get_structure(self):
+        row = GetStructure._original_func(self.container, 1)
+        self.assertEqual(row["operations_short"], "vacancy[0]")
+
+    def test_get_structure_out_of_range_raises(self):
+        with self.assertRaises(IndexError):
+            GetStructure._original_func(self.container, 99)
+
+    def test_find_structure_index_identity_branch(self):
+        # Passing back the exact stored object (not a numerically-equal
+        # copy) hits the fast identity-check path in find_structure_index.
+        stored_atoms = self.container._structures[0]["structure"]
+        idx = FindStructureIndex._original_func(self.container, stored_atoms)
+        self.assertEqual(idx, 0)
+
+    def test_repr(self):
+        text = repr(self.container)
+        self.assertIn("3 structures", text)
+        self.assertIn("1 pristine", text)
+        self.assertIn("2 defects", text)
+
+    def test_find_pristine_index_fallback_walk(self):
+        # add_defect always stores a valid pristine_structure_index, so the
+        # walk-up-the-parent-chain fallback only triggers if that bookkeeping
+        # is ever missing/stale -- simulate that directly.
+        self.container._structures[1]["pristine_structure_index"] = -1
+        self.assertEqual(self.container._find_pristine_index(1), 0)
+
+
+class TestResolveParentEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+        self.container = CreateDefectFromIds._original_func(
+            structure_container=self.container, defect_type="vacancy", atom_ids=[0]
+        )
+
+    def test_both_parent_defect_index_and_input_structure_warns(self):
+        with self.assertWarns(UserWarning):
+            idx = _resolve_parent(
+                self.container,
+                parent_defect_index=1,
+                input_structure=self.atoms,
+            )
+        self.assertEqual(idx, 1)
+
+    def test_parent_defect_index_out_of_range_raises(self):
+        with self.assertRaises(IndexError):
+            _resolve_parent(self.container, parent_defect_index=99)
+
+    def test_parent_defect_index_pointing_to_pristine_raises(self):
+        with self.assertRaises(ValueError):
+            _resolve_parent(self.container, parent_defect_index=0)
+
+    def test_input_structure_not_found_adds_new_pristine(self):
+        other = bulk("Cu", cubic=True)  # different atom count than any stored row
+        idx = _resolve_parent(self.container, input_structure=other)
+        self.assertEqual(idx, len(self.container) - 1)
+        self.assertTrue(self.container._structures[idx]["is_pristine"])
+
+    def test_no_pristine_structure_raises(self):
+        empty = StructureContainer()
+        with self.assertRaises(ValueError):
+            _resolve_parent(empty)
+
+
+class TestCreateDefectFromIdsMoreEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+
+    def test_vacancy_atom_ids_none_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container, defect_type="vacancy"
+            )
+
+    def test_vacancy_index_out_of_range_raises(self):
+        with self.assertRaises(IndexError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="vacancy",
+                atom_ids=[99999],
+            )
+
+    def test_vacancy_protect_history(self):
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="vacancy",
+            atom_ids=[0],
+            parent_defect_index=None,
+        )
+        # Chain a second vacancy on top with protect_history -- exercises
+        # the forbid |= _protected_uids_from_events(...) line for vacancy.
+        container = CreateDefectFromIds._original_func(
+            structure_container=container,
+            defect_type="vacancy",
+            atom_ids=[5],
+            parent_defect_index=-1,
+            protect_history=True,
+        )
+        self.assertEqual(len(container._structures[-1]["structure"]), 106)
+
+    def test_substitution_atom_ids_none_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="substitution",
+                to_element="Mg",
+            )
+
+    def test_substitution_index_out_of_range_raises(self):
+        with self.assertRaises(IndexError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="substitution",
+                atom_ids=[99999],
+                to_element="Mg",
+            )
+
+    def test_substitution_protect_history(self):
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[0],
+            to_element="Mg",
+        )
+        container = CreateDefectFromIds._original_func(
+            structure_container=container,
+            defect_type="substitution",
+            atom_ids=[5],
+            to_element="Mg",
+            parent_defect_index=-1,
+            protect_history=True,
+        )
+        self.assertEqual(container._structures[-1]["generation"], 2)
+
+    def test_substitution_no_valid_indices_after_forbid_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="substitution",
+                atom_ids=[0],
+                to_element="Mg",
+                forbid_atom_ids=[0],
+            )
+
+    def test_interstitial_bad_sublattice_shape_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                sublattice=np.zeros((3, 2)),
+                site_ids=[0],
+                element="Mg",
+            )
+
+    def test_interstitial_empty_site_ids_raises(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        with self.assertRaises(ValueError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                sublattice=all_sites,
+                site_ids=[],
+                element="Mg",
+            )
+
+    def test_interstitial_site_id_out_of_range_raises(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        with self.assertRaises(IndexError):
+            CreateDefectFromIds._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                sublattice=all_sites,
+                site_ids=[len(all_sites) + 100],
+                element="Mg",
+            )
+
+
+class TestCreateDefectBatchFromIdsInterstitial(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+        _, self.all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+
+    def test_interstitial_batch_success(self):
+        container = CreateDefectBatchFromIds._original_func(
+            structure_container=self.container,
+            defect_type="interstitial",
+            target_indices=[0],
+            sublattice=self.all_sites,
+            site_ids=[0, 1],
+            element="Mg",
+            separate_structures=True,
+        )
+        self.assertEqual(len(container), 3)  # 1 pristine + 2 separate interstitials
+
+    def test_interstitial_batch_missing_sublattice_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectBatchFromIds._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                target_indices=[0],
+                element="Mg",
+            )
+
+
+class TestCreateDefectFromSeedMoreEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+
+    def test_unknown_defect_type_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container, defect_type="antisite", n=1, seed=0
+            )
+
+    def test_vacancy_element_list_no_candidates_for_element_raises(self):
+        # Container is pure Al; requesting a Mg vacancy leaves zero candidates.
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="vacancy",
+                n=2,
+                seed=0,
+                vacancy_element=["Al", "Mg"],
+            )
+
+    def test_vacancy_element_none_not_enough_candidates_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="vacancy",
+                n=1000,
+                seed=0,
+            )
+
+    def test_vacancy_element_single_string(self):
+        container = CreateDefectFromSeed._original_func(
+            structure_container=self.container,
+            defect_type="vacancy",
+            n=2,
+            seed=0,
+            vacancy_element="Al",
+        )
+        self.assertEqual(len(container._structures[-1]["structure"]), 106)
+
+    def test_vacancy_element_single_string_not_enough_candidates_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="vacancy",
+                n=1000,
+                seed=0,
+                vacancy_element="Al",
+            )
+
+    def test_substitution_protect_history_and_multi(self):
+        container = CreateDefectFromSeed._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            n=2,
+            seed=0,
+            from_element="Al",
+            to_element="Mg",
+            protect_history=True,
+        )
+        self.assertEqual(container._structures[-1]["operation"], "substitution[2:Al->Mg]")
+
+    def test_interstitial_missing_sublattice_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container, defect_type="interstitial", n=1, seed=0
+            )
+
+    def test_interstitial_bad_shape_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                n=1,
+                seed=0,
+                sublattice=np.zeros((3, 2)),
+                element="Mg",
+            )
+
+    def test_interstitial_empty_sublattice_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                n=1,
+                seed=0,
+                sublattice=np.zeros((0, 3)),
+                element="Mg",
+            )
+
+    def test_interstitial_n_exceeds_sublattice_raises(self):
+        with self.assertRaises(ValueError):
+            CreateDefectFromSeed._original_func(
+                structure_container=self.container,
+                defect_type="interstitial",
+                n=5,
+                seed=0,
+                sublattice=np.zeros((2, 3)),
+                element="Mg",
+            )
+
+
+class TestCreateDefectBatchFromSeedInterstitial(unittest.TestCase):
+    def test_interstitial_batch_success(self):
+        atoms = make_atoms()
+        container = AddPristine._original_func(atoms=atoms)
+        _, all_sites = GetVoronoiInterstitialSites._original_func(atoms)
+        container = CreateDefectBatchFromSeed._original_func(
+            structure_container=container,
+            defect_type="interstitial",
+            target_indices=[0],
+            sublattice=all_sites,
+            element="Mg",
+            n=1,
+            seed=0,
+            n_structures=2,
+        )
+        self.assertEqual(len(container), 3)  # 1 pristine + 2 seeded interstitials
+
+
+class TestDistanceGetterEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+
+    def test_substitution_distances_needs_at_least_two(self):
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[0],
+            to_element="Mg",
+        )
+        result = GetSubstitutionDistances._original_func(container, len(container) - 1)
+        self.assertEqual(result["distances"], {})
+        self.assertIn("message", result)
+
+    def test_interstitial_distances_needs_at_least_two(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="interstitial",
+            sublattice=all_sites,
+            site_ids=[0],
+            element="Mg",
+        )
+        result = GetInterstitialDistances._original_func(container, len(container) - 1)
+        self.assertEqual(result["distances"], {})
+        self.assertIn("message", result)
+
+    def test_interstitial_distances_relaxed_needs_at_least_two(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="interstitial",
+            sublattice=all_sites,
+            site_ids=[0],
+            element="Mg",
+        )
+        row = container._structures[-1]
+        result = GetInterstitialDistancesRelaxed._original_func(
+            row["structure"], row["events"]
+        )
+        self.assertEqual(result["distances"], {})
+        self.assertIn("message", result)
+
+    def test_interstitial_distances_relaxed_falls_back_to_nearest_neighbour(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="interstitial",
+            sublattice=all_sites,
+            site_ids=[0, 1],
+            element="Mg",
+        )
+        row = container._structures[-1]
+        # Strip the uid array so uid_to_index can't find the atoms by uid,
+        # forcing the nearest-neighbour fallback path.
+        atoms_no_uid = row["structure"].copy()
+        del atoms_no_uid.arrays["uid"]
+        result = GetInterstitialDistancesRelaxed._original_func(
+            atoms_no_uid, row["events"]
+        )
+        self.assertEqual(len(result["distances"]), 1)
+
+
+class TestFilterClusterTileHelperDirect(unittest.TestCase):
+    def test_no_candidates_inside_cell(self):
+        cell = np.eye(3) * 4.0
+        raw_candidates = np.array([[100.0, 100.0, 100.0]])
+        pos = np.array([[0.0, 0.0, 0.0]])
+        unique_sites, all_sites = _filter_cluster_tile_interstitial_candidates(
+            raw_candidates, pos, cell, 0.5, 0.5, False, None
+        )
+        self.assertEqual(len(unique_sites), 0)
+        self.assertEqual(len(all_sites), 0)
+
+    def test_no_candidates_after_r_min_filter(self):
+        cell = np.eye(3) * 4.0
+        pos = np.array([[0.0, 0.0, 0.0]])
+        raw_candidates = np.array([[0.1, 0.1, 0.1]])
+        unique_sites, all_sites = _filter_cluster_tile_interstitial_candidates(
+            raw_candidates, pos, cell, 2.0, 0.5, False, None
+        )
+        self.assertEqual(len(unique_sites), 0)
+        self.assertEqual(len(all_sites), 0)
+
+
+class TestSiteFinderPrimitiveRepeat(unittest.TestCase):
+    def test_voronoi_primitive_and_repeat_tiles(self):
+        prim = bulk("Al", cubic=True)
+        atoms = prim.repeat((2, 2, 2))
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(
+            atoms, primitive_atoms=prim, repeat=(2, 2, 2)
+        )
+        self.assertGreater(len(unique_sites), 0)
+        self.assertGreater(len(all_sites), len(unique_sites))
+
+    def test_voronoi_mismatched_primitive_repeat_raises(self):
+        prim = bulk("Al", cubic=True)
+        with self.assertRaises(ValueError):
+            GetVoronoiInterstitialSites._original_func(make_atoms(), primitive_atoms=prim)
+
+    def test_delaunay_primitive_and_repeat_tiles(self):
+        prim = bulk("Al", cubic=True)
+        atoms = prim.repeat((2, 2, 2))
+        unique_sites, all_sites = GetDelaunayInterstitialSites._original_func(
+            atoms, primitive_atoms=prim, repeat=(2, 2, 2)
+        )
+        self.assertGreater(len(unique_sites), 0)
+        self.assertGreater(len(all_sites), len(unique_sites))
+
+    def test_delaunay_mismatched_primitive_repeat_raises(self):
+        with self.assertRaises(ValueError):
+            GetDelaunayInterstitialSites._original_func(make_atoms(), repeat=(2, 2, 2))
+
+
+class TestVoronoiAvailableFallback(unittest.TestCase):
+    """
+    VORONOI_AVAILABLE is set at import time based on whether
+    structuretoolkit.common is importable. structuretoolkit is installed
+    in this environment, so the False branch is only reachable by actually
+    blocking that import -- done here in a subprocess to avoid corrupting
+    the main test process's already-imported container_new module.
+    """
+
+    def test_voronoi_available_false_when_structuretoolkit_import_fails(self):
+        repo_root = str(Path(__file__).resolve().parents[4])
+        script = (
+            "import builtins\n"
+            "real_import = builtins.__import__\n"
+            "def fake_import(name, *a, **k):\n"
+            "    if name == 'structuretoolkit.common':\n"
+            "        raise ImportError('blocked for test')\n"
+            "    return real_import(name, *a, **k)\n"
+            "builtins.__import__ = fake_import\n"
+            "from pyiron_nodes.atomistic.structure import container_new\n"
+            "assert container_new.VORONOI_AVAILABLE is False, container_new.VORONOI_AVAILABLE\n"
+            "print('OK')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("OK", result.stdout)
 
 
 if __name__ == "__main__":
