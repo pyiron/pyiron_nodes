@@ -16,12 +16,32 @@ from pyiron_nodes.atomistic.structure.container_new import (
     FindStructureIndex,
     GetVacancyDistances,
     GetSubstitutionDistances,
+    GetSubstitutionDistancesRelaxed,
     GetInterstitialDistances,
+    GetInterstitialDistancesRelaxed,
     GetVoronoiInterstitialSites,
+    GetVoronoiInterstitialSitesPymatgen,
     GetDelaunayInterstitialSites,
     FilterByGeneration,
     FilterByStoichiometry,
+    GetStructureTable,
+    GetDefectTable,
+    GetPristineTable,
+    GetPristineStructures,
+    GetDefectStructures,
+    LatestPristineIndex,
+    ResolveDefectRow,
+    ResolveAnyRow,
 )
+
+try:
+    from pymatgen.analysis.defects.generators import (  # noqa: F401
+        VoronoiInterstitialGenerator,
+    )
+
+    PYMATGEN_DEFECTS_AVAILABLE = True
+except ImportError:
+    PYMATGEN_DEFECTS_AVAILABLE = False
 
 
 def make_atoms():
@@ -463,6 +483,154 @@ class TestFilterFunctions(unittest.TestCase):
         mg_rows = FilterByStoichiometry._original_func(self.container, "*Mg*")
         self.assertEqual(len(mg_rows), 1)
         self.assertEqual(mg_rows[0]["stoichiometry"], "Al107Mg1")
+
+
+class TestRelaxedDistanceGetters(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+
+    def test_substitution_distances_relaxed_matches_unrelaxed(self):
+        # Feeding the (unmodified) defect structure straight back in as the
+        # "relaxed" structure means the nearest-neighbour search should find
+        # each substituted atom exactly at its original site, so the result
+        # should match the non-relaxed getter's ase.get_distance-verified value.
+        i, j = 2, 9
+        expected = self.atoms.get_distance(i, j, mic=True)
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[i, j],
+            to_element="Mg",
+        )
+        row = container._structures[-1]
+        result = GetSubstitutionDistancesRelaxed._original_func(
+            row["structure"], row["events"]
+        )
+        self.assertAlmostEqual(result["distances"]["0-1"], expected, places=6)
+
+    def test_interstitial_distances_relaxed_locates_via_uid(self):
+        unique_sites, all_sites = GetVoronoiInterstitialSites._original_func(self.atoms)
+        cell = np.array(self.atoms.get_cell())
+        inv_cell = np.linalg.inv(cell)
+        delta = all_sites[0] - all_sites[1]
+        delta -= np.round(delta @ inv_cell) @ cell
+        expected = float(np.linalg.norm(delta))
+
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="interstitial",
+            sublattice=all_sites,
+            site_ids=[0, 1],
+            element="Mg",
+        )
+        row = container._structures[-1]
+        result = GetInterstitialDistancesRelaxed._original_func(
+            row["structure"], row["events"]
+        )
+        self.assertAlmostEqual(result["distances"]["0-1"], expected, places=6)
+
+    def test_substitution_relaxed_needs_at_least_two_events(self):
+        container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[0],
+            to_element="Mg",
+        )
+        row = container._structures[-1]
+        result = GetSubstitutionDistancesRelaxed._original_func(
+            row["structure"], row["events"]
+        )
+        self.assertEqual(result["distances"], {})
+        self.assertIn("message", result)
+
+
+class TestTableAndSelectionWrappers(unittest.TestCase):
+    def setUp(self):
+        self.atoms = make_atoms()
+        self.container = AddPristine._original_func(atoms=self.atoms)
+        self.container = CreateDefectFromIds._original_func(
+            structure_container=self.container, defect_type="vacancy", atom_ids=[0]
+        )
+        self.container = CreateDefectFromIds._original_func(
+            structure_container=self.container,
+            defect_type="substitution",
+            atom_ids=[5],
+            to_element="Mg",
+        )
+
+    def test_get_structure_table(self):
+        df = GetStructureTable._original_func(self.container)
+        self.assertEqual(len(df), 3)
+        self.assertIn("stoichiometry", df.columns)
+
+    def test_get_defect_table(self):
+        df = GetDefectTable._original_func(self.container)
+        self.assertEqual(len(df), 2)
+        self.assertTrue((df["is_pristine"] == False).all())
+
+    def test_get_pristine_table(self):
+        df = GetPristineTable._original_func(self.container)
+        self.assertEqual(len(df), 1)
+        self.assertTrue((df["is_pristine"] == True).all())
+
+    def test_get_pristine_structures(self):
+        rows = GetPristineStructures._original_func(self.container)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["is_pristine"])
+
+    def test_get_defect_structures(self):
+        rows = GetDefectStructures._original_func(self.container)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(not r["is_pristine"] for r in rows))
+
+    def test_latest_pristine_index(self):
+        self.assertEqual(LatestPristineIndex._original_func(self.container), 0)
+
+    def test_resolve_defect_row(self):
+        self.assertEqual(ResolveDefectRow._original_func(self.container, 0), 1)
+        self.assertEqual(ResolveDefectRow._original_func(self.container, -1), 2)
+
+    def test_resolve_any_row(self):
+        self.assertEqual(ResolveAnyRow._original_func(self.container, 0), 0)
+        self.assertEqual(ResolveAnyRow._original_func(self.container, -1), 2)
+
+
+class TestGetVoronoiInterstitialSitesPymatgen(unittest.TestCase):
+    """
+    pymatgen-analysis-defects is a separate package (its own GitHub repo,
+    not just `pymatgen`); it's pinned in .ci_support/environment-mini.yml
+    but may not be present in every environment this suite runs in (e.g. a
+    local dev env), so the "dependency missing" path below is still real,
+    reachable behavior worth covering rather than an environment-mini-only
+    guarantee.
+
+    Both tests deliberately use the small 4-atom conventional cell, not
+    make_atoms()'s 3x3x3 supercell: SpacegroupAnalyzer's symmetry search
+    (used internally by VoronoiInterstitialGenerator) scales badly with
+    atom count on a non-primitive cell, and takes minutes rather than
+    seconds on 108 atoms. Voronoi-void geometry doesn't depend on
+    supercell size, so the unit cell is sufficient to exercise the
+    function correctly and fast.
+    """
+
+    def test_raises_helpful_error_when_dependency_missing(self):
+        if PYMATGEN_DEFECTS_AVAILABLE:
+            self.skipTest(
+                "pymatgen-analysis-defects is installed; success path covered below"
+            )
+        with self.assertRaises(ImportError):
+            GetVoronoiInterstitialSitesPymatgen._original_func(bulk("Al", cubic=True))
+
+    @unittest.skipUnless(
+        PYMATGEN_DEFECTS_AVAILABLE, "requires pymatgen-analysis-defects"
+    )
+    def test_returns_sites_when_available(self):
+        atoms = bulk("Al", cubic=True)
+        unique_sites, all_sites = GetVoronoiInterstitialSitesPymatgen._original_func(
+            atoms
+        )
+        self.assertGreater(len(all_sites), 0)
 
 
 if __name__ == "__main__":
