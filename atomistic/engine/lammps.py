@@ -47,11 +47,10 @@ class LammpsIOBundle:
 @as_function_node
 def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
 
-    import os
-    from lammpsparser.potential import view_potentials
+    from lammpsparser.potential import get_resource_path_from_conda, view_potentials
 
     if resource_path is None:
-        resource_path = os.path.join(os.environ["CONDA_PREFIX"], "share", "iprpy")
+        resource_path = get_resource_path_from_conda()
 
     potentials = list(
         view_potentials(structure, resource_path=resource_path)["Name"].values
