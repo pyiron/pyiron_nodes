@@ -154,7 +154,7 @@ def CCESetup(
     if io_bundle.calc.md is None:
         raise ValueError(
             "CCE plugin is designed for MD simulations, but no MD settings were "
-            "found on the calc. Set an InputCalcMD on the `md` port of "
+            "found on the calc. Set an InputMDVASP on the `md` port of "
             "MergeVaspInput before running CCESetup."
         )
 
@@ -302,7 +302,7 @@ def CCESetup(
     else:
         io_bundle.extra_incar = additional_incar
 
-    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar)
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
     incar.write_file(os.path.join(io_bundle.working_directory, "INCAR"))
 
     _modify_potcar(io_bundle.working_directory, ne_zval_original_line, zval_ne)
@@ -348,7 +348,7 @@ def CDCESetup(
     if io_bundle.calc.md is None:
         raise ValueError(
             "CDCE plugin is designed for MD simulations, but no MD settings were "
-            "found on the calc. Set an InputCalcMD on the `md` port of "
+            "found on the calc. Set an InputMDVASP on the `md` port of "
             "MergeVaspInput before running CDCESetup."
         )
 
@@ -467,7 +467,7 @@ def CDCESetup(
     else:
         io_bundle.extra_incar = additional_incar
 
-    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar)
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
     incar.write_file(os.path.join(io_bundle.working_directory, "INCAR"))
 
     _write_plugin_file(io_bundle.working_directory, cdce_params)

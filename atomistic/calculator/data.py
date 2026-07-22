@@ -184,6 +184,45 @@ class InputMinimizationVASP:
 
 
 @as_inp_dataclass_node
+class InputMDVASP:
+    """Molecular dynamics settings for VASP with a Langevin thermostat.
+
+    Field names follow the LAMMPS ``InputCalcMD`` convention rather than the raw
+    INCAR tags. The mapping onto INCAR is done in
+    ``pyiron_nodes.atomistic.engine.vasp_new._build_incar``:
+
+    ensemble ``"NVT"``           → ISIF 2 (fixed cell)
+    ensemble ``"NpT"``           → ISIF 3 (cell shape + volume free)
+    temperature                  → TEBEG
+    final_temperature            → TEEND (defaults to ``temperature``)
+    n_ionic_steps                → NSW
+    n_print                      → NBLOCK
+    time_step                    → POTIM
+    pressure                     → PSTRESS (GPa here, kBar in the INCAR)
+    temperature_damping_timescale→ LANGEVIN_GAMMA = 1000 / tau, one entry per species
+    pressure_damping_timescale   → LANGEVIN_GAMMA_L = 1000 / tau (NpT only)
+    lattice_mass                 → PMASS (NpT only)
+    seed                         → RANDOM_SEED
+
+    Only the Langevin thermostat is supported for the moment (MDALGO 3), so
+    there is no thermostat selector; ISYM is switched off, as symmetry must not
+    be imposed during MD.
+    """
+
+    ensemble: Literal["NVT", "NpT"] = "NVT"
+    temperature: float = 300.0  # in K, initial/target temperature
+    final_temperature: Optional[float] = None  # in K, None → isothermal at temperature
+    n_ionic_steps: int = 10_000
+    n_print: int = 100
+    time_step: float = 1.0  # in fs
+    pressure: Optional[float] = None  # in GPa, required for NpT, ignored for NVT
+    temperature_damping_timescale: float = 100.0  # in fs, Langevin friction on the ions
+    pressure_damping_timescale: float = 1000.0  # in fs, Langevin friction on the cell
+    lattice_mass: float = 1000.0  # in amu, fictitious mass of the cell degrees of freedom
+    seed: Optional[int] = None  # None → let VASP pick its own random seed
+
+
+@as_inp_dataclass_node
 class InputDipoleCorrection:
     """Dipole correction settings for VASP (e.g. asymmetric slabs)."""
 

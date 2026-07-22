@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 from ase import Atoms
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -16,10 +17,12 @@ from pymatgen.io.vasp.outputs import Vasprun
 
 from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import (
-    InputCalcMD,
+    InputMDVASP,
     InputDipoleCorrection,
     InputMinimizationVASP,
     InputSCF,
+    OutputCalcMD,
+    OutputCalcMinimize,
     OutputCalcStatic,
     AdditionalInputFlags,
 )
@@ -108,7 +111,7 @@ class VaspInput:
 
     scf: InputSCF
     minimization: Optional[InputMinimizationVASP] = None
-    md: Optional[InputCalcMD] = None
+    md: Optional[InputMDVASP] = None
     dipole_correction: Optional[InputDipoleCorrection] = None
     extra_incar: Optional[dict] = None
 
@@ -147,7 +150,9 @@ def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]
     return paths
 
 
-def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
+def _build_incar(
+    calc: VaspInput, extra: dict | None = None, structure: Atoms | None = None
+) -> Incar:
     if calc.minimization is not None and calc.md is not None:
         raise ValueError(
             "minimization and md are mutually exclusive — both control IBRION/NSW. "
@@ -176,13 +181,45 @@ def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
         tags["EDIFFG"] = mini.ionic_convergence
         tags["ISIF"] = mini.isif
 
-    # ── molecular dynamics (optional, minimal mapping) ────────────────────────
+    # ── molecular dynamics (optional, Langevin thermostat only) ───────────────
     if calc.md is not None:
         md = calc.md
+        if structure is None:
+            raise ValueError(
+                "a structure is required to build an MD INCAR — LANGEVIN_GAMMA "
+                "needs one friction coefficient per species in the POSCAR."
+            )
+        n_species = len(_ordered_elements(structure))
+
         tags["IBRION"] = 0
+        tags["MDALGO"] = 3  # Langevin
+        tags["ISYM"] = 0  # symmetry must not be imposed during MD
         tags["NSW"] = md.n_ionic_steps
+        tags["NBLOCK"] = md.n_print
         tags["POTIM"] = md.time_step
         tags["TEBEG"] = md.temperature
+        tags["TEEND"] = (
+            md.temperature if md.final_temperature is None else md.final_temperature
+        )
+        # damping timescales are given in fs, LANGEVIN_GAMMA* are frictions in ps^-1
+        tags["LANGEVIN_GAMMA"] = [1000.0 / md.temperature_damping_timescale] * n_species
+
+        if md.ensemble == "NVT":
+            tags["ISIF"] = 2  # ions move, cell is fixed
+        elif md.ensemble == "NpT":
+            if md.pressure is None:
+                raise ValueError("ensemble 'NpT' requires md.pressure to be set (GPa).")
+            tags["ISIF"] = 3  # ions + cell shape + volume
+            tags["PSTRESS"] = md.pressure * 10.0  # GPa → kBar
+            tags["PMASS"] = md.lattice_mass
+            tags["LANGEVIN_GAMMA_L"] = 1000.0 / md.pressure_damping_timescale
+        else:
+            raise ValueError(
+                f"Unknown ensemble {md.ensemble!r}; expected 'NVT' or 'NpT'."
+            )
+
+        if md.seed is not None:
+            tags["RANDOM_SEED"] = [md.seed, 0, 0]  # VASP wants seed + two counters
 
     # ── dipole correction (optional) ──────────────────────────────────────────
     if calc.dipole_correction is not None:
@@ -193,6 +230,120 @@ def _build_incar(calc: VaspInput, extra: dict | None = None) -> Incar:
     if extra:
         tags.update(extra)
     return Incar(tags)
+
+
+# ── Output helpers ────────────────────────────────────────────────────────────
+# ``ParseVaspOutput`` fills the same calculator dataclasses that the LAMMPS
+# engine uses (``OutputCalcStatic`` / ``OutputCalcMinimize`` / ``OutputCalcMD``),
+# so downstream nodes do not care which engine produced the data.
+
+_kB = 8.617333262e-5  # eV/K
+_kBar_to_GPa = 0.1
+
+
+def _static_from_ionic_step(step: dict, structure: Atoms):
+    """One ionic step → ``OutputCalcStatic`` (energy/force/stress/structure)."""
+    out = OutputCalcStatic.pure_dataclass()
+    out.energy = step["e_wo_entrp"]
+    out.force = np.asarray(step["forces"])
+    stress = step.get("stress")
+    out.stress = None if stress is None else np.asarray(stress) * _kBar_to_GPa
+    out.structure = structure
+    return out
+
+
+def _parse_velocities(vasprun_path: str) -> np.ndarray:
+    """Per-step velocities from ``vasprun.xml``, empty if VASP did not write them.
+
+    VASP only emits ``<varray name="velocities">`` for MD runs, and not for every
+    VASP version, so this is best-effort: an empty array simply means the field
+    stays unset on ``OutputCalcMD``.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.parse(vasprun_path).getroot()
+    except ET.ParseError:
+        return np.array([])
+
+    frames = []
+    for calculation in root.findall("calculation"):
+        for structure in calculation.findall("structure"):
+            varray = structure.find('varray[@name="velocities"]')
+            if varray is None:
+                continue
+            frames.append([[float(x) for x in v.text.split()] for v in varray])
+    return np.asarray(frames) if frames else np.array([])
+
+
+def _unwrap_positions(frac_coords: np.ndarray, cells: np.ndarray) -> np.ndarray:
+    """Undo periodic wrapping, so diffusion coefficients can be read off directly.
+
+    Takes fractional coordinates of shape ``(n_steps, n_atoms, 3)`` and removes
+    the jumps introduced when an atom crosses a cell boundary (minimum image on
+    successive frames), then converts back to Cartesian with each step's cell.
+    """
+    if len(frac_coords) == 0:
+        return np.array([])
+
+    deltas = np.diff(frac_coords, axis=0)
+    deltas -= np.round(deltas)  # minimum image: drop the boundary crossings
+    unwrapped_frac = np.concatenate(
+        [frac_coords[:1], frac_coords[:1] + np.cumsum(deltas, axis=0)]
+    )
+    return np.einsum("nai,nij->naj", unwrapped_frac, cells)
+
+
+def _md_from_vasprun(vr, ase_traj: list[Atoms], vasprun_path: str):
+    """Full ionic trajectory → ``OutputCalcMD``, mirroring ``ParseLammpsOutput``."""
+    out = OutputCalcMD.pure_dataclass()
+    steps = vr.ionic_steps
+    n_atoms = len(ase_traj[0])
+
+    cells = np.asarray([a.get_cell().array for a in ase_traj])
+    out.cells = cells
+    out.positions = np.asarray([a.get_positions() for a in ase_traj])
+    out.unwrapped_positions = _unwrap_positions(
+        np.asarray([s.frac_coords for s in vr.structures]), cells
+    )
+    out.forces = np.asarray([s["forces"] for s in steps])
+    out.volumes = np.asarray([a.get_volume() for a in ase_traj])
+    out.natoms = np.full(len(steps), n_atoms)
+    out.steps = np.arange(1, len(steps) + 1)
+
+    energies_pot = np.asarray([s["e_wo_entrp"] for s in steps])
+    out.energies_pot = energies_pot
+
+    # 'kinetic' / 'total' only appear for real MD runs (IBRION 0)
+    kinetic = [s.get("kinetic") for s in steps]
+    if all(k is not None for k in kinetic):
+        kinetic = np.asarray(kinetic, dtype=float)
+        total = [s.get("total") for s in steps]
+        out.energies_tot = (
+            np.asarray(total, dtype=float)
+            if all(t is not None for t in total)
+            else energies_pot + kinetic
+        )
+        # equipartition over 3N-3 DOF — VASP keeps the centre of mass fixed
+        n_dof = max(3 * n_atoms - 3, 1)
+        out.temperatures = 2.0 * kinetic / (n_dof * _kB)
+    else:
+        out.energies_tot = energies_pot
+
+    stresses = [s.get("stress") for s in steps]
+    if all(s is not None for s in stresses):
+        out.pressures = np.asarray(stresses, dtype=float) * _kBar_to_GPa
+
+    out.velocities = _parse_velocities(vasprun_path)
+
+    # same convention as ParseLammpsOutput: per-atom symbols, per-step species ids
+    symbols = ase_traj[0].get_chemical_symbols()
+    out.species = symbols
+    species_order = _ordered_elements(ase_traj[0])
+    species_ids = np.asarray([species_order.index(s) for s in symbols])
+    out.indices = np.tile(species_ids, (len(steps), 1))
+
+    return out
 
 
 def _generate_hash(io_bundle: VaspInputResources) -> str:
@@ -242,7 +393,7 @@ def _generate_hash(io_bundle: VaspInputResources) -> str:
 def MergeVaspInput(
     scf: InputSCF,
     minimization: Optional[InputMinimizationVASP] = None,
-    md: Optional[InputCalcMD] = None,
+    md: Optional[InputMDVASP] = None,
     dipole_correction: Optional[InputDipoleCorrection] = None,
     specific_inputs: Optional[AdditionalInputFlags] = None,
 ) -> VaspInput:
@@ -295,7 +446,7 @@ def CreateVaspInputResources(
     pmg_structure.to(fmt="poscar", filename=os.path.join(workdir, "POSCAR"))
 
     # INCAR
-    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar)
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
     incar.write_file(os.path.join(workdir, "INCAR"))
 
     # POTCAR — look up paths from CSV, concatenate files into workdir/POTCAR
@@ -376,21 +527,36 @@ def ParseVaspOutput(
     io_bundle: VaspInputResources,
     vasprun_filename: str = "vasprun.xml",
 ):
+    """Parse ``vasprun.xml`` into the calculator output dataclass for this run.
+
+    Which dataclass lands on ``out`` follows the calc that was submitted, so the
+    same downstream nodes work for VASP and LAMMPS:
+
+    ``md``           → ``OutputCalcMD``       (full ionic trajectory)
+    ``minimization`` → ``OutputCalcMinimize`` (initial + final, convergence)
+    otherwise        → ``OutputCalcStatic``   (single point)
+
+    ``trajectory`` (list of ASE ``Atoms``) and ``converged`` are kept alongside
+    it — the ASE trajectory feeds visualisation nodes such as ``AnimateAse``.
+    """
     from pymatgen.io.vasp.outputs import Vasprun
 
     vasprun_path = os.path.join(io_bundle.working_directory, vasprun_filename)
     vr = Vasprun(filename=vasprun_path, parse_dos=False, parse_projected_eigen=False)
 
     trajectory = [AseAtomsAdaptor.get_atoms(s) for s in vr.structures]
-
-    final = trajectory[-1]
-    last_step = vr.ionic_steps[-1]
-
-    out = OutputCalcStatic.pure_dataclass()
-    out.energy = last_step["e_wo_entrp"]
-    out.force = last_step["forces"]
-    out.stress = last_step.get("stress")
-    out.structure = final
-
     converged = vr.converged
+    calc = io_bundle.calc
+
+    if calc is not None and calc.md is not None:
+        out = _md_from_vasprun(vr, trajectory, vasprun_path)
+    elif calc is not None and calc.minimization is not None:
+        out = OutputCalcMinimize.pure_dataclass()
+        out.initial = _static_from_ionic_step(vr.ionic_steps[0], trajectory[0])
+        out.final = _static_from_ionic_step(vr.ionic_steps[-1], trajectory[-1])
+        out.is_converged = vr.converged_ionic
+        out.iter_steps = len(vr.ionic_steps)
+    else:
+        out = _static_from_ionic_step(vr.ionic_steps[-1], trajectory[-1])
+
     return out, trajectory, converged
