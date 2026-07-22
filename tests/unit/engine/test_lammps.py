@@ -9,6 +9,8 @@ import pandas as pd
 from ase.build import bulk, molecule
 
 from pyiron_nodes.atomistic.engine.lammps import (
+    CreateLammpsMDInput,
+    CreateLammpsStructure,
     LammpsIOBundle,
     ListPotentials,
     ParseLammpsOutput,
@@ -16,6 +18,8 @@ from pyiron_nodes.atomistic.engine.lammps import (
     extract_charges_from_lammps_potential,
     write_lammps_data_full,
 )
+from pyiron_nodes.atomistic.calculator.data import InputCalcMD
+from pyiron_nodes.electrochemistry.structure.equilibrate import TIP3PSlabPotential
 
 AL_POTENTIAL = "1999--Mishin-Y--Al--LAMMPS--ipr1"
 RESOURCE_PATH = os.environ.get(
@@ -127,6 +131,46 @@ class TestWriteLammpsDataFull(unittest.TestCase):
 
     def test_atom_count(self):
         self.assertIn("3 atoms", self.result)
+
+
+class TestLammpsDataFramePotential(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        slab_potential, bond_dict = TIP3PSlabPotential._original_func()
+        structure = molecule("H2O")
+        structure.cell = [10, 10, 10]
+        structure.pbc = True
+
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.io_bundle = CreateLammpsStructure._original_func(
+            structure=structure,
+            potential=slab_potential,
+            working_directory=cls._tmp.name + "/water",
+            bond_dict=bond_dict,
+        )
+        cls.io_bundle = CreateLammpsMDInput._original_func(
+            io_bundle=cls.io_bundle,
+            calc_dataclass=InputCalcMD._original_dataclass(),
+        )
+        _, cls.output = RunLammpsCalculation._original_func(
+            io_bundle=cls.io_bundle, debug=True
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_units_from_dataframe(self):
+        self.assertEqual(self.io_bundle.units, "real")
+
+    def test_structure_string_generated(self):
+        self.assertIn("Atoms", self.io_bundle.lammps_structure_string)
+
+    def test_potential_string_written(self):
+        self.assertIn("pair_style", self.io_bundle.lammps_potential_string)
+
+    def test_debug_output_is_working_directory(self):
+        self.assertEqual(self.output, self.io_bundle.working_directory)
 
 
 class TestParseLammpsOutputErrors(unittest.TestCase):

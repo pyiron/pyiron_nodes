@@ -131,7 +131,7 @@ def CreateLammpsStructure(
     if atom_type == "full":
         # LammpsStructure does not support "full" atom_style, so an additional function write_lammps_data_full was added in this file and is used for the 'full' case
         # Does not include dihedrals or impropers, but should be sufficient for bonds and angles.
-        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for WaterPotential node.
+        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for TIP3PSlabPotential node.
 
         structure_string = write_lammps_data_full(
             structure=structure,
