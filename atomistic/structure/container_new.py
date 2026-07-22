@@ -1,3 +1,93 @@
+"""
+Point defect (vacancy, substitution, interstitial) structure generation,
+tracking, and analysis.
+
+StructureContainer
+-------------------
+A dataclass holding a list of structure rows. Each row is a dict with:
+
+    structure
+        The ase.Atoms object, tagged with a per-atom "uid" array so an
+        atom stays identifiable across insertions/deletions.
+    is_pristine, stoichiometry, generation
+        generation 0 is a pristine row; a defect built on a pristine row
+        is generation 1, a defect built on that defect is generation 2,
+        etc.
+    pristine_structure_index, parent_index
+        Absolute row indices of this row's pristine ancestor and its
+        immediate parent.
+    events
+        The list of defect operations (one dict per vacancy /
+        substitution / interstitial) applied to reach this row.
+    operations_short, operation
+        Short and full text summaries built from events, e.g.
+        "vacancy[5]|substitution[Al->Mg]".
+
+Its methods cover: adding rows (add_pristine, add_defect), exporting to a
+DataFrame (to_dataframe, get_structure_table, get_defect_table,
+get_pristine_table), filtering (filter_by_indices, filter_by_generation,
+filter_by_max_generation, filter_by_operations_short,
+filter_by_operations_contains, filter_by_condition, filter_by_unique_id,
+filter_by_number_of_atoms, filter_by_element_count,
+filter_by_stoichiometry, filter_by_parent), and index/lineage resolution
+(find_structure_index, get_structure, _find_pristine_index,
+latest_pristine_index, resolve_defect_row, resolve_any_row).
+
+Module-level functions
+-----------------------
+UID helpers: ensure_uids, next_uid, uid_to_index, element_uids,
+validate_atoms_arrays, append_atom_with_uid, _protected_uids_from_events.
+These manage the per-atom "uid" array used to track individual atoms
+through insertions and deletions.
+
+Other plain helpers: validate_structure (checks for atoms sitting too
+close together), get_stoichiometry, make_operations_short.
+
+Node functions (as_function_node)
+-----------------------------------
+Structure/table utilities: GetStoichiometry, ValidateStructure,
+ElementUids, GetStructureTable, GetDefectTable, GetPristineTable.
+
+Adding and creating structures: AddPristine adds a pristine row.
+CreateDefectFromIds, CreateDefectFromSeed, CreateDefectBatchFromIds, and
+CreateDefectBatchFromSeed each create vacancy / substitution /
+interstitial defects, selected via a defect_type argument
+("vacancy" / "substitution" / "interstitial") rather than three separate
+functions per type. "FromIds" takes explicit atom_ids/site_ids; "FromSeed"
+samples randomly given a seed; the "Batch" variants apply either across
+multiple target rows in one call. parent_defect_index / input_structure
+select which row a new defect is built on top of; the private helper
+_resolve_parent implements that resolution.
+
+Filtering and selection nodes: FilterByIndices, FilterByGeneration,
+FilterByMaxGeneration, FilterByOperationsShort, FilterByOperationsContains,
+FilterByUniqueId, FilterByNumberOfAtoms, FilterByElementCount,
+FilterByStoichiometry, FilterByParent, GetStructure, FindStructureIndex,
+GetPristineStructures, GetDefectStructures, LatestPristineIndex,
+ResolveDefectRow, ResolveAnyRow. filter_by_condition is a plain function,
+not a node, since it takes a Callable.
+
+Distance nodes: GetVacancyDistances, GetSubstitutionDistances, and
+GetInterstitialDistances compute pairwise minimum-image distances between
+same-type defects from their event positions (pre-relaxation).
+GetSubstitutionDistancesRelaxed and GetInterstitialDistancesRelaxed do the
+same from a relaxed ase.Atoms plus its events list.
+
+Interstitial site-finding: GetVoronoiInterstitialSites and
+GetDelaunayInterstitialSites find candidate interstitial positions using
+scipy (Voronoi vertices or Delaunay circumcenters, respectively).
+GetVoronoiInterstitialSitesPymatgen finds them via pymatgen's
+symmetry-aware VoronoiInterstitialGenerator, gated behind two
+independent optional-dependency flags: STRUCTURETOOLKIT_AVAILABLE and
+PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE. _wrap_frac, _frac_equiv, _deduplicate_frac, and
+_extract_defect_frac_coords are private helpers used only by that
+function. _periodic_image_points and
+_filter_cluster_tile_interstitial_candidates are shared by the two scipy
+based site finders. Any of the three site finders produces the
+sublattice array that the interstitial branch of the Create* functions
+expects.
+"""
+
 from __future__ import annotations  # Enables lazy imports for type hints
 
 from ase import Atoms
@@ -6,13 +96,24 @@ from typing import List, Literal, Optional, Union, Callable
 
 from core import as_function_node
 
-# Import for Voronoi interstitial site finding
+# Optional dependencies for GetVoronoiInterstitialSitesPymatgen. structuretoolkit
+# and pymatgen-analysis-defects are independent packages -- either can be
+# present or absent regardless of the other, so each is checked and reported
+# separately rather than folded into one combined flag.
 try:
     from structuretoolkit.common import ase_to_pymatgen
 
-    VORONOI_AVAILABLE = True
+    STRUCTURETOOLKIT_AVAILABLE = True
 except ImportError:
-    VORONOI_AVAILABLE = False
+    STRUCTURETOOLKIT_AVAILABLE = False
+
+try:
+    from pymatgen.analysis.defects.generators import VoronoiInterstitialGenerator
+    from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+    PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE = True
+except ImportError:
+    PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE = False
 
 
 # ============================================================================
@@ -944,11 +1045,11 @@ def GetVacancyDistances(container: StructureContainer, defect_index: int):
 
     Examples
     --------
-    >>> from structure_container_enhanced import StructureContainer, add_pristine, create_vacancy_from_ids
-    >>> container = StructureContainer()
-    >>> container = add_pristine(container, atoms)
-    >>> container = create_vacancy_from_ids(container, atom_ids=[0, 5])
-    >>> result = get_vacancy_distances(container, defect_index=1)
+    >>> container = AddPristine(atoms=atoms)
+    >>> container = CreateDefectFromIds(
+    ...     structure_container=container, defect_type="vacancy", atom_ids=[0, 5]
+    ... )
+    >>> result = GetVacancyDistances(container=container, defect_index=1)
     >>> print(result['distances'])
     {'0-1': 4.05}
     """
@@ -1293,10 +1394,8 @@ def GetStructureTable(structure_container: StructureContainer) -> "pd.DataFrame"
 
     Examples
     --------
-    >>> from structure_container_enhanced import StructureContainer, add_pristine, create_vacancy_from_ids
-    >>> container = StructureContainer()
-    >>> container = add_pristine(container, atoms)
-    >>> df = get_structure_table(container)
+    >>> container = AddPristine(atoms=atoms)
+    >>> df = GetStructureTable(structure_container=container)
     """
     return structure_container.get_structure_table()
 
@@ -1318,7 +1417,7 @@ def GetDefectTable(structure_container: StructureContainer) -> "pd.DataFrame":
 
     Examples
     --------
-    >>> df = get_defect_table(container)
+    >>> df = GetDefectTable(structure_container=container)
     """
     return structure_container.get_defect_table()
 
@@ -1340,7 +1439,7 @@ def GetPristineTable(structure_container: StructureContainer) -> "pd.DataFrame":
 
     Examples
     --------
-    >>> df = get_pristine_table(container)
+    >>> df = GetPristineTable(structure_container=container)
     """
     return structure_container.get_pristine_table()
 
@@ -1473,10 +1572,8 @@ def AddPristine(
     Examples
     --------
     >>> from ase.build import bulk
-    >>> from structure_container_enhanced import add_pristine
-    >>>
     >>> atoms = bulk('Al', cubic=True)
-    >>> container = add_pristine(atoms=atoms, unique_id="Al_fcc")
+    >>> container = AddPristine(atoms=atoms, unique_id="Al_fcc")
     """
     if structure_container is None:
         structure_container = StructureContainer()
@@ -1534,7 +1631,7 @@ def FilterByGeneration(
 
     Examples
     --------
-    >>> gen1 = filter_by_generation(container, generation=1)
+    >>> gen1 = FilterByGeneration(structure_container=container, generation=1)
     """
     return structure_container.filter_by_generation(generation)
 
@@ -1560,7 +1657,7 @@ def FilterByMaxGeneration(
 
     Examples
     --------
-    >>> gen2_and_below = filter_by_max_generation(container, max_generation=2)
+    >>> gen2_and_below = FilterByMaxGeneration(structure_container=container, max_generation=2)
     """
     return structure_container.filter_by_max_generation(max_generation)
 
@@ -1577,7 +1674,17 @@ def FilterByOperationsShort(
     structure_container : StructureContainer
         The container to filter
     pattern : str
-        Pattern to match (supports wildcards *, ?, [])
+        Pattern to match. Matching is exact unless ``pattern`` contains
+        any of ``*``, ``?``, ``[``, in which case it's matched via
+        ``fnmatch`` instead. Note that every real ``operations_short``
+        value contains ``[`` (e.g. ``"vacancy[5]"``), so an exact-looking
+        pattern like ``"vacancy[5]"`` is actually routed through
+        ``fnmatch`` too -- and there, ``[5]`` is a character class
+        matching a single ``"5"``, not the literal brackets, so it will
+        *not* match the literal string ``"vacancy[5]"``. Use a trailing
+        ``*`` (e.g. ``"vacancy*"``) to match bracketed values, or match
+        on a pattern with no special characters (e.g. ``"pristine"``)
+        for a true exact match.
 
     Returns
     -------
@@ -1586,8 +1693,8 @@ def FilterByOperationsShort(
 
     Examples
     --------
-    >>> exact = filter_by_operations_short(container, "vacancy[5]")
-    >>> contains = filter_by_operations_short(container, "*vacancy[5]*")
+    >>> exact = FilterByOperationsShort(structure_container=container, pattern="pristine")
+    >>> contains = FilterByOperationsShort(structure_container=container, pattern="vacancy*")
     """
     return structure_container.filter_by_operations_short(pattern)
 
@@ -1613,7 +1720,7 @@ def FilterByOperationsContains(
 
     Examples
     --------
-    >>> all_vacancies = filter_by_operations_contains(container, "vacancy")
+    >>> all_vacancies = FilterByOperationsContains(structure_container=container, operation_type="vacancy")
     """
     return structure_container.filter_by_operations_contains(operation_type)
 
@@ -1661,7 +1768,7 @@ def FilterByNumberOfAtoms(
 
     Examples
     --------
-    >>> structures_108 = filter_by_number_of_atoms(container, 108)
+    >>> structures_108 = FilterByNumberOfAtoms(structure_container=container, n_atoms=108)
     """
     return structure_container.filter_by_number_of_atoms(n_atoms)
 
@@ -1697,8 +1804,8 @@ def FilterByElementCount(
 
     Examples
     --------
-    >>> single_mg = filter_by_element_count(container, 'Mg', exact_count=1)
-    >>> few_mg = filter_by_element_count(container, 'Mg', min_count=0, max_count=5)
+    >>> single_mg = FilterByElementCount(structure_container=container, element='Mg', exact_count=1)
+    >>> few_mg = FilterByElementCount(structure_container=container, element='Mg', min_count=0, max_count=5)
     """
     return structure_container.filter_by_element_count(
         element, min_count, max_count, exact_count
@@ -1726,8 +1833,8 @@ def FilterByStoichiometry(
 
     Examples
     --------
-    >>> exact = filter_by_stoichiometry(container, 'Al107Mg1')
-    >>> single_mg = filter_by_stoichiometry(container, '*Mg1*')
+    >>> exact = FilterByStoichiometry(structure_container=container, formula_pattern='Al107Mg1')
+    >>> single_mg = FilterByStoichiometry(structure_container=container, formula_pattern='*Mg1*')
     """
     return structure_container.filter_by_stoichiometry(formula_pattern)
 
@@ -1753,7 +1860,7 @@ def FilterByParent(
 
     Examples
     --------
-    >>> children_0 = filter_by_parent(container, 0)
+    >>> children_0 = FilterByParent(structure_container=container, parent_index=0)
     """
     return structure_container.filter_by_parent(parent_index)
 
@@ -1930,10 +2037,8 @@ def ResolveDefectRow(
 
     Examples
     --------
-    >>> first defect
-    >>> first = resolve_defect_row(container, 0)
-    >>> most recent defect
-    >>> latest = resolve_defect_row(container, -1)
+    >>> first = ResolveDefectRow(structure_container=container, relative_index=0)  # first defect
+    >>> latest = ResolveDefectRow(structure_container=container, relative_index=-1)  # most recent defect
     """
     return structure_container.resolve_defect_row(relative_index)
 
@@ -1957,8 +2062,8 @@ def ResolveAnyRow(structure_container: StructureContainer, relative_index: int) 
 
     Examples
     --------
-    >>> latest = resolve_any_row(container, -1)
-    >>> first = resolve_any_row(container, 0)
+    >>> latest = ResolveAnyRow(structure_container=container, relative_index=-1)
+    >>> first = ResolveAnyRow(structure_container=container, relative_index=0)
     """
     return structure_container.resolve_any_row(relative_index)
 
@@ -2086,7 +2191,7 @@ def CreateDefectFromIds(
     sublattice : (N, 3) array-like or None
         Interstitial only, required. Cartesian coordinates (Å) of the
         interstitial sublattice — e.g. the output of
-        ``get_voronoi_interstitial_sites``.
+        ``GetVoronoiInterstitialSites``.
     site_ids : List[int] or None
         Interstitial only, required. Indices into ``sublattice`` selecting
         which sites to occupy.
@@ -2104,6 +2209,21 @@ def CreateDefectFromIds(
     Returns
     -------
     StructureContainer with new defect added
+
+    Raises
+    ------
+    ValueError
+        If a required parameter for the selected ``defect_type`` is
+        missing (``atom_ids`` for vacancy/substitution, ``to_element``
+        for substitution, ``sublattice``/``site_ids``/``element`` for
+        interstitial); if ``sublattice`` doesn't have shape ``(N, 3)``;
+        if ``site_ids`` is empty; if no valid indices remain after
+        applying ``forbid_atom_ids``; or if ``defect_type`` is not one
+        of ``"vacancy"``, ``"substitution"``, ``"interstitial"``.
+    IndexError
+        If any ``atom_ids`` value is out of range for the host
+        structure, or any ``site_ids`` value is out of range for
+        ``sublattice``.
     """
     import numpy as np
 
@@ -2356,6 +2476,19 @@ def CreateDefectBatchFromIds(
     -------
     StructureContainer with all new structures added
 
+    Raises
+    ------
+    ValueError
+        If ``sublattice``/``element`` are missing for
+        ``defect_type="interstitial"``, or any of the errors documented
+        in :func:`CreateDefectFromIds` (missing required parameters,
+        empty candidate pools, unknown ``defect_type``) while processing
+        an individual target/id.
+    IndexError
+        If any ``atom_ids``/``site_ids`` value, or any entry of
+        ``target_indices``, is out of range -- see
+        :func:`CreateDefectFromIds`.
+
     Notes
     -----
     Use container methods like filter_by_generation(), filter_by_pristine_structures(),
@@ -2482,7 +2615,7 @@ def CreateDefectFromSeed(
     sublattice : (N, 3) array-like or None
         Interstitial only, required. Cartesian coordinates (Å) of all
         candidate interstitial sites — e.g. the ``all_sites`` output of
-        ``get_voronoi_interstitial_sites``.
+        ``GetVoronoiInterstitialSites``.
     element : str or None
         Interstitial only, required. Chemical symbol of the atom to insert.
     parent_defect_index : int or None
@@ -2497,6 +2630,17 @@ def CreateDefectFromSeed(
     Returns
     -------
     StructureContainer with new defect added
+
+    Raises
+    ------
+    ValueError
+        If a required parameter for the selected ``defect_type`` is
+        missing (``sublattice``/``element`` for interstitial); if
+        ``vacancy_element`` is a list whose length doesn't equal ``n``;
+        if not enough candidates remain to satisfy ``n`` for the chosen
+        element/defect type; if ``sublattice`` doesn't have shape
+        ``(N, 3)`` or is empty; or if ``defect_type`` is not one of
+        ``"vacancy"``, ``"substitution"``, ``"interstitial"``.
     """
     import numpy as np
 
@@ -2762,7 +2906,7 @@ def CreateDefectBatchFromSeed(
     sublattice : (N, 3) array-like or None
         Interstitial only, required. Cartesian coordinates (Å) of all
         candidate interstitial sites — e.g. the ``all_sites`` output of
-        ``get_voronoi_interstitial_sites``.
+        ``GetVoronoiInterstitialSites``.
     element : str or None
         Interstitial only, required. Chemical symbol of the atom to insert.
     forbid_uids : list of int or None
@@ -2777,6 +2921,15 @@ def CreateDefectBatchFromSeed(
     Returns
     -------
     StructureContainer with all new structures added
+
+    Raises
+    ------
+    ValueError
+        If ``sublattice``/``element`` are missing for
+        ``defect_type="interstitial"``, or any of the errors documented
+        in :func:`CreateDefectFromSeed` (missing required parameters,
+        not enough candidates, unknown ``defect_type``) while processing
+        an individual target/copy.
 
     Notes
     -----
@@ -2984,7 +3137,7 @@ def GetVoronoiInterstitialSitesPymatgen(
 
     Uses pymatgen's ``VoronoiInterstitialGenerator`` + ``SpacegroupAnalyzer``
     to return symmetry-unique void centers expanded to all equivalent positions.
-    Prefer :func:`get_voronoi_interstitial_sites` (scipy-based, no pymatgen)
+    Prefer :func:`GetVoronoiInterstitialSites` (scipy-based, no pymatgen)
     for speed; use this only when you specifically need spacegroup-reduced sites.
 
     The positions returned depend solely on the host geometry — not on which
@@ -2992,14 +3145,16 @@ def GetVoronoiInterstitialSitesPymatgen(
     step of the two-step workflow::
 
         # Step 1 — slow, submit to SLURM (memory-efficient form)
-        unique_sites, all_sites = get_voronoi_interstitial_sites_pymatgen(
+        unique_sites, all_sites = GetVoronoiInterstitialSitesPymatgen(
             atoms, primitive_atoms=prim, repeat=(3, 3, 3))
 
         # Step 2 — fast, element-specific
-        container = create_interstitial_from_ids(
-            container, positions=unique_sites, element='Mg')
-        container = create_interstitial_from_ids(
-            container, positions=unique_sites, element='Al')
+        container = CreateDefectFromIds(
+            structure_container=container, defect_type="interstitial",
+            sublattice=unique_sites, site_ids=[0], element='Mg')
+        container = CreateDefectFromIds(
+            structure_container=container, defect_type="interstitial",
+            sublattice=unique_sites, site_ids=[0], element='Al')
 
     Parameters
     ----------
@@ -3038,21 +3193,32 @@ def GetVoronoiInterstitialSitesPymatgen(
     Raises
     ------
     ImportError
-        If pymatgen or structuretoolkit is not available.
+        If ``structuretoolkit`` is not available (needed to convert the
+        host structure to a pymatgen ``Structure``), or if
+        ``pymatgen-analysis-defects`` is not available (needed for
+        ``VoronoiInterstitialGenerator`` and ``SpacegroupAnalyzer``).
+        Reported separately since either package can be missing
+        independently of the other.
     ValueError
         If only one of ``primitive_atoms`` / ``repeat`` is provided.
 
     See Also
     --------
-    create_interstitial_from_ids : Insert an atom at a specific position.
-    create_interstitial_from_seed : Randomly sample from candidate positions.
+    CreateDefectFromIds : Insert an interstitial at a specific sublattice site.
+    CreateDefectFromSeed : Randomly sample an interstitial site from the sublattice.
     """
     import numpy as np
 
-    if not VORONOI_AVAILABLE:
+    if not STRUCTURETOOLKIT_AVAILABLE:
         raise ImportError(
-            "Voronoi interstitial site finding requires pymatgen and structuretoolkit. "
-            "Install them with: pip install pymatgen structuretoolkit"
+            "Voronoi interstitial site finding (pymatgen-based) requires "
+            "structuretoolkit. Install it with: pip install structuretoolkit"
+        )
+    if not PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE:
+        raise ImportError(
+            "Voronoi interstitial site finding (pymatgen-based) requires the "
+            "pymatgen-analysis-defects package. Install it with: "
+            "pip install pymatgen-analysis-defects"
         )
 
     if (primitive_atoms is None) != (repeat is None):
@@ -3061,16 +3227,6 @@ def GetVoronoiInterstitialSitesPymatgen(
         )
 
     use_primitive = primitive_atoms is not None
-
-    # Dynamically import VoronoiInterstitialGenerator to avoid hard dependency
-    try:
-        from pymatgen.analysis.defects.generators import VoronoiInterstitialGenerator
-        from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-    except ImportError as e:
-        raise ImportError(
-            f"Could not import pymatgen defect modules: {e}. "
-            "Install pymatgen with: pip install pymatgen"
-        )
 
     # Select which structure to run Voronoi on
     work_atoms = primitive_atoms if use_primitive else atoms
@@ -3148,10 +3304,10 @@ def GetVoronoiInterstitialSites(
     Voronoi vertices of the atom positions (plus periodic image shells) are
     exactly the void centers of the tessellation.  No symmetry analysis is
     performed; all geometric void centers are returned directly.  The interface
-    mirrors :func:`get_delaunay_interstitial_sites` and both are drop-in
+    mirrors :func:`GetDelaunayInterstitialSites` and both are drop-in
     replaceable with each other::
 
-        unique_sites, all_sites = get_voronoi_interstitial_sites(
+        unique_sites, all_sites = GetVoronoiInterstitialSites(
             atoms, primitive_atoms=prim, repeat=(3, 3, 3))
 
     Parameters
@@ -3181,7 +3337,7 @@ def GetVoronoiInterstitialSites(
     unique_sites : (N, 3) ndarray
         One representative per cluster, in Cartesian coordinates (Å).
         Analogous to the ``equivalent_sites`` output of
-        :func:`get_voronoi_interstitial_sites_pymatgen`.  Clusters are
+        :func:`GetVoronoiInterstitialSitesPymatgen`.  Clusters are
         geometric, not symmetry-derived.
     all_sites : (M, 3) ndarray
         All deduplicated void centers in Cartesian coordinates (Å),
@@ -3189,8 +3345,8 @@ def GetVoronoiInterstitialSites(
 
     See Also
     --------
-    get_voronoi_interstitial_sites_pymatgen : Symmetry-aware alternative (slower, requires pymatgen).
-    get_delaunay_interstitial_sites : Equivalent via Delaunay circumcenters.
+    GetVoronoiInterstitialSitesPymatgen : Symmetry-aware alternative (slower, requires pymatgen).
+    GetDelaunayInterstitialSites : Equivalent via Delaunay circumcenters.
     """
     import numpy as np
     from scipy.spatial import Voronoi
@@ -3235,10 +3391,10 @@ def GetDelaunayInterstitialSites(
 
     Circumcenters of Delaunay tetrahedra are natural void centers.  No
     pymatgen dependency; uses only scipy and numpy.  The interface mirrors
-    :func:`get_voronoi_interstitial_sites` (and :func:`get_voronoi_interstitial_sites_pymatgen`)
+    :func:`GetVoronoiInterstitialSites` (and :func:`GetVoronoiInterstitialSitesPymatgen`)
     so all three are drop-in replaceable::
 
-        unique_sites, all_sites = get_delaunay_interstitial_sites(
+        unique_sites, all_sites = GetDelaunayInterstitialSites(
             atoms, primitive_atoms=prim, repeat=(3, 3, 3))
 
     Parameters
@@ -3268,7 +3424,7 @@ def GetDelaunayInterstitialSites(
     unique_sites : (N, 3) ndarray
         One representative per cluster, in Cartesian coordinates (Å).
         Analogous to the ``equivalent_sites`` output of
-        :func:`get_voronoi_interstitial_sites_pymatgen`.  Note: clusters are
+        :func:`GetVoronoiInterstitialSitesPymatgen`.  Note: clusters are
         geometric, not symmetry-derived; for symmetry-unique sites pass
         these through spglib separately.
     all_sites : (M, 3) ndarray
@@ -3277,7 +3433,7 @@ def GetDelaunayInterstitialSites(
 
     See Also
     --------
-    get_voronoi_interstitial_sites : Scipy-based Voronoi alternative (same speed, no pymatgen).
+    GetVoronoiInterstitialSites : Scipy-based Voronoi alternative (same speed, no pymatgen).
     """
     import numpy as np
     from scipy.spatial import Delaunay
