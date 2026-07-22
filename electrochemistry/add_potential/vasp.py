@@ -132,13 +132,11 @@ def _write_plugin_file(working_directory: str, ce_params: CEParameters) -> None:
 def CCESetup(
     io_bundle: VaspInputResources,
     electrode: Atoms,
-    phi0: float,
+    potential: float = 0.0,
     path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CCE.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
-    potim: float = 0.5,
-    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
     """
@@ -163,7 +161,6 @@ def CCESetup(
     # Uses existing _get_potcar_paths() helper — reads before concatenation
     # -------------------------------------------------------------------------
     temperature = io_bundle.calc.md.temperature
-    n_steps = io_bundle.calc.md.n_ionic_steps
 
     potcar_paths = _get_potcar_paths(
         io_bundle.structure,
@@ -259,20 +256,12 @@ def CCESetup(
         np.float64(f"{zval_ne:.7f}") - 8
     )
 
-    # Langevin gamma string - must have one value per element in the system
-    langevin_gamma_str = " ".join([str(langevin_gamma)] * n_elements)
-
     # -------------------------------------------------------------------------
     # INCAR dictionary
     # -------------------------------------------------------------------------
     additional_incar = {
         "PLUGINS/LOCAL_POTENTIAL": "T",
         "PLUGINS/OCCUPANCIES": "T",
-        "TEBEG": temperature,
-        "MDALGO": 3,  # Langevin thermostat
-        "LANGEVIN_GAMMA": langevin_gamma_str,
-        "NSW": n_steps,
-        "POTIM": potim,
         "NELECT": nelect_adjusted,
         "IDIPOL": 3,
         "DIPOL": " ".join([str(c) for c in dipole_center]),
@@ -281,7 +270,7 @@ def CCESetup(
 
     cce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=phi0,
+        phi0=potential,
         Q0=Q0,
         nelect_neutral=nelect_neutral,
         grid_position_frac=dipole_position,
@@ -324,15 +313,13 @@ def CCESetup(
 def CDCESetup(
     io_bundle: VaspInputResources,
     electrode: Atoms,
-    phi0: float,
+    potential: float = 0.0,
     path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
     pos_right_wall: float = 0.75,  # for now this is in fractional coordinates
     width_wall: float = 6.5,
-    potim: float = 0.5,
-    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
     """
@@ -353,7 +340,6 @@ def CDCESetup(
         )
 
     temperature = io_bundle.calc.md.temperature
-    n_steps = io_bundle.calc.md.n_ionic_steps
 
     # -------------------------------------------------------------------------
     # Calculate nelect_neutral from individual POTCAR files
@@ -424,9 +410,6 @@ def CDCESetup(
 
     nelect_adjusted = float(nelect_neutral) + np.round(Q0)
 
-    # Langevin gamma string - must have one value per element in the system
-    n_elements = len(unique_elements)
-    langevin_gamma_str = " ".join([str(langevin_gamma)] * n_elements)
 
     # -------------------------------------------------------------------------
     # INCAR dictionary
@@ -435,18 +418,13 @@ def CDCESetup(
         "PLUGINS/LOCAL_POTENTIAL": "T",
         "PLUGINS/OCCUPANCIES": "T",
         "PLUGINS/FORCE_AND_STRESS": "T",
-        "TEBEG": temperature,
-        "MDALGO": 3,  # Langevin thermostat
-        "LANGEVIN_GAMMA": langevin_gamma_str,
-        "NSW": n_steps,
-        "POTIM": potim,
         "NELECT": nelect_adjusted,
         "LREMOVE_DRIFT": "F",
     }
 
     cdce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=phi0,
+        phi0=potential,
         Q0=Q0,
         Q_pos=Q_pos,
         nelect_neutral=nelect_neutral,

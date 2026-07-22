@@ -491,7 +491,7 @@ def RunVaspCalculation(
     if not vasp_command:
         vasp_command = f"module load vasp && mpiexec -n {threads_per_core} vasp_std"
 
-    if os.path.exists(run_script_path):
+    if run_script_path is not None and os.path.exists(run_script_path):
         vasp_command = f"bash {run_script_path} {threads_per_core}"
 
     if debug:
