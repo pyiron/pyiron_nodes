@@ -218,7 +218,9 @@ class InputMDVASP:
     pressure: Optional[float] = None  # in GPa, required for NpT, ignored for NVT
     temperature_damping_timescale: float = 100.0  # in fs, Langevin friction on the ions
     pressure_damping_timescale: float = 1000.0  # in fs, Langevin friction on the cell
-    lattice_mass: float = 1000.0  # in amu, fictitious mass of the cell degrees of freedom
+    lattice_mass: float = (
+        1000.0  # in amu, fictitious mass of the cell degrees of freedom
+    )
     seed: Optional[int] = None  # None → let VASP pick its own random seed
 
 
