@@ -415,3 +415,53 @@ def GetUpstreamGraph(db, node_id: int, group: bool = False, workflow_name: str =
         graph.group_nodes(list(graph.nodes.keys()), group_name=group_name)
 
     return graph
+
+
+@as_function_node
+def ShowVariedInputs(db, qualname: str = ""):
+    """Return a DataFrame of input parameters that vary across instances of a node type.
+
+    Fetches all DB rows with the given qualname, unpacks each row's ``inputs``
+    JSONB column into a flat DataFrame, then drops every column whose values are
+    identical across all instances.  The ``hash`` column (16-char prefix) is
+    always kept so results can be cross-referenced with ``GetUpstreamGraph``.
+
+    Args:
+        db: InstanceDatabase connection.
+        qualname: Node type to inspect, e.g. ``"Relax"`` or ``"RunNEB"``.
+
+    Returns:
+        pd.DataFrame: One row per instance, one column per *varied* input
+        parameter.  Empty DataFrame if the qualname is not found.
+    """
+    import pandas as pd
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db.engine)
+    session = Session()
+    df = pd.read_sql(session.query(db.table).statement, session.bind)
+    session.close()
+
+    df_filtered = df[df["qualname"] == qualname]
+    if df_filtered.empty:
+        result = pd.DataFrame()
+        return result
+
+    records = []
+    for _, row in df_filtered.iterrows():
+        inputs = row["inputs"] if isinstance(row["inputs"], dict) else {}
+        record = {"hash": row["hash"][:16] + "..."}
+        record.update(inputs)
+        records.append(record)
+
+    inputs_df = pd.DataFrame(records)
+
+    varied_cols = ["hash"]
+    for col in inputs_df.columns:
+        if col == "hash":
+            continue
+        if inputs_df[col].map(str).nunique() > 1:
+            varied_cols.append(col)
+
+    result = inputs_df[varied_cols].reset_index(drop=True)
+    return result

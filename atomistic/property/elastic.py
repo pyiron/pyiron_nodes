@@ -1,7 +1,7 @@
 from dataclasses import field
 from typing import Optional
 
-import atomistics.workflows.elastic.symmetry as sym
+# import pyiron_nodes.property.atomistic.elastic.symmetry as sym
 import numpy as np
 
 from core import (
