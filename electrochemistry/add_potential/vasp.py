@@ -315,13 +315,6 @@ def CCESetup(
         np.max(io_bundle.structure[ne_indices].positions[:, 2])
     ) - float(np.max(io_bundle.structure[electrode_indices].positions[:, 2]))
 
-    # Dipole correction center
-    dipole_center = [
-        0.0,
-        0.0,
-        float(np.max(io_bundle.structure.get_scaled_positions()[:, 2]) / 2.0),
-    ]
-
     #  This is to make sure NELECT and the Ne ZVAL cancel out exactly
     zval_ne = float(f"{(8 + np.round(Q0 / n_Ne, 8)):.7f}")
     nelect_adjusted = float(nelect_neutral) + float(n_Ne) * (
@@ -335,9 +328,6 @@ def CCESetup(
         "PLUGINS/LOCAL_POTENTIAL": "T",
         "PLUGINS/OCCUPANCIES": "T",
         "NELECT": nelect_adjusted,
-        "IDIPOL": 3,
-        "DIPOL": " ".join([str(c) for c in dipole_center]),
-        "LDIPOL": ".TRUE.",
     }
 
     cce_params = CEParameters(
