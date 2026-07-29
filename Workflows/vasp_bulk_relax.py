@@ -39,6 +39,4 @@ wf.RunVaspCalculation = RunVaspCalculation(
 )
 
 # parse the outputs; `out` is an OutputCalcMinimize (initial + final + convergence)
-wf.ParseVaspOutput = ParseVaspOutput(
-    io_bundle=wf.RunVaspCalculation.outputs.io_bundle
-)
+wf.ParseVaspOutput = ParseVaspOutput(io_bundle=wf.RunVaspCalculation.outputs.io_bundle)

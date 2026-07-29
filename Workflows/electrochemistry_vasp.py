@@ -49,6 +49,4 @@ wf.RunVaspCalculation = RunVaspCalculation(io_bundle=wf.CCESetup, debug=False)
 
 # read the electrode charge (Q.dat), potential (phi.dat) and the planar-averaged
 # electrostatic potential (el_pot_z.dat) written by the plugin
-wf.ParsePotential = ParsePotential(
-    io_bundle=wf.RunVaspCalculation.outputs.io_bundle
-)
+wf.ParsePotential = ParsePotential(io_bundle=wf.RunVaspCalculation.outputs.io_bundle)
