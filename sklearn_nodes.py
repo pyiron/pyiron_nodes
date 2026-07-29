@@ -54,7 +54,7 @@ from core import as_function_node
 
 
 @as_function_node("model")
-def LinearRegressionNode(
+def LinearRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     fit_intercept: bool = True,
@@ -88,7 +88,7 @@ def LinearRegressionNode(
 
 
 @as_function_node("model")
-def RidgeRegressionNode(
+def RidgeRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -133,7 +133,7 @@ def RidgeRegressionNode(
 
 
 @as_function_node("model")
-def LassoRegressionNode(
+def LassoRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -179,7 +179,7 @@ def LassoRegressionNode(
 
 
 @as_function_node("model")
-def ElasticNetRegressionNode(
+def ElasticNetRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -226,7 +226,7 @@ def ElasticNetRegressionNode(
 
 
 @as_function_node("model")
-def LogisticRegressionNode(
+def LogisticClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     penalty: str = "l2",
@@ -283,7 +283,7 @@ def LogisticRegressionNode(
 
 
 @as_function_node("model")
-def DecisionTreeRegressorNode(
+def DecisionTreeRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     criterion: str = "squared_error",
@@ -331,7 +331,7 @@ def DecisionTreeRegressorNode(
 
 
 @as_function_node("model")
-def DecisionTreeClassifierNode(
+def DecisionTreeClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     criterion: str = "gini",
@@ -388,7 +388,7 @@ def DecisionTreeClassifierNode(
 
 
 @as_function_node("model")
-def RandomForestRegressorNode(
+def RandomForestRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -438,7 +438,7 @@ def RandomForestRegressorNode(
 
 
 @as_function_node("model")
-def RandomForestClassifierNode(
+def RandomForestClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -497,7 +497,7 @@ def RandomForestClassifierNode(
 
 
 @as_function_node("model")
-def GradientBoostingRegressorNode(
+def GradientBoostingRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -548,7 +548,7 @@ def GradientBoostingRegressorNode(
 
 
 @as_function_node("model")
-def GradientBoostingClassifierNode(
+def GradientBoostingClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -605,7 +605,7 @@ def GradientBoostingClassifierNode(
 
 
 @as_function_node("model")
-def AdaBoostRegressorNode(
+def AdaBoostRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 50,
@@ -646,7 +646,7 @@ def AdaBoostRegressorNode(
 
 
 @as_function_node("model")
-def AdaBoostClassifierNode(
+def AdaBoostClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 50,
@@ -693,7 +693,7 @@ def AdaBoostClassifierNode(
 
 
 @as_function_node("model")
-def KNeighborsRegressorNode(
+def KNeighborsRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_neighbors: int = 5,
@@ -742,7 +742,7 @@ def KNeighborsRegressorNode(
 
 
 @as_function_node("model")
-def KNeighborsClassifierNode(
+def KNeighborsClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_neighbors: int = 5,
@@ -797,7 +797,7 @@ def KNeighborsClassifierNode(
 
 
 @as_function_node("model")
-def SupportVectorClassifierNode(
+def SupportVectorClassification_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     kernel: str = "rbf",
@@ -845,7 +845,7 @@ def SupportVectorClassifierNode(
 
 
 @as_function_node("model")
-def SupportVectorRegressorNode(
+def SupportVectorRegression_model(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     kernel: str = "rbf",
@@ -888,7 +888,7 @@ def SupportVectorRegressorNode(
 
 
 @as_function_node("metrics")
-def EvaluateRegressionModelSklearn(
+def EvaluateRegressionModelSklearn_model(
     model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, float]:
     """
@@ -913,7 +913,7 @@ def EvaluateRegressionModelSklearn(
 
 
 @as_function_node("metrics")
-def EvaluateClassificationModelSklearn(
+def EvaluateClassificationModelSklearn_model(
     model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, Any]:
     """
@@ -950,7 +950,7 @@ def EvaluateClassificationModelSklearn(
 
 
 @as_function_node("predictions")
-def PredictRegression(model: Dict, X: pd.DataFrame) -> np.ndarray:
+def PredictRegression_model(model: Dict, X: pd.DataFrame) -> np.ndarray:
     """
     Makes predictions using a fitted regression model.
 
@@ -965,7 +965,7 @@ def PredictRegression(model: Dict, X: pd.DataFrame) -> np.ndarray:
 
 
 @as_function_node("predictions")
-def PredictClassification(
+def PredictClassification_model(
     model: Dict, X: pd.DataFrame, return_probabilities: bool = False
 ) -> Dict[str, Any]:
     """
@@ -995,7 +995,7 @@ def PredictClassification(
 
 
 @as_function_node("comparison_results")
-def CompareRegressionModels(
+def CompareRegressionModels_model(
     model_1: Dict,
     model_2: Dict,
     X_validation: pd.DataFrame,
@@ -1049,7 +1049,7 @@ def CompareRegressionModels(
 
 
 @as_function_node("comparison_results")
-def CompareClassificationModels(
+def CompareClassificationModels_model(
     model_1: Dict,
     model_2: Dict,
     X_validation: pd.DataFrame,
