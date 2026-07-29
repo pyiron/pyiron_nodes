@@ -70,8 +70,8 @@ def regression_data():
 class TestMLDataSplitter(unittest.TestCase):
     def test_default_split_shapes(self):
         df = splitter_df()
-        X_train, X_val, X_test, y_train, y_val, y_test = (
-            MLDataSplitter._original_func(df, "target")
+        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter._original_func(
+            df, "target"
         )
 
         self.assertEqual(len(X_train) + len(X_val) + len(X_test), len(df))
@@ -81,8 +81,8 @@ class TestMLDataSplitter(unittest.TestCase):
 
     def test_non_numeric_columns_dropped(self):
         df = splitter_df()
-        X_train, X_val, X_test, y_train, y_val, y_test = (
-            MLDataSplitter._original_func(df, "target")
+        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter._original_func(
+            df, "target"
         )
 
         self.assertEqual(set(X_train.columns), {"feature_0", "feature_1"})
@@ -92,22 +92,20 @@ class TestMLDataSplitter(unittest.TestCase):
         df_with_nan = df.copy()
         df_with_nan.loc[0, "feature_0"] = np.nan
 
-        X_train, X_val, X_test, y_train, y_val, y_test = (
-            MLDataSplitter._original_func(df_with_nan, "target")
+        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter._original_func(
+            df_with_nan, "target"
         )
 
         self.assertEqual(len(X_train) + len(X_val) + len(X_test), len(df) - 1)
 
     def test_custom_fractions(self):
         df = splitter_df()
-        X_train, X_val, X_test, y_train, y_val, y_test = (
-            MLDataSplitter._original_func(
-                df,
-                "target",
-                train_fraction=0.5,
-                validation_fraction=0.3,
-                test_fraction=0.2,
-            )
+        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter._original_func(
+            df,
+            "target",
+            train_fraction=0.5,
+            validation_fraction=0.3,
+            test_fraction=0.2,
         )
 
         n = len(df)

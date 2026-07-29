@@ -475,9 +475,7 @@ class TestAdaBoostRegressionModel(unittest.TestCase):
 
     def test_custom_loss(self):
         X_train, y_train, _, _ = regression_data()
-        result = AdaBoostRegressionModel._original_func(
-            X_train, y_train, loss="square"
-        )
+        result = AdaBoostRegressionModel._original_func(X_train, y_train, loss="square")
 
         self.assertEqual(result["model"].loss, "square")
 
