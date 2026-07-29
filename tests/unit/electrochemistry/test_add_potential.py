@@ -246,10 +246,11 @@ class TestCCESetup(_SetupFixture):
         with self.assertRaises(ValueError):
             self._run()
 
-    def test_existing_output_files_raise(self):
+    def test_existing_output_files_warn(self):
         with open(os.path.join(self.workdir, "Q.dat"), "w") as f:
             f.write("0.0\n")
-        with self.assertRaises(FileExistsError):
+        # pre-existing outputs are flagged with a warning, not an error
+        with self.assertWarns(UserWarning):
             self._run()
 
 
@@ -298,12 +299,13 @@ class TestCDCESetup(_SetupFixture):
         with self.assertRaises(ValueError):
             self._run()
 
-    def test_existing_output_files_removed_not_raised(self):
+    def test_existing_output_files_warn(self):
         stale = os.path.join(self.workdir, "phi.dat")
         with open(stale, "w") as f:
             f.write("stale\n")
-        self._run()  # CDCE removes stale output files instead of raising
-        self.assertFalse(os.path.exists(stale))
+        # pre-existing outputs are flagged with a warning, not an error
+        with self.assertWarns(UserWarning):
+            self._run()
 
 
 # ── shipped plugin templates ───────────────────────────────────────────────────
