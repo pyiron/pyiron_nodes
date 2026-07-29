@@ -1,47 +1,50 @@
 from pyiron_nodes.dataframe import ReadDataFrame
-from pyiron_nodes.ml_nodes import ChooseBestModel, MLDataSplitter
-from pyiron_nodes.sklearn_nodes import (
-    EvaluateRegressionModelSklearn_model,
-    LinearRegression_model,
-    PredictRegression_model,
-    SupportVectorRegression_model,
+from pyiron_nodes.machine_learning.pipeline import ChooseBestModel, MLDataSplitter
+from pyiron_nodes.machine_learning.models import (
+    EvaluateRegressionModelSklearn,
+    LinearRegressionModel,
+    PredictRegressionModel,
+    SupportVectorRegressionModel,
 )
 from core import Workflow
 from core import group_node
 
 wf = Workflow("simple_inference")
 
-wf.ReadDataFrame = ReadDataFrame(filename="sim_equilibrium_pot.csv", file_format="csv")
+wf.ReadDataFrame = ReadDataFrame(
+    filename="share/sim_equilibrium_pot.csv", file_format="csv"
+)
 
 wf.MLDataSplitter = MLDataSplitter(df=wf.ReadDataFrame, y_name="volume")
 
-wf.LinearRegression_model = LinearRegression_model(
+wf.LinearRegressionModel = LinearRegressionModel(
     X_train=wf.MLDataSplitter.outputs.X_train, y_train=wf.MLDataSplitter.outputs.y_train
 )
 
-wf.SupportVectorRegression_model = SupportVectorRegression_model(
+wf.SupportVectorRegressionModel = SupportVectorRegressionModel(
     X_train=wf.MLDataSplitter.outputs.X_train, y_train=wf.MLDataSplitter.outputs.y_train
 )
 
-wf.EvaluateRegressionModelSklearn_model = EvaluateRegressionModelSklearn_model(
-    model=wf.LinearRegression_model,
+wf.EvaluateRegressionModelSklearn = EvaluateRegressionModelSklearn(
+    model=wf.LinearRegressionModel,
     X_test=wf.MLDataSplitter.outputs.X_test,
     y_test=wf.MLDataSplitter.outputs.y_test,
 )
 
-wf.EvaluateRegressionModelSklearn_model_1 = EvaluateRegressionModelSklearn_model(
-    model=wf.SupportVectorRegression_model,
+wf.EvaluateRegressionModelSklearn_1 = EvaluateRegressionModelSklearn(
+    model=wf.SupportVectorRegressionModel,
     X_test=wf.MLDataSplitter.outputs.X_test,
     y_test=wf.MLDataSplitter.outputs.y_test,
 )
 
 wf.ChooseBestModel = ChooseBestModel(
-    model_1=wf.LinearRegression_model,
-    model_2=wf.SupportVectorRegression_model,
+    model_1=wf.LinearRegressionModel,
+    model_2=wf.SupportVectorRegressionModel,
     X_validation=wf.MLDataSplitter.outputs.X_validation,
     y_validation=wf.MLDataSplitter.outputs.y_validation,
 )
 
-wf.PredictRegression_model = PredictRegression_model(
-    model=wf.ChooseBestModel.outputs.best_model
+wf.PredictRegressionModel = PredictRegressionModel(
+    model=wf.ChooseBestModel.outputs.best_model,
+    X=wf.MLDataSplitter.outputs.X_test,
 )
