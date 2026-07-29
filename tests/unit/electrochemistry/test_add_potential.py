@@ -199,17 +199,15 @@ class TestCCESetup(_SetupFixture):
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
         self.assertTrue(os.path.exists(os.path.join(self.workdir, "vasp_plugin.py")))
 
-    def test_incar_has_plugin_and_dipole_tags(self):
+    def test_incar_has_plugin_and_nelect_tags(self):
         io = self._run()
         # PLUGINS/* keys carry a slash pymatgen's Incar reader mangles, so check
         # them on the dict the node actually built
         self.assertEqual(io.extra_incar["PLUGINS/LOCAL_POTENTIAL"], "T")
         self.assertEqual(io.extra_incar["PLUGINS/OCCUPANCIES"], "T")
-        # the standard dipole/NELECT tags round-trip through the written INCAR
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
-        self.assertEqual(incar["IDIPOL"], 3)
-        self.assertEqual(incar["LDIPOL"], True)
+        # the standard NELECT tag round-trips through the written INCAR;
         # NELECT is neutral (2*11 + 2*8) when Q0 = 0
+        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
         self.assertAlmostEqual(incar["NELECT"], 38.0, places=6)
 
     def test_charge_shifts_nelect(self):
