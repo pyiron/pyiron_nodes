@@ -2,11 +2,11 @@
 Unit tests for machine_learning/pipeline.py
 """
 
+import unittest
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-import pytest
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 
@@ -18,11 +18,10 @@ from pyiron_nodes.machine_learning.pipeline import (
 )
 
 # =============================================================================
-# FIXTURES
+# SYNTHETIC TEST DATA HELPERS
 # =============================================================================
 
 
-@pytest.fixture
 def splitter_df() -> pd.DataFrame:
     """Dataframe with numeric features, a non-numeric column, and a target."""
     np.random.seed(42)
@@ -37,7 +36,6 @@ def splitter_df() -> pd.DataFrame:
     )
 
 
-@pytest.fixture
 def regression_data():
     """(X_train, y_train, X_test, y_test) for a simple linear relationship."""
     np.random.seed(42)
@@ -69,61 +67,69 @@ def regression_data():
 # =============================================================================
 
 
-class TestMLDataSplitter:
-    def test_default_split_shapes(self, splitter_df):
-        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter(
-            splitter_df, "target"
-        ).run()
+class TestMLDataSplitter(unittest.TestCase):
+    def test_default_split_shapes(self):
+        df = splitter_df()
+        X_train, X_val, X_test, y_train, y_val, y_test = (
+            MLDataSplitter._original_func(df, "target")
+        )
 
-        assert len(X_train) + len(X_val) + len(X_test) == len(splitter_df)
-        assert len(X_train) == len(y_train)
-        assert len(X_val) == len(y_val)
-        assert len(X_test) == len(y_test)
+        self.assertEqual(len(X_train) + len(X_val) + len(X_test), len(df))
+        self.assertEqual(len(X_train), len(y_train))
+        self.assertEqual(len(X_val), len(y_val))
+        self.assertEqual(len(X_test), len(y_test))
 
-    def test_non_numeric_columns_dropped(self, splitter_df):
-        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter(
-            splitter_df, "target"
-        ).run()
+    def test_non_numeric_columns_dropped(self):
+        df = splitter_df()
+        X_train, X_val, X_test, y_train, y_val, y_test = (
+            MLDataSplitter._original_func(df, "target")
+        )
 
-        assert set(X_train.columns) == {"feature_0", "feature_1"}
+        self.assertEqual(set(X_train.columns), {"feature_0", "feature_1"})
 
-    def test_rows_with_missing_values_dropped(self, splitter_df):
-        df_with_nan = splitter_df.copy()
+    def test_rows_with_missing_values_dropped(self):
+        df = splitter_df()
+        df_with_nan = df.copy()
         df_with_nan.loc[0, "feature_0"] = np.nan
 
-        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter(
-            df_with_nan, "target"
-        ).run()
+        X_train, X_val, X_test, y_train, y_val, y_test = (
+            MLDataSplitter._original_func(df_with_nan, "target")
+        )
 
-        assert len(X_train) + len(X_val) + len(X_test) == len(splitter_df) - 1
+        self.assertEqual(len(X_train) + len(X_val) + len(X_test), len(df) - 1)
 
-    def test_custom_fractions(self, splitter_df):
-        X_train, X_val, X_test, y_train, y_val, y_test = MLDataSplitter(
-            splitter_df,
-            "target",
-            train_fraction=0.5,
-            validation_fraction=0.3,
-            test_fraction=0.2,
-        ).run()
+    def test_custom_fractions(self):
+        df = splitter_df()
+        X_train, X_val, X_test, y_train, y_val, y_test = (
+            MLDataSplitter._original_func(
+                df,
+                "target",
+                train_fraction=0.5,
+                validation_fraction=0.3,
+                test_fraction=0.2,
+            )
+        )
 
-        n = len(splitter_df)
-        assert len(X_train) == pytest.approx(0.5 * n, abs=2)
-        assert len(X_val) == pytest.approx(0.3 * n, abs=2)
-        assert len(X_test) == pytest.approx(0.2 * n, abs=2)
+        n = len(df)
+        self.assertAlmostEqual(len(X_train), 0.5 * n, delta=2)
+        self.assertAlmostEqual(len(X_val), 0.3 * n, delta=2)
+        self.assertAlmostEqual(len(X_test), 0.2 * n, delta=2)
 
-    def test_invalid_fractions_raise(self, splitter_df):
-        with pytest.raises(ValueError):
-            MLDataSplitter(
-                splitter_df,
+    def test_invalid_fractions_raise(self):
+        df = splitter_df()
+        with self.assertRaises(ValueError):
+            MLDataSplitter._original_func(
+                df,
                 "target",
                 train_fraction=0.5,
                 validation_fraction=0.3,
                 test_fraction=0.3,
-            ).run()
+            )
 
-    def test_reproducible_with_random_state(self, splitter_df):
-        result_1 = MLDataSplitter(splitter_df, "target", random_state=1).run()
-        result_2 = MLDataSplitter(splitter_df, "target", random_state=1).run()
+    def test_reproducible_with_random_state(self):
+        df = splitter_df()
+        result_1 = MLDataSplitter._original_func(df, "target", random_state=1)
+        result_2 = MLDataSplitter._original_func(df, "target", random_state=1)
 
         pd.testing.assert_frame_equal(result_1[0], result_2[0])
 
@@ -133,28 +139,28 @@ class TestMLDataSplitter:
 # =============================================================================
 
 
-class TestTrainRegressor:
-    def test_linear(self, regression_data):
-        X_train, y_train, _, _ = regression_data
-        reg = TrainRegressor(X_train, y_train, r_type="linear").run()
+class TestTrainRegressor(unittest.TestCase):
+    def test_linear(self):
+        X_train, y_train, _, _ = regression_data()
+        reg = TrainRegressor._original_func(X_train, y_train, r_type="linear")
 
-        assert isinstance(reg, LinearRegression)
+        self.assertIsInstance(reg, LinearRegression)
 
-    def test_tree(self, regression_data):
-        X_train, y_train, _, _ = regression_data
-        reg = TrainRegressor(X_train, y_train, r_type="tree").run()
+    def test_tree(self):
+        X_train, y_train, _, _ = regression_data()
+        reg = TrainRegressor._original_func(X_train, y_train, r_type="tree")
 
-        assert isinstance(reg, RandomForestRegressor)
+        self.assertIsInstance(reg, RandomForestRegressor)
 
-    def test_default_r_type_raises(self, regression_data):
-        X_train, y_train, _, _ = regression_data
-        with pytest.raises(ValueError):
-            TrainRegressor(X_train, y_train).run()
+    def test_default_r_type_raises(self):
+        X_train, y_train, _, _ = regression_data()
+        with self.assertRaises(ValueError):
+            TrainRegressor._original_func(X_train, y_train)
 
-    def test_invalid_r_type_raises(self, regression_data):
-        X_train, y_train, _, _ = regression_data
-        with pytest.raises(ValueError):
-            TrainRegressor(X_train, y_train, r_type="invalid").run()
+    def test_invalid_r_type_raises(self):
+        X_train, y_train, _, _ = regression_data()
+        with self.assertRaises(ValueError):
+            TrainRegressor._original_func(X_train, y_train, r_type="invalid")
 
 
 # =============================================================================
@@ -162,24 +168,24 @@ class TestTrainRegressor:
 # =============================================================================
 
 
-class TestEvaluateRegressionModel:
-    def test_output_keys(self, regression_data):
-        X_train, y_train, X_test, y_test = regression_data
-        reg = TrainRegressor(X_train, y_train, r_type="linear").run()
+class TestEvaluateRegressionModel(unittest.TestCase):
+    def test_output_keys(self):
+        X_train, y_train, X_test, y_test = regression_data()
+        reg = TrainRegressor._original_func(X_train, y_train, r_type="linear")
 
-        metrics = EvaluateRegressionModel(reg, X_test, y_test).run()
+        metrics = EvaluateRegressionModel._original_func(reg, X_test, y_test)
 
-        assert set(metrics) == {"R2", "MSE", "MAE"}
+        self.assertEqual(set(metrics), {"R2", "MSE", "MAE"})
 
     def test_perfect_fit_gives_r2_of_one(self):
         X = pd.DataFrame({"x": np.arange(20, dtype=float)})
         y = pd.Series(2 * X["x"] + 1)
         reg = LinearRegression().fit(X, y)
 
-        metrics = EvaluateRegressionModel(reg, X, y).run()
+        metrics = EvaluateRegressionModel._original_func(reg, X, y)
 
-        assert metrics["R2"] == pytest.approx(1.0)
-        assert metrics["MSE"] == pytest.approx(0.0, abs=1e-20)
+        self.assertAlmostEqual(metrics["R2"], 1.0, places=6)
+        self.assertAlmostEqual(metrics["MSE"], 0.0, delta=1e-10)
 
 
 # =============================================================================
@@ -187,7 +193,7 @@ class TestEvaluateRegressionModel:
 # =============================================================================
 
 
-class TestChooseBestModel:
+class TestChooseBestModel(unittest.TestCase):
     def test_model_1_wins_on_higher_r2(self):
         X = pd.DataFrame({"x": np.linspace(0, 10, 30)})
         y = pd.Series(2 * X["x"] + 1)
@@ -195,10 +201,10 @@ class TestChooseBestModel:
         good = {"model": LinearRegression().fit(X, y)}
         bad = {"model": LinearRegression().fit(X.iloc[:2], [0, 0])}
 
-        best, results = ChooseBestModel(good, bad, X, y).run()
+        best, results = ChooseBestModel._original_func(good, bad, X, y)
 
-        assert best is good
-        assert set(results) == {"model_1", "model_2"}
+        self.assertIs(best, good)
+        self.assertEqual(set(results), {"model_1", "model_2"})
 
     def test_model_2_wins_on_higher_r2(self):
         X = pd.DataFrame({"x": np.linspace(0, 10, 30)})
@@ -207,9 +213,9 @@ class TestChooseBestModel:
         bad = {"model": LinearRegression().fit(X.iloc[:2], [0, 0])}
         good = {"model": LinearRegression().fit(X, y)}
 
-        best, results = ChooseBestModel(bad, good, X, y).run()
+        best, results = ChooseBestModel._original_func(bad, good, X, y)
 
-        assert best is good
+        self.assertIs(best, good)
 
     def test_exact_tie_falls_back_to_model_2(self):
         """Identical models tie on both R2 and RMSE; ties resolve to model_2."""
@@ -217,9 +223,9 @@ class TestChooseBestModel:
         y = pd.Series(2 * X["x"] + 1)
         model = {"model": LinearRegression().fit(X, y)}
 
-        best, _ = ChooseBestModel(model, model, X, y).run()
+        best, _ = ChooseBestModel._original_func(model, model, X, y)
 
-        assert best is model
+        self.assertIs(best, model)
 
     def test_tie_break_prefers_lower_rmse(self):
         """
@@ -240,6 +246,10 @@ class TestChooseBestModel:
             "pyiron_nodes.machine_learning.pipeline.mean_squared_error",
             side_effect=[1.0, 4.0],
         ):
-            best, _ = ChooseBestModel(model_1, model_2, X, y).run()
+            best, _ = ChooseBestModel._original_func(model_1, model_2, X, y)
 
-        assert best is model_1
+        self.assertIs(best, model_1)
+
+
+if __name__ == "__main__":
+    unittest.main()

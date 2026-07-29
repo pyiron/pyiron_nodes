@@ -1,5 +1,5 @@
 [run]
 source = pyiron_nodes
-command_line = -m pytest pyiron_nodes/tests
+command_line = -m unittest discover pyiron_nodes/tests
 omit =
     pyiron_nodes/Workflows/*
