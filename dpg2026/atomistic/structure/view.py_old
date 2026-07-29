@@ -64,7 +64,7 @@ def Plot3d(
         view = nv.show_ase(structure)
         # Basic configuration (may need adjustment)
         view.camera = camera
-        view.background = background    
+        view.background = background
         if select_atoms is not None:
             # Simple representation for selected atoms; customise as needed
             view.add_ball_and_stick(select_atoms, opacity=1.0, radius=particle_size)
