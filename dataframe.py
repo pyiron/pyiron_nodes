@@ -19,8 +19,6 @@ def ReadDataFrame(
 
     if file_format == "csv":
         file = pd.read_csv(filename)
-    elif file_format == "pickle":
-        file = pd.read_pickle(filename, compression=compression)
     elif file_format == "parquet":
         file = pd.read_parquet(filename)
     elif file_format == "json":
@@ -34,6 +32,12 @@ def ReadDataFrame(
 
     return file
 
+@as_function_node("df")
+def ReadPickleDataFrame(filename: str, compression: str = "infer"):
+    import pandas as pd
+
+    file = pd.read_pickle(filename, compression=compression)
+    return file
 
 # get column from dataframe
 @as_function_node
