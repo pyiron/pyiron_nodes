@@ -32,12 +32,14 @@ def ReadDataFrame(
 
     return file
 
+
 @as_function_node("df")
 def ReadPickleDataFrame(filename: str, compression: str = "infer"):
     import pandas as pd
 
     file = pd.read_pickle(filename, compression=compression)
     return file
+
 
 # get column from dataframe
 @as_function_node
