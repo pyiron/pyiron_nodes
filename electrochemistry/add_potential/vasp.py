@@ -462,7 +462,8 @@ def CDCESetup(
 
     # Warning if the output files already exist in the working directory
     existing_files = [
-        filename for filename in output_files
+        filename
+        for filename in output_files
         if os.path.exists(os.path.join(io_bundle.working_directory, filename))
     ]
 
