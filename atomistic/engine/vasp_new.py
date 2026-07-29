@@ -164,11 +164,10 @@ def _ordered_elements(atoms: Atoms) -> list[str]:
     same species — so the returned order lines up with the concatenated POTCAR
     and with per-species INCAR tags such as ``LANGEVIN_GAMMA``.
     """
-    elements, prev = [], None
+    elements = []
     for sym in atoms.get_chemical_symbols():
-        if sym != prev:
+        if sym not in elements:
             elements.append(sym)
-            prev = sym
     return elements
 
 
