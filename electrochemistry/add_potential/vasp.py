@@ -4,6 +4,7 @@ from typing import Optional
 from ase import Atoms
 import numpy as np
 import re
+import warnings
 
 from core import as_function_node
 
@@ -300,7 +301,7 @@ def CCESetup(
 
     output_files = ["el_pot_z.dat", "Q.dat", "phi.dat"]
 
-    # Remove existing output files to avoid confusion with previous runs
+    # Warning if the output files already exist in the working directory
     existing_files = [
         filename
         for filename in output_files
@@ -308,10 +309,10 @@ def CCESetup(
     ]
 
     if existing_files:
-        raise FileExistsError(
+        warnings.warn(
             f"The following file(s) already exist in '{io_bundle.working_directory}': "
             f"{', '.join(existing_files)}. "
-            f"Please choose a new/empty working directory instead of overwriting existing results."
+            f"If running a new calculation, use a new/empty working directory."
         )
 
     return io_bundle
@@ -459,11 +460,18 @@ def CDCESetup(
 
     output_files = ["el_pot_z.dat", "Q.dat", "phi.dat", "dipole_corr.dat"]
 
-    # Remove existing output files to avoid confusion with previous runs
-    for filename in output_files:
-        filepath = os.path.join(io_bundle.working_directory, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    # Warning if the output files already exist in the working directory
+    existing_files = [
+        filename for filename in output_files
+        if os.path.exists(os.path.join(io_bundle.working_directory, filename))
+    ]
+
+    if existing_files:
+        warnings.warn(
+            f"The following file(s) already exist in '{io_bundle.working_directory}': "
+            f"{', '.join(existing_files)}. "
+            f"If running a new calculation, use a new/empty working directory."
+        )
 
     return io_bundle
 
