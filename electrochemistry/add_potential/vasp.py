@@ -18,6 +18,16 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
 
 @dataclass
 class CEParameters:
+    """Values substituted into a constant-potential VASP plugin template.
+
+    One bundle carries the parameters for both the CCE and CDCE plugins. The
+    fields above ``i_Ne`` are common to both; the ``CCE-specific`` and
+    ``CDCE-specific`` blocks are only filled by the corresponding setup node and
+    default to ``None`` otherwise. The ``ax``/``ay``/``az``, ``d_electrode`` and
+    the species-count fields are derived from the structure inside ``CCESetup`` /
+    ``CDCESetup`` rather than passed in by the user.
+    """
+
     path_to_plugin: str  # Default path to plugin template
     phi0: float  # Target voltage (V)
     Q0: float  # Adjusted charge for plugin (C), includes precision-matched ZVAL adjustment
@@ -41,7 +51,30 @@ class CEParameters:
 
 
 def _modify_potcar(working_directory: str, original_line: str, zval_ne: float) -> None:
+    """Rewrite the Ne pseudopotential's ``ZVAL`` in the working-dir POTCAR.
 
+    The CCE method tunes the electrode charge by giving the Ne counter-charge a
+    fractional valence: this replaces the single ``ZVAL`` value on
+    ``original_line`` (the exact Ne line located by ``CCESetup``) with
+    ``zval_ne`` and writes the POTCAR back in place.
+
+    Parameters
+    ----------
+    working_directory
+        Directory holding the concatenated POTCAR written by
+        ``CreateVaspInputResources``.
+    original_line
+        The verbatim Ne ``ZVAL`` line to replace (must be present in the POTCAR).
+    zval_ne
+        The new Ne valence electron count.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no POTCAR is present in ``working_directory``.
+    ValueError
+        If ``original_line`` is not found in the POTCAR.
+    """
     potcar_path = os.path.join(working_directory, "POTCAR")
 
     if not os.path.exists(potcar_path):
@@ -140,14 +173,52 @@ def CCESetup(
     grid_roll_frac: float = 0.1,
     tau: float = 50.0,
 ):
-    """
-    Build INCAR dictionary and plugin parameters for an electrochemistry
-    VASP calculation using the Ne-CCE thermopotentiostat plugin.
+    """Add the Ne-CCE thermopotentiostat plugin to a VASP MD calculation.
 
-    Computes all structure-dependent quantities from the ASE structure, then
-    writes the electrochemistry INCAR tags and the plugin file into the working
-    directory created by CreateVaspInputResources.
+    The counter-charge electrode (CCE) method holds the electrode at a fixed
+    potential during MD by adjusting the electron count against a Ne
+    counter-charge. This computes every structure-dependent quantity from the
+    ASE structure (cell dimensions, electrode distance, Ne count, neutral
+    electron count from the POTCARs), writes the electrochemistry INCAR tags on
+    top of the base input, rewrites the Ne ``ZVAL`` in the POTCAR and drops the
+    filled plugin file into the working directory made by
+    ``CreateVaspInputResources``. The calc must carry MD settings.
 
+    Parameters
+    ----------
+    io_bundle
+        Resource bundle from ``CreateVaspInputResources`` (must have an MD calc).
+    electrode
+        The electrode structure; its elements identify the electrode atoms in
+        the full cell, used to measure the electrode–Ne distance.
+    potential
+        Target electrode potential in volts (``phi0`` in the plugin).
+    path_to_plugin
+        Path to the CCE plugin template.
+    Q0
+        Extra charge (electrons) added to the electrode, spread over the Ne atoms.
+    dipole_position
+        Fractional z where the dipole correction is applied.
+    grid_roll_frac
+        Grid roll fraction passed to the plugin.
+    tau
+        Thermostat time constant, in units of the MD time step.
+
+    Returns
+    -------
+    VaspInputResources
+        The same bundle, after the INCAR, POTCAR and plugin file are written.
+
+    Raises
+    ------
+    ValueError
+        If the calc has no MD settings, the cell is not orthogonal, or the
+        structure contains no Ne atoms.
+
+    Warns
+    -----
+    UserWarning
+        If plugin output files already exist in the working directory.
     """
 
     if io_bundle.calc.md is None:
@@ -331,14 +402,54 @@ def CDCESetup(
     width_wall: float = 6.5,
     tau: float = 50.0,
 ):
-    """
-    Build INCAR dictionary and plugin parameters for an electrochemistry
-    VASP calculation using the Ne-CCE thermopotentiostat plugin.
+    """Add the CDCE (charged-dielectric counter-charge) plugin to a VASP MD run.
 
-    Computes all structure-dependent quantities from the ASE structure, then
-    writes the electrochemistry INCAR tags and the plugin file into the working
-    directory created by CreateVaspInputResources.
+    The CDCE variant places a Gaussian counter-charge behind a wall potential
+    instead of a Ne layer, so unlike ``CCESetup`` it needs no Ne atoms and does
+    not touch the POTCAR. It computes the structure-dependent quantities (cell
+    dimensions, counter-charge position, electrode distance, neutral electron
+    count), writes the electrochemistry INCAR tags on top of the base input and
+    drops the filled plugin file into the working directory made by
+    ``CreateVaspInputResources``. The calc must carry MD settings.
 
+    Parameters
+    ----------
+    io_bundle
+        Resource bundle from ``CreateVaspInputResources`` (must have an MD calc).
+    electrode
+        The electrode structure; its elements identify the electrode atoms in
+        the full cell, used to measure the electrode–counter-charge distance.
+    potential
+        Target electrode potential in volts (``phi0`` in the plugin).
+    path_to_plugin
+        Path to the CDCE plugin template.
+    Q0
+        Extra charge (electrons) added to the electrode; shifts NELECT directly.
+    dipole_position
+        Fractional z where the dipole correction is applied.
+    grid_roll_frac
+        Grid roll fraction passed to the plugin.
+    pos_right_wall
+        Fractional z position of the right wall potential.
+    width_wall
+        Width of the wall potential, in Å.
+    tau
+        Thermostat time constant, in units of the MD time step.
+
+    Returns
+    -------
+    VaspInputResources
+        The same bundle, after the INCAR and plugin file are written.
+
+    Raises
+    ------
+    ValueError
+        If the calc has no MD settings or the cell is not orthogonal.
+
+    Warns
+    -----
+    UserWarning
+        If plugin output files already exist in the working directory.
     """
 
     if io_bundle.calc.md is None:
@@ -481,15 +592,35 @@ def CDCESetup(
 def ParsePotential(
     io_bundle: VaspInputResources,
 ):
-    """
-    Reads electrode charge (Q.dat), potential (phi.dat), and electrostatic
-    potential (el_pot_z.dat) from VASP working directory and saves the data.
+    """Read the constant-potential plugin's output traces from the working dir.
+
+    Loads the three files the CCE/CDCE plugin writes over the MD run — electrode
+    charge (``Q.dat``), electrode potential (``phi.dat``) and the planar-averaged
+    electrostatic potential (``el_pot_z.dat``) — and reshapes the flat
+    electrostatic-potential trace into ``(NSW, nz)``, one profile per ionic step.
+    ``NSW`` is taken from ``extra_incar`` if present, otherwise from the MD
+    settings on the calc.
 
     Parameters
     ----------
     io_bundle : VaspInputResources
-        Input dataclass containing VASP resources.
+        Bundle whose ``working_directory`` holds the plugin output files.
 
+    Returns
+    -------
+    electrostatic_potential_z_2d : numpy.ndarray
+        Planar-averaged electrostatic potential, shape ``(NSW, nz)``.
+    charge_list : numpy.ndarray
+        Electrode charge per step, from ``Q.dat``.
+    pot_list : numpy.ndarray
+        Electrode potential per step, from ``phi.dat``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If any of ``Q.dat`` / ``phi.dat`` / ``el_pot_z.dat`` is missing.
+    ValueError
+        If ``NSW`` can be found neither in ``extra_incar`` nor on the MD calc.
     """
     working_dir = io_bundle.working_directory
 

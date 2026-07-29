@@ -35,6 +35,12 @@ from pyiron_nodes.atomistic.calculator.data import (
 
 
 def _ISMEAR(smearing_type, smearing_order):
+    """Map a smearing scheme onto VASP's ``ISMEAR`` tag.
+
+    ``smearing_order`` is only consulted for Methfessel-Paxton, where it is the
+    expansion order ``N`` (ISMEAR = N). Raises ``ValueError`` on an unknown
+    scheme or a Methfessel-Paxton order below 1.
+    """
     if smearing_type == "tetrahedron":
         # tetrahedron method with Blöchl corrections — the accurate choice for a
         # DOS or a band structure, but it needs a Gamma-centred k-mesh and gives
@@ -66,6 +72,15 @@ _IBRION_MINIMIZE = {
 
 
 def read_potcar_config(config_file: Path) -> dict:
+    """Read the user's ``~/.pyiron_vasp_config`` into a dict of defaults.
+
+    The file is ``key = value`` lines (``#`` comments and blanks ignored). Beyond
+    the raw keys, this derives ``default_POTCAR_path`` by joining
+    ``pyiron_vasp_resources`` with ``default_POTCAR_set`` (rewriting e.g.
+    ``potpawPBE`` → ``potpaw_PBE``) and fills ``default_functional`` with ``PBE``
+    when absent. A missing file yields an empty dict, so callers fall back to
+    passing ``potcar_lib_path`` explicitly.
+    """
     config_data = {}
     try:
         with open(config_file) as f:
@@ -143,6 +158,12 @@ class VaspInputResources:
 
 
 def _ordered_elements(atoms: Atoms) -> list[str]:
+    """Unique elements in the order they first appear along the atom list.
+
+    This matches how the POSCAR/POTCAR group atoms — one entry per run of the
+    same species — so the returned order lines up with the concatenated POTCAR
+    and with per-species INCAR tags such as ``LANGEVIN_GAMMA``.
+    """
     elements, prev = [], None
     for sym in atoms.get_chemical_symbols():
         if sym != prev:
@@ -152,6 +173,13 @@ def _ordered_elements(atoms: Atoms) -> list[str]:
 
 
 def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]:
+    """POTCAR file paths for a structure, one per species, in POSCAR order.
+
+    The default pseudopotential folder for each element is looked up in the
+    bundled CSV for ``functional`` (``"PBE"`` or ``"LDA"``), then joined onto
+    ``lib_path`` as ``<lib_path>/<potential_name>/POTCAR``. Concatenating the
+    returned files in order gives the run's POTCAR.
+    """
     df = pd.read_csv(_POTCAR_CSV[functional])
     paths = []
     for el in _ordered_elements(atoms):
@@ -164,6 +192,31 @@ def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]
 def _build_incar(
     calc: VaspInput, extra: dict | None = None, structure: Atoms | None = None
 ) -> Incar:
+    """Translate a ``VaspInput`` into a pymatgen ``Incar``.
+
+    The SCF settings are always written; each optional sub-input then layers its
+    tags on top — ``minimization`` (IBRION/NSW/EDIFFG/ISIF), ``md`` (Langevin
+    thermostat), ``dipole_correction`` (LDIPOL/IDIPOL), ``dos`` (NEDOS/LORBIT/
+    EMIN/EMAX) and ``output_files`` (LCHARG/LWAVE/LVTOT/LVHAR). ``extra`` is a
+    dict of raw INCAR tags applied last, so it overrides anything above.
+
+    Parameters
+    ----------
+    calc
+        The combined input produced by ``MergeVaspInput``.
+    extra
+        Raw INCAR overrides (e.g. ``calc.extra_incar``), applied on top.
+    structure
+        Required only for an MD run — ``LANGEVIN_GAMMA`` needs one friction
+        coefficient per species, so the species count comes from here.
+
+    Raises
+    ------
+    ValueError
+        If both ``minimization`` and ``md`` are set (both drive the ionic loop),
+        if an MD input is given without a ``structure``, or if an ``NpT`` MD run
+        has no ``pressure``.
+    """
     if calc.minimization is not None and calc.md is not None:
         raise ValueError(
             "minimization and md are mutually exclusive — both control IBRION/NSW. "
@@ -606,6 +659,14 @@ def _md_from_output(output: dict, trajectory: list[Atoms], vasprun_path: str):
 
 
 def _generate_hash(io_bundle: VaspInputResources) -> str:
+    """Deterministic 8-hex-character name for a run's working directory.
+
+    Used as the fallback working directory when the caller does not supply one.
+    The hash folds in everything that defines the calculation — structure
+    (formula, positions, cell), every SCF field, the optional sub-inputs, the
+    POTCAR library path and any ``extra_incar`` — so two identical calculations
+    map to the same directory and any change produces a new one.
+    """
     atoms = io_bundle.structure
     calc = io_bundle.calc
 
@@ -689,6 +750,38 @@ def CreateVaspInputResources(
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
 ) -> VaspInputResources:
+    """Write the four VASP input files and return the resource bundle.
+
+    Creates ``working_directory`` (a hash of the calculation when none is given,
+    see ``_generate_hash``) and writes POSCAR, INCAR, POTCAR and KPOINTS into it.
+    POTCAR is the per-species pseudopotentials concatenated in POSCAR order,
+    looked up from the bundled CSV under ``potcar_lib_path`` unless
+    ``potcar_symbols`` names the folders explicitly. KPOINTS is a Gamma-centred
+    mesh parsed from the ``"kx ky kz"`` string on ``InputSCF``.
+
+    Parameters
+    ----------
+    structure
+        The atomic structure (ASE ``Atoms``) to write to POSCAR.
+    calc
+        Combined VASP settings from ``MergeVaspInput``.
+    potcar_lib_path
+        Base directory holding the per-element POTCAR folders.
+    working_directory
+        Where the input files are written; defaults to a content hash.
+    potcar_symbols
+        Explicit POTCAR folder names, overriding the CSV lookup.
+
+    Returns
+    -------
+    VaspInputResources
+        The bundle (with ``working_directory`` resolved) that the run node takes.
+
+    Raises
+    ------
+    ValueError
+        If ``scf.kpoints`` is not three integers.
+    """
     io_bundle = VaspInputResources(
         structure=structure,
         calc=calc,
@@ -756,6 +849,35 @@ def RunVaspCalculation(
     threads_per_core: int = 1,
     debug: bool = False,
 ):
+    """Run VASP in the bundle's working directory.
+
+    Executes ``vasp_command`` (or ``bash <run_script_path> <threads_per_core>``
+    when ``run_script_path`` points at an existing file) with the working
+    directory as CWD, so it picks up the POSCAR/INCAR/POTCAR/KPOINTS written by
+    ``CreateVaspInputResources``. A non-zero exit writes stdout+stderr to
+    ``error.msg`` and raises ``RuntimeError``.
+
+    Parameters
+    ----------
+    io_bundle
+        The resource bundle from ``CreateVaspInputResources``.
+    vasp_command
+        Shell command that launches VASP; empty falls back to a
+        ``module load vasp && mpiexec`` line built from ``threads_per_core``.
+    run_script_path
+        Optional launcher script; when it exists it replaces ``vasp_command``.
+    threads_per_core
+        MPI rank count passed to the fallback command / launcher script.
+    debug
+        If ``True``, skip the launch and just return the working directory as
+        stdout — useful for wiring up a workflow without running VASP.
+
+    Returns
+    -------
+    (io_bundle, stdout)
+        The same bundle (for chaining into ``ParseVaspOutput``) and the run's
+        stdout (the working directory in ``debug`` mode).
+    """
     if not vasp_command:
         vasp_command = f"module load vasp && mpiexec -n {threads_per_core} vasp_std"
 
