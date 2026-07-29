@@ -160,11 +160,14 @@ class InputSCF:
     kpoint_offset: str = "0.5 0.5 0.5"
     functional: str = "PBE"
     energy_cutoff: float = 400.0
-    smearing_type: Literal["gaussian", "methfessel-paxton", "fermi-dirac"] = "gaussian"
+    smearing_type: Literal[
+        "gaussian", "methfessel-paxton", "fermi-dirac", "tetrahedron"
+    ] = "gaussian"
     smearing_width: float = 0.2
     smearing_order: int = 1
     electronic_convergence: float = 1e-6
     num_electronic_steps: int = 100
+    spin_polarized: bool = False  # ISPIN 2/1 — required for magnetic moments
 
 
 @as_inp_dataclass_node
@@ -230,6 +233,70 @@ class InputDipoleCorrection:
 
     direction: int = 3  # IDIPOL: 1 / 2 / 3 = a / b / c lattice direction
     ldipol: bool = True  # LDIPOL: switch on the potential/dipole correction
+
+
+@as_out_dataclass_node
+class OutputVaspDOS:
+    """Density of states — the same data VASP puts in the ``DOSCAR``.
+
+    ``energies`` are absolute (not shifted to the Fermi level); subtract
+    ``efermi`` to plot against E − E_F. The density arrays carry a leading spin
+    axis, so a non-magnetic run has ``total_densities.shape == (1, n_points)``
+    and a spin-polarized one ``(2, n_points)``.
+
+    ``resolved_densities`` is the site- and orbital-projected DOS, shape
+    ``(n_spin, n_atoms, n_orbitals, n_points)``. It is only filled when the run
+    asked for the projection (``InputVaspDOS.projected``); ``orbitals`` then
+    names the orbital axis, e.g. ``["s", "py", "pz", "px", "dxy", ...]``.
+    """
+
+    energies: DataArray = EmptyArrayField()
+    total_densities: DataArray = EmptyArrayField()
+    integrated_densities: DataArray = EmptyArrayField()
+    resolved_densities: DataArray = EmptyArrayField()
+    orbitals: Optional[list] = None
+    efermi: Optional[float] = None
+
+
+@as_inp_dataclass_node
+class InputVaspDOS:
+    """How finely VASP resolves the density of states.
+
+    A ``DOSCAR`` is written whatever these are set to; they decide what ends up
+    in it, and therefore what the ``dos`` port of ``ParseVaspOutput`` carries.
+
+    ``projected`` (LORBIT 11) is the expensive one: it adds the site- and
+    orbital-projected DOS *and* makes VASP print the per-ion magnetization
+    table. Without it a spin-polarized run still has a total magnetic moment but
+    the ``magnetic_moments`` port stays empty, since those moments are read from
+    that table.
+
+    For a smooth DOS, pair this with ``InputSCF(smearing_type="tetrahedron")``.
+    """
+
+    n_points: int = 301  # NEDOS: number of points on the energy grid
+    projected: bool = False  # LORBIT 11: site- and orbital-projected DOS
+    energy_min: Optional[float] = None  # EMIN: lower end of the window, None → auto
+    energy_max: Optional[float] = None  # EMAX: upper end of the window, None → auto
+
+
+@as_inp_dataclass_node
+class InputVaspOutputFiles:
+    """Which output files VASP should write.
+
+    VASP only writes ``CHGCAR``/``LOCPOT`` when asked to, so these flags decide
+    which ports ``ParseVaspOutput`` can fill: without ``charge_density`` there is
+    no ``electron_density``, without ``electrostatic_potential`` (or
+    ``hartree_potential_only``) there is no ``electrostatic_potential``.
+
+    The files are large — a ``CHGCAR`` scales with the FFT grid, not the number
+    of atoms — so only switch on what is actually going to be analysed.
+    """
+
+    charge_density: bool = True  # LCHARG → CHGCAR, also a restart file
+    electrostatic_potential: bool = False  # LVTOT → LOCPOT, full local potential
+    hartree_potential_only: bool = False  # LVHAR → LOCPOT without the XC part
+    wavefunctions: bool = False  # LWAVE → WAVECAR
 
 
 @as_inp_dataclass_node

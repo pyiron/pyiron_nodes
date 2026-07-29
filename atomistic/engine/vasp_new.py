@@ -13,7 +13,8 @@ import pandas as pd
 from ase import Atoms
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.vasp.inputs import Incar, Kpoints
-from pymatgen.io.vasp.outputs import Vasprun
+from vaspparser.vasp.output import Output, parse_vasp_output
+from vaspparser.vasp.volumetric_data import VaspVolumetricData
 
 from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import (
@@ -21,9 +22,12 @@ from pyiron_nodes.atomistic.calculator.data import (
     InputDipoleCorrection,
     InputMinimizationVASP,
     InputSCF,
+    InputVaspDOS,
+    InputVaspOutputFiles,
     OutputCalcMD,
     OutputCalcMinimize,
     OutputCalcStatic,
+    OutputVaspDOS,
     AdditionalInputFlags,
 )
 
@@ -31,7 +35,12 @@ from pyiron_nodes.atomistic.calculator.data import (
 
 
 def _ISMEAR(smearing_type, smearing_order):
-    if smearing_type == "fermi-dirac":
+    if smearing_type == "tetrahedron":
+        # tetrahedron method with Blöchl corrections — the accurate choice for a
+        # DOS or a band structure, but it needs a Gamma-centred k-mesh and gives
+        # no useful forces, so it is not the default
+        return -5
+    elif smearing_type == "fermi-dirac":
         return -1
     elif smearing_type == "gaussian":
         return 0
@@ -42,7 +51,7 @@ def _ISMEAR(smearing_type, smearing_order):
     else:
         raise ValueError(
             f"Unknown smearing_type {smearing_type!r}; expected one of "
-            "'gaussian', 'methfessel-paxton', 'fermi-dirac'"
+            "'gaussian', 'methfessel-paxton', 'fermi-dirac', 'tetrahedron'"
         )
 
 
@@ -113,6 +122,8 @@ class VaspInput:
     minimization: Optional[InputMinimizationVASP] = None
     md: Optional[InputMDVASP] = None
     dipole_correction: Optional[InputDipoleCorrection] = None
+    dos: Optional[InputVaspDOS] = None
+    output_files: Optional[InputVaspOutputFiles] = None
     extra_incar: Optional[dict] = None
 
 
@@ -168,6 +179,7 @@ def _build_incar(
         "NELM": scf.num_electronic_steps,
         "ISMEAR": _ISMEAR(scf.smearing_type, scf.smearing_order),
         "SIGMA": scf.smearing_width,
+        "ISPIN": 2 if scf.spin_polarized else 1,
         # static defaults — overridden below if minimization/md is supplied
         "IBRION": -1,
         "NSW": 0,
@@ -227,27 +239,279 @@ def _build_incar(
         tags["LDIPOL"] = dip.ldipol
         tags["IDIPOL"] = dip.direction
 
+    # ── density of states (optional) ──────────────────────────────────────────
+    # VASP always writes a DOSCAR; these tags decide what goes into it, and so
+    # what the ``dos`` port of ParseVaspOutput carries. LORBIT 11 doubles as the
+    # switch for the per-ion magnetization table that feeds ``magnetic_moments``.
+    if calc.dos is not None:
+        dos = calc.dos
+        tags["NEDOS"] = dos.n_points
+        if dos.projected:
+            tags["LORBIT"] = 11
+        if dos.energy_min is not None:
+            tags["EMIN"] = dos.energy_min
+        if dos.energy_max is not None:
+            tags["EMAX"] = dos.energy_max
+
+    # ── which output files to write (optional) ────────────────────────────────
+    # These decide which ``ParseVaspOutput`` ports can be filled at all: no
+    # CHGCAR means no electron density, no LOCPOT means no electrostatic
+    # potential. LCHARG defaults to .TRUE. in VASP, so leaving this out keeps
+    # the previous behaviour.
+    if calc.output_files is not None:
+        files = calc.output_files
+        tags["LCHARG"] = files.charge_density
+        tags["LWAVE"] = files.wavefunctions
+        if files.electrostatic_potential:
+            tags["LVTOT"] = True
+        if files.hartree_potential_only:
+            tags["LVHAR"] = True
+
     if extra:
         tags.update(extra)
     return Incar(tags)
 
 
 # ── Output helpers ────────────────────────────────────────────────────────────
-# ``ParseVaspOutput`` fills the same calculator dataclasses that the LAMMPS
-# engine uses (``OutputCalcStatic`` / ``OutputCalcMinimize`` / ``OutputCalcMD``),
-# so downstream nodes do not care which engine produced the data.
+# All output parsing goes through ``vaspparser`` — the VASP counterpart of the
+# ``lammpsparser`` used by ``ParseLammpsOutput``. ``parse_vasp_output`` reads
+# vasprun.xml, OUTCAR, OSZICAR, CONTCAR, CHGCAR and LOCPOT from the working
+# directory and returns one hierarchical dictionary; everything below only
+# reshapes that dictionary into the calculator dataclasses that the LAMMPS
+# engine also fills (``OutputCalcStatic`` / ``OutputCalcMinimize`` /
+# ``OutputCalcMD``), so downstream nodes do not care which engine produced the
+# data.
 
-_kB = 8.617333262e-5  # eV/K
-_kBar_to_GPa = 0.1
+_eVA3_to_GPa = 160.21766208  # vaspparser reports stresses in eV/Å³
 
 
-def _static_from_ionic_step(step: dict, structure: Atoms):
+class _SkippedVolumetricData(VaspVolumetricData):
+    """Stand-in whose ``from_file`` does nothing.
+
+    ``Output.collect`` reads CHGCAR/LOCPOT unconditionally when the files are
+    present; substituting this class is how ``ParseVaspOutput`` skips a
+    multi-gigabyte file the caller did not ask for.
+    """
+
+    def from_file(self, filename: str, normalize: bool = True):
+        return None
+
+
+def _output_parser_class(
+    charge_density: bool, electrostatic_potential: bool, collected: list
+):
+    """``Output`` subclass that skips unwanted volumetric files and records itself.
+
+    ``parse_vasp_output`` builds the parser internally and hands back only
+    dictionaries, but the DOS port needs the ``ElectronicStructure`` object
+    itself — the orbital names behind ``resolved_densities`` are not part of its
+    ``to_dict()``. Appending to ``collected`` recovers that object;
+    ``output_parser_class`` is the documented hook for exactly this.
+    """
+
+    class _Output(Output):
+        def __init__(self):
+            super().__init__()
+            collected.append(self)
+            if not charge_density:
+                self.charge_density = _SkippedVolumetricData()
+            if not electrostatic_potential:
+                self.electrostatic_potential = _SkippedVolumetricData()
+
+    return _Output
+
+
+# VASP's fixed projection order in the DOSCAR; the number of orbital columns
+# says which scheme was used (LORBIT 10 → totals, LORBIT 11 → lm-decomposed).
+_DOSCAR_ORBITALS = {
+    1: ["s"],
+    3: ["s", "p", "d"],
+    4: ["s", "p", "d", "f"],
+    9: ["s", "py", "pz", "px", "dxy", "dyz", "dz2", "dxz", "dx2-y2"],
+    16: [
+        "s", "py", "pz", "px", "dxy", "dyz", "dz2", "dxz", "dx2-y2",
+        "f-3", "f-2", "f-1", "f0", "f1", "f2", "f3",
+    ],
+}  # fmt: skip
+
+
+def read_doscar(filename: str) -> Optional[OutputVaspDOS]:
+    """Read a ``DOSCAR`` into ``OutputVaspDOS``.
+
+    ``vaspparser`` has no DOSCAR parser — it takes the DOS from the ``<dos>``
+    block of vasprun.xml instead — so this reads the file directly, for when the
+    DOSCAR itself is what you want.
+
+    The layout is six header lines, then ``NEDOS`` rows of total DOS
+    (``E, DOS, intDOS`` for ISPIN 1; ``E, DOS↑, DOS↓, int↑, int↓`` for ISPIN 2),
+    optionally followed by one repeated header plus ``NEDOS`` rows per ion when
+    the run was run with LORBIT (the site- and orbital-projected DOS). In the
+    projected rows the columns run orbital-major with spin varying fastest.
+
+    Returns ``None`` if the file is missing or holds no DOS grid.
+    """
+    if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
+        return None
+
+    with open(filename) as f:
+        lines = f.readlines()
+    if len(lines) < 7:
+        return None
+
+    n_ions = int(lines[0].split()[0])
+    header = lines[5].split()
+    n_points, efermi = int(header[2]), float(header[3])
+
+    rows = np.array(
+        [[float(x) for x in line.split()] for line in lines[6 : 6 + n_points]]
+    )
+    if len(rows) != n_points:
+        return None
+
+    dos = OutputVaspDOS.pure_dataclass()
+    dos.energies = rows[:, 0]
+    dos.efermi = efermi
+
+    # 3 columns → ISPIN 1 (dos, int); 5 columns → ISPIN 2 (dos↑, dos↓, int↑, int↓)
+    n_spin = 2 if rows.shape[1] == 5 else 1
+    dos.total_densities = rows[:, 1 : 1 + n_spin].T
+    dos.integrated_densities = rows[:, 1 + n_spin : 1 + 2 * n_spin].T
+
+    # projected blocks: one repeated header line + n_points rows per ion
+    block = 1 + n_points
+    start = 6 + n_points
+    if len(lines) < start + n_ions * block:
+        return dos
+
+    projected = []
+    for ion in range(n_ions):
+        first = start + ion * block + 1  # skip the repeated header
+        ion_rows = np.array(
+            [
+                [float(x) for x in line.split()]
+                for line in lines[first : first + n_points]
+            ]
+        )
+        if len(ion_rows) != n_points:
+            return dos
+        # columns are orbital-major with spin varying fastest
+        n_orbitals = (ion_rows.shape[1] - 1) // n_spin
+        projected.append(
+            ion_rows[:, 1 : 1 + n_orbitals * n_spin]
+            .reshape(n_points, n_orbitals, n_spin)
+            .transpose(2, 1, 0)  # → (n_spin, n_orbitals, n_points)
+        )
+
+    # (n_spin, n_atoms, n_orbitals, n_points), matching the vasprun-derived DOS
+    dos.resolved_densities = np.stack(projected, axis=1)
+    dos.orbitals = _DOSCAR_ORBITALS.get(dos.resolved_densities.shape[2])
+    return dos
+
+
+def _dos_from_electronic_structure(electronic_structure):
+    """``ElectronicStructure`` → ``OutputVaspDOS``, the DOS from vasprun.xml.
+
+    ``None`` when the run produced no DOS at all — the arrays come from the
+    ``<dos>`` block of vasprun.xml, which is absent if only an OUTCAR survived.
+    """
+    if electronic_structure is None:
+        return None
+    energies = np.asarray(electronic_structure.dos_energies)
+    if energies.size == 0:
+        return None
+
+    dos = OutputVaspDOS.pure_dataclass()
+    dos.energies = energies
+    dos.total_densities = np.asarray(electronic_structure.dos_densities)
+    dos.integrated_densities = np.asarray(electronic_structure.dos_idensities)
+    dos.efermi = electronic_structure.efermi
+
+    # site- and orbital-projected DOS, only present with LORBIT 11
+    resolved = electronic_structure.resolved_densities
+    if resolved is not None:
+        dos.resolved_densities = np.asarray(resolved)
+        orbital_dict = electronic_structure.orbital_dict or {}
+        dos.orbitals = [
+            name for name, _ in sorted(orbital_dict.items(), key=lambda kv: kv[1])
+        ]
+    return dos
+
+
+def _volumetric_from_dict(data: dict | None, structure: Atoms):
+    """CHGCAR/LOCPOT sub-dictionary → ``VaspVolumetricData``.
+
+    Returned instead of the bare array so the grid helpers stay available, e.g.
+    ``electrostatic_potential.get_average_along_axis(ind=2)`` for a work
+    function, or ``write_cube_file()`` for external visualisation.
+    """
+    if data is None:
+        return None
+    volumetric = VaspVolumetricData()
+    volumetric.atoms = structure
+    volumetric.total_data = data["total"]
+    if data.get("diff") is not None:
+        volumetric.diff_data = data["diff"]
+    return volumetric
+
+
+def _trajectory_from_output(output: dict, structure: Atoms) -> list[Atoms]:
+    """Per-ionic-step positions and cells → list of ASE ``Atoms``."""
+    generic = output["generic"]
+    trajectory = []
+    for positions, cell in zip(generic["positions"], generic["cells"]):
+        atoms = structure.copy()
+        atoms.set_cell(cell)
+        atoms.set_positions(positions)
+        trajectory.append(atoms)
+    return trajectory
+
+
+def _final_magmoms(output: dict) -> Optional[np.ndarray]:
+    """Per-atom magnetic moments of the last ionic step, ``None`` if ISPIN = 1.
+
+    Shape is ``(n_atoms,)`` for a collinear run and ``(n_atoms, 3)`` for a
+    non-collinear one. The moments come from the OUTCAR, so they are missing
+    when only vasprun.xml was written.
+    """
+    magmoms = output["generic"]["dft"].get("final_magmoms")
+    if magmoms is None or len(magmoms) == 0:
+        return None
+    return np.asarray(magmoms[-1], dtype=float)
+
+
+def _is_converged(output: dict, calc: Optional[VaspInput]) -> bool:
+    """Electronic (and, for a relaxation, ionic) convergence of the last step.
+
+    ``vaspparser`` reports no convergence flag of its own, so this applies the
+    usual criterion: a loop that stopped before hitting its own step limit
+    converged. An MD run always uses all NSW steps, so only the electronic loop
+    is checked there.
+    """
+    generic = output["generic"]
+    electronic = True
+    scf_energies = generic["dft"].get("scf_energy_free")
+    if calc is not None and scf_energies is not None and len(scf_energies) > 0:
+        electronic = len(scf_energies[-1]) < calc.scf.num_electronic_steps
+
+    ionic = True
+    if calc is not None and calc.minimization is not None:
+        max_steps = calc.minimization.max_ionic_steps
+        ionic = max_steps <= 1 or len(generic["energy_tot"]) < max_steps
+
+    return bool(electronic and ionic)
+
+
+def _static_from_output(output: dict, index: int, structure: Atoms):
     """One ionic step → ``OutputCalcStatic`` (energy/force/stress/structure)."""
+    generic = output["generic"]
     out = OutputCalcStatic.pure_dataclass()
-    out.energy = step["e_wo_entrp"]
-    out.force = np.asarray(step["forces"])
-    stress = step.get("stress")
-    out.stress = None if stress is None else np.asarray(stress) * _kBar_to_GPa
+    out.energy = float(generic["energy_tot"][index])
+    out.force = np.asarray(generic["forces"][index])
+    # stresses only come from the OUTCAR, so they are absent for a vasprun-only run
+    stresses = generic.get("stresses")
+    out.stress = (
+        None if stresses is None else np.asarray(stresses[index]) * _eVA3_to_GPa
+    )
     out.structure = structure
     return out
 
@@ -257,13 +521,15 @@ def _parse_velocities(vasprun_path: str) -> np.ndarray:
 
     VASP only emits ``<varray name="velocities">`` for MD runs, and not for every
     VASP version, so this is best-effort: an empty array simply means the field
-    stays unset on ``OutputCalcMD``.
+    stays unset on ``OutputCalcMD``. A missing file counts as best-effort too —
+    ``vaspparser`` happily parses an MD run from the OUTCAR alone, in which case
+    there is no vasprun.xml here to read.
     """
     import xml.etree.ElementTree as ET
 
     try:
         root = ET.parse(vasprun_path).getroot()
-    except ET.ParseError:
+    except (ET.ParseError, OSError):
         return np.array([])
 
     frames = []
@@ -294,54 +560,47 @@ def _unwrap_positions(frac_coords: np.ndarray, cells: np.ndarray) -> np.ndarray:
     return np.einsum("nai,nij->naj", unwrapped_frac, cells)
 
 
-def _md_from_vasprun(vr, ase_traj: list[Atoms], vasprun_path: str):
+def _md_from_output(output: dict, trajectory: list[Atoms], vasprun_path: str):
     """Full ionic trajectory → ``OutputCalcMD``, mirroring ``ParseLammpsOutput``."""
+    generic = output["generic"]
     out = OutputCalcMD.pure_dataclass()
-    steps = vr.ionic_steps
-    n_atoms = len(ase_traj[0])
 
-    cells = np.asarray([a.get_cell().array for a in ase_traj])
+    cells = np.asarray(generic["cells"])
+    positions = np.asarray(generic["positions"])
+    n_steps, n_atoms = positions.shape[0], positions.shape[1]
+
     out.cells = cells
-    out.positions = np.asarray([a.get_positions() for a in ase_traj])
-    out.unwrapped_positions = _unwrap_positions(
-        np.asarray([s.frac_coords for s in vr.structures]), cells
-    )
-    out.forces = np.asarray([s["forces"] for s in steps])
-    out.volumes = np.asarray([a.get_volume() for a in ase_traj])
-    out.natoms = np.full(len(steps), n_atoms)
-    out.steps = np.arange(1, len(steps) + 1)
+    out.positions = positions
+    # vaspparser hands out Cartesian positions; unwrapping happens in fractional
+    # space, where a boundary crossing is just a jump of ±1
+    frac_coords = np.einsum("nai,nij->naj", positions, np.linalg.inv(cells))
+    out.unwrapped_positions = _unwrap_positions(frac_coords, cells)
+    out.forces = np.asarray(generic["forces"])
+    out.volumes = np.asarray(generic["volume"])
+    out.natoms = np.full(n_steps, n_atoms)
+    out.steps = np.asarray(generic["steps"])
 
-    energies_pot = np.asarray([s["e_wo_entrp"] for s in steps])
-    out.energies_pot = energies_pot
+    # energy_tot carries the kinetic energy on top of energy_pot for a real MD
+    # run (IBRION 0); for anything else vaspparser sets the two equal
+    out.energies_pot = np.asarray(generic["energy_pot"])
+    out.energies_tot = np.asarray(generic["energy_tot"])
 
-    # 'kinetic' / 'total' only appear for real MD runs (IBRION 0)
-    kinetic = [s.get("kinetic") for s in steps]
-    if all(k is not None for k in kinetic):
-        kinetic = np.asarray(kinetic, dtype=float)
-        total = [s.get("total") for s in steps]
-        out.energies_tot = (
-            np.asarray(total, dtype=float)
-            if all(t is not None for t in total)
-            else energies_pot + kinetic
-        )
-        # equipartition over 3N-3 DOF — VASP keeps the centre of mass fixed
-        n_dof = max(3 * n_atoms - 3, 1)
-        out.temperatures = 2.0 * kinetic / (n_dof * _kB)
-    else:
-        out.energies_tot = energies_pot
-
-    stresses = [s.get("stress") for s in steps]
-    if all(s is not None for s in stresses):
-        out.pressures = np.asarray(stresses, dtype=float) * _kBar_to_GPa
+    # temperatures and stresses are OUTCAR-only quantities
+    temperatures = generic.get("temperature")
+    if temperatures is not None:
+        out.temperatures = np.asarray(temperatures)
+    stresses = generic.get("stresses")
+    if stresses is not None:
+        out.pressures = np.asarray(stresses) * _eVA3_to_GPa
 
     out.velocities = _parse_velocities(vasprun_path)
 
     # same convention as ParseLammpsOutput: per-atom symbols, per-step species ids
-    symbols = ase_traj[0].get_chemical_symbols()
+    symbols = trajectory[0].get_chemical_symbols()
     out.species = symbols
-    species_order = _ordered_elements(ase_traj[0])
+    species_order = _ordered_elements(trajectory[0])
     species_ids = np.asarray([species_order.index(s) for s in symbols])
-    out.indices = np.tile(species_ids, (len(steps), 1))
+    out.indices = np.tile(species_ids, (n_steps, 1))
 
     return out
 
@@ -369,9 +628,12 @@ def _generate_hash(io_bundle: VaspInputResources) -> str:
         str(scf.smearing_width),
         str(scf.smearing_order),
         str(scf.num_electronic_steps),
+        str(scf.spin_polarized),
         str(calc.minimization),
         str(calc.md),
         str(calc.dipole_correction),
+        str(calc.dos),
+        str(calc.output_files),
         io_bundle.potcar_lib_path,
     ]
 
@@ -395,19 +657,25 @@ def MergeVaspInput(
     minimization: Optional[InputMinimizationVASP] = None,
     md: Optional[InputMDVASP] = None,
     dipole_correction: Optional[InputDipoleCorrection] = None,
+    dos: Optional[InputVaspDOS] = None,
+    output_files: Optional[InputVaspOutputFiles] = None,
     specific_inputs: Optional[AdditionalInputFlags] = None,
 ) -> VaspInput:
     """Combine the required SCF settings with any optional add-ons.
 
-    ``scf`` is mandatory; ``minimization``, ``md`` and ``dipole_correction`` are
-    optional. ``minimization`` and ``md`` are mutually exclusive (both drive the
-    ionic loop) — that is enforced when the INCAR is built.
+    ``scf`` is mandatory; everything else is optional. ``minimization`` and
+    ``md`` are mutually exclusive (both drive the ionic loop) — that is enforced
+    when the INCAR is built. ``dos`` sets how finely the DOSCAR is resolved and
+    ``output_files`` selects the CHGCAR/LOCPOT/WAVECAR files VASP writes, which
+    is what makes the corresponding ``ParseVaspOutput`` ports available.
     """
     calc = VaspInput(
         scf=scf,
         minimization=minimization,
         md=md,
         dipole_correction=dipole_correction,
+        dos=dos,
+        output_files=output_files,
         extra_incar=specific_inputs.to_dict() if specific_inputs is not None else None,
     )
     return calc
@@ -525,38 +793,115 @@ def RunVaspCalculation(
 @as_function_node
 def ParseVaspOutput(
     io_bundle: VaspInputResources,
-    vasprun_filename: str = "vasprun.xml",
+    dos_source: str = "vasprun",
+    parse_electron_density: bool = True,
+    parse_electrostatic_potential: bool = True,
 ):
-    """Parse ``vasprun.xml`` into the calculator output dataclass for this run.
+    """Collect the whole working directory with ``vaspparser``.
 
-    Which dataclass lands on ``out`` follows the calc that was submitted, so the
-    same downstream nodes work for VASP and LAMMPS:
+    ``vaspparser.parse_vasp_output`` reads every VASP output file that is
+    present — vasprun.xml and OUTCAR for energies/forces/magnetisation, OSZICAR
+    for high-precision energies, CONTCAR for the final structure, CHGCAR and
+    LOCPOT for the volumetric data — and returns them as one dictionary. This
+    node reshapes that into the ports below.
 
-    ``md``           → ``OutputCalcMD``       (full ionic trajectory)
-    ``minimization`` → ``OutputCalcMinimize`` (initial + final, convergence)
-    otherwise        → ``OutputCalcStatic``   (single point)
+    Ports
+    -----
+    out
+        Calculator dataclass matching the calc that was submitted, so the same
+        downstream nodes work for VASP and LAMMPS:
+        ``md`` → ``OutputCalcMD`` (full ionic trajectory), ``minimization`` →
+        ``OutputCalcMinimize`` (initial + final, convergence), otherwise
+        ``OutputCalcStatic`` (single point).
+    trajectory
+        Every ionic step as an ASE ``Atoms`` — feeds visualisation nodes such as
+        ``AnimateAse``.
+    last_structure
+        Final structure, taken from the CONTCAR when one was written (higher
+        precision than the positions in vasprun.xml).
+    total_energy
+        Total energy of the last ionic step in eV; for an MD run this includes
+        the kinetic energy of the ions.
+    magnetic_moments
+        Per-atom moments of the last ionic step, or ``None``. VASP prints these
+        only when the run is spin-polarized (``InputSCF.spin_polarized``) *and*
+        the per-ion magnetization table was requested (``InputVaspDOS.projected``,
+        i.e. LORBIT 11) — ISPIN 2 on its own is not enough.
+    dos
+        ``OutputVaspDOS``: ``energies``, ``total_densities`` and
+        ``integrated_densities``, plus ``resolved_densities``/``orbitals`` when
+        the projection was switched on. ``None`` if the run wrote no DOS.
+        ``dos_source`` picks where it comes from — ``"vasprun"`` (default) for
+        the ``<dos>`` block that ``vaspparser`` reads out of vasprun.xml, or
+        ``"doscar"`` to read the ``DOSCAR`` file directly. VASP writes the same
+        quantity to both, so they should agree; if they do not, the run itself
+        is worth a second look.
+    electrostatic_potential, electron_density
+        ``VaspVolumetricData`` from LOCPOT / CHGCAR, or ``None`` when the file
+        was not written (see ``InputVaspOutputFiles``) or was skipped here. The
+        grid itself is ``.total_data``; ``.diff_data`` holds the spin difference
+        of a spin-polarized CHGCAR.
+    converged
+        Electronic convergence, and ionic convergence too for a relaxation.
 
-    ``trajectory`` (list of ASE ``Atoms``) and ``converged`` are kept alongside
-    it — the ASE trajectory feeds visualisation nodes such as ``AnimateAse``.
+    ``parse_electron_density`` / ``parse_electrostatic_potential`` exist because
+    CHGCAR and LOCPOT are large and slow to read; switch them off to leave the
+    files on disk untouched.
     """
-    from pymatgen.io.vasp.outputs import Vasprun
+    workdir = io_bundle.working_directory
+    parsers: list = []
+    output = parse_vasp_output(
+        working_directory=workdir,
+        structure=io_bundle.structure,
+        output_parser_class=_output_parser_class(
+            charge_density=parse_electron_density,
+            electrostatic_potential=parse_electrostatic_potential,
+            collected=parsers,
+        ),
+    )
 
-    vasprun_path = os.path.join(io_bundle.working_directory, vasprun_filename)
-    vr = Vasprun(filename=vasprun_path, parse_dos=False, parse_projected_eigen=False)
+    last_structure = Atoms.fromdict(output["structure"])
+    trajectory = _trajectory_from_output(output, last_structure)
+    total_energy = float(output["generic"]["energy_tot"][-1])
+    magnetic_moments = _final_magmoms(output)
+    if dos_source == "doscar":
+        dos = read_doscar(os.path.join(workdir, "DOSCAR"))
+    elif dos_source == "vasprun":
+        dos = _dos_from_electronic_structure(
+            parsers[0].electronic_structure if parsers else None
+        )
+    else:
+        raise ValueError(
+            f"Unknown dos_source {dos_source!r}; expected 'vasprun' or 'doscar'."
+        )
+    electron_density = _volumetric_from_dict(
+        output.get("charge_density"), last_structure
+    )
+    electrostatic_potential = _volumetric_from_dict(
+        output.get("electrostatic_potential"), last_structure
+    )
+    converged = _is_converged(output, io_bundle.calc)
 
-    trajectory = [AseAtomsAdaptor.get_atoms(s) for s in vr.structures]
-    converged = vr.converged
     calc = io_bundle.calc
-
     if calc is not None and calc.md is not None:
-        out = _md_from_vasprun(vr, trajectory, vasprun_path)
+        out = _md_from_output(output, trajectory, os.path.join(workdir, "vasprun.xml"))
     elif calc is not None and calc.minimization is not None:
         out = OutputCalcMinimize.pure_dataclass()
-        out.initial = _static_from_ionic_step(vr.ionic_steps[0], trajectory[0])
-        out.final = _static_from_ionic_step(vr.ionic_steps[-1], trajectory[-1])
-        out.is_converged = vr.converged_ionic
-        out.iter_steps = len(vr.ionic_steps)
+        out.initial = _static_from_output(output, 0, trajectory[0])
+        out.final = _static_from_output(output, -1, last_structure)
+        out.is_converged = converged
+        out.iter_steps = len(trajectory)
     else:
-        out = _static_from_ionic_step(vr.ionic_steps[-1], trajectory[-1])
+        out = _static_from_output(output, -1, last_structure)
 
-    return out, trajectory, converged
+    return (
+        out,
+        trajectory,
+        last_structure,
+        total_energy,
+        magnetic_moments,
+        dos,
+        electrostatic_potential,
+        electron_density,
+        converged,
+    )
