@@ -423,14 +423,18 @@ class TestDecisionTreeClassificationModel:
     def test_gini_criterion(self, binary_classification_data):
         """Test DecisionTreeClassificationModel with gini criterion."""
         X_train, y_train, _, _ = binary_classification_data
-        result = DecisionTreeClassificationModel(X_train, y_train, criterion="gini").run()
+        result = DecisionTreeClassificationModel(
+            X_train, y_train, criterion="gini"
+        ).run()
 
         assert result["model"].criterion == "gini"
 
     def test_entropy_criterion(self, binary_classification_data):
         """Test DecisionTreeClassificationModel with entropy criterion."""
         X_train, y_train, _, _ = binary_classification_data
-        result = DecisionTreeClassificationModel(X_train, y_train, criterion="entropy").run()
+        result = DecisionTreeClassificationModel(
+            X_train, y_train, criterion="entropy"
+        ).run()
 
         assert result["model"].criterion == "entropy"
 
@@ -456,7 +460,9 @@ class TestRandomForestRegressionModel:
         """Test RandomForestRegressionModel with custom n_estimators."""
         X_train, y_train, _, _ = regression_data
         n_trees = 50
-        result = RandomForestRegressionModel(X_train, y_train, n_estimators=n_trees).run()
+        result = RandomForestRegressionModel(
+            X_train, y_train, n_estimators=n_trees
+        ).run()
 
         assert result["n_estimators"] == n_trees
         assert len(result["model"].estimators_) == n_trees
@@ -483,7 +489,9 @@ class TestRandomForestClassificationModel:
     def test_class_weight_balanced(self, binary_classification_data):
         """Test RandomForestClassificationModel with balanced class weights."""
         X_train, y_train, _, _ = binary_classification_data
-        result = RandomForestClassificationModel(X_train, y_train, class_weight="balanced").run()
+        result = RandomForestClassificationModel(
+            X_train, y_train, class_weight="balanced"
+        ).run()
 
         assert result["model"].class_weight == "balanced"
 
@@ -508,14 +516,18 @@ class TestGradientBoostingRegressionModel:
         """Test GradientBoostingRegressionModel with custom learning_rate."""
         X_train, y_train, _, _ = regression_data
         lr = 0.05
-        result = GradientBoostingRegressionModel(X_train, y_train, learning_rate=lr).run()
+        result = GradientBoostingRegressionModel(
+            X_train, y_train, learning_rate=lr
+        ).run()
 
         assert result["model"].learning_rate == lr
 
     def test_train_score_attribute(self, regression_data):
         """Test that train_score_ is available."""
         X_train, y_train, _, _ = regression_data
-        result = GradientBoostingRegressionModel(X_train, y_train, n_estimators=10).run()
+        result = GradientBoostingRegressionModel(
+            X_train, y_train, n_estimators=10
+        ).run()
 
         assert "train_score" in result
         assert len(result["train_score"]) > 0
@@ -632,14 +644,18 @@ class TestSupportVectorClassificationModel:
     def test_linear_kernel(self, binary_classification_data):
         """Test SupportVectorClassificationModel with linear kernel."""
         X_train, y_train, _, _ = binary_classification_data
-        result = SupportVectorClassificationModel(X_train, y_train, kernel="linear").run()
+        result = SupportVectorClassificationModel(
+            X_train, y_train, kernel="linear"
+        ).run()
 
         assert result["kernel"] == "linear"
 
     def test_polynomial_kernel(self, binary_classification_data):
         """Test SupportVectorClassificationModel with polynomial kernel."""
         X_train, y_train, _, _ = binary_classification_data
-        result = SupportVectorClassificationModel(X_train, y_train, kernel="poly", degree=3).run()
+        result = SupportVectorClassificationModel(
+            X_train, y_train, kernel="poly", degree=3
+        ).run()
 
         assert result["kernel"] == "poly"
 
@@ -771,7 +787,9 @@ class TestPredictClassificationModel:
         model_result = trained_rf_classifier
         model = model_result
 
-        result = PredictClassificationModel(model, X_test, return_probabilities=False).run()
+        result = PredictClassificationModel(
+            model, X_test, return_probabilities=False
+        ).run()
 
         assert isinstance(result, dict)
         assert "predictions" in result
@@ -785,7 +803,9 @@ class TestPredictClassificationModel:
         model_result = trained_rf_classifier
         model = model_result
 
-        result = PredictClassificationModel(model, X_test, return_probabilities=True).run()
+        result = PredictClassificationModel(
+            model, X_test, return_probabilities=True
+        ).run()
 
         assert "predictions" in result
         assert "probabilities" in result
@@ -828,7 +848,9 @@ class TestCompareRegressionModels:
         model1 = model1_result
         model2 = model2_result
 
-        result = CompareRegressionModels(model1, model2, X_val, y_val, metric="r2").run()
+        result = CompareRegressionModels(
+            model1, model2, X_val, y_val, metric="r2"
+        ).run()
 
         assert "best_model" in result
 
@@ -840,7 +862,9 @@ class TestCompareRegressionModels:
         model1 = LinearRegressionModel(X_train, y_train).run()
         model2 = RidgeRegressionModel(X_train, y_train, alpha=10.0).run()
 
-        result = CompareRegressionModels(model1, model2, X_val, y_val, metric="rmse").run()
+        result = CompareRegressionModels(
+            model1, model2, X_val, y_val, metric="rmse"
+        ).run()
 
         assert result["best_model"] in (model1, model2)
 
@@ -852,7 +876,9 @@ class TestCompareRegressionModels:
         model1 = LinearRegressionModel(X_train, y_train).run()
         model2 = RidgeRegressionModel(X_train, y_train, alpha=10.0).run()
 
-        result = CompareRegressionModels(model1, model2, X_val, y_val, metric="mae").run()
+        result = CompareRegressionModels(
+            model1, model2, X_val, y_val, metric="mae"
+        ).run()
 
         assert result["best_model"] in (model1, model2)
 
@@ -877,7 +903,9 @@ class TestCompareClassificationModels:
         X_val, y_val = X_test, y_test
 
         model1_result = LogisticClassificationModel(X_train, y_train).run()
-        model2_result = RandomForestClassificationModel(X_train, y_train, n_estimators=10).run()
+        model2_result = RandomForestClassificationModel(
+            X_train, y_train, n_estimators=10
+        ).run()
         model1 = model1_result
         model2 = model2_result
 
@@ -898,7 +926,9 @@ class TestCompareClassificationModels:
         model1 = model1_result
         model2 = model2_result
 
-        result = CompareClassificationModels(model1, model2, X_val, y_val, metric="f1").run()
+        result = CompareClassificationModels(
+            model1, model2, X_val, y_val, metric="f1"
+        ).run()
 
         assert "model_1_metrics" in result
         assert "f1" in result["model_1_metrics"]
@@ -954,7 +984,9 @@ class TestCompareClassificationModels:
         model2 = KNeighborsClassificationModel(X_train, y_train).run()
 
         with pytest.raises(ValueError):
-            CompareClassificationModels(model1, model2, X_val, y_val, metric="bogus").run()
+            CompareClassificationModels(
+                model1, model2, X_val, y_val, metric="bogus"
+            ).run()
 
 
 # =============================================================================
@@ -1035,7 +1067,9 @@ class TestIntegration:
         X_train, y_train, X_test, y_test = binary_classification_data
 
         # Train model
-        model_result = RandomForestClassificationModel(X_train, y_train, n_estimators=10).run()
+        model_result = RandomForestClassificationModel(
+            X_train, y_train, n_estimators=10
+        ).run()
         model = model_result
 
         # Evaluate model
@@ -1120,8 +1154,12 @@ class TestReproducibility:
         """Test that GradientBoosting with same seed produces same results."""
         X_train, y_train, X_test, y_test = regression_data
 
-        result1 = GradientBoostingRegressionModel(X_train, y_train, random_state=42).run()
-        result2 = GradientBoostingRegressionModel(X_train, y_train, random_state=42).run()
+        result1 = GradientBoostingRegressionModel(
+            X_train, y_train, random_state=42
+        ).run()
+        result2 = GradientBoostingRegressionModel(
+            X_train, y_train, random_state=42
+        ).run()
 
         pred1 = result1["model"].predict(X_test)
         pred2 = result2["model"].predict(X_test)

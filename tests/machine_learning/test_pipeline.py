@@ -48,7 +48,9 @@ def regression_data():
         columns=[f"feature_{i}" for i in range(n_features)],
     )
     y_train = pd.Series(
-        3 * X_train.iloc[:, 0] + 2 * X_train.iloc[:, 1] + np.random.randn(n_train) * 0.1,
+        3 * X_train.iloc[:, 0]
+        + 2 * X_train.iloc[:, 1]
+        + np.random.randn(n_train) * 0.1,
         name="target",
     )
     X_test = pd.DataFrame(
