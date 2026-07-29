@@ -38,9 +38,7 @@ from pyiron_nodes.electrochemistry.add_potential.vasp import (
 
 # real plugin templates shipped next to the module under test
 _PLUGIN_DIR = (
-    Path(__file__).parent.parent.parent.parent
-    / "electrochemistry"
-    / "add_potential"
+    Path(__file__).parent.parent.parent.parent / "electrochemistry" / "add_potential"
 )
 
 # POTCAR lines in the same shape VASP writes them; the Ne line is what the CCE
@@ -363,7 +361,9 @@ class TestParsePotential(unittest.TestCase):
         self._tmp.cleanup()
 
     def _bundle(self, extra_incar=None, md=True):
-        calc = VaspInput(scf=make_scf(), md=make_md(n_ionic_steps=self.nsw) if md else None)
+        calc = VaspInput(
+            scf=make_scf(), md=make_md(n_ionic_steps=self.nsw) if md else None
+        )
         return VaspInputResources(
             structure=None,
             calc=calc,
