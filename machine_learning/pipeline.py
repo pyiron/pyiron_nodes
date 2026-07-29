@@ -82,15 +82,16 @@ def MLDataSplitter(
 
 
 @as_function_node
-def train_regressor(X_train: pd.DataFrame, y_train: pd.DataFrame, r_type: str = None):
+def TrainRegressor(X_train: pd.DataFrame, y_train: pd.DataFrame, r_type: str = None):
     """
     trains a regressor
     """
-    if r_type != None:
-        if r_type == "linear":
-            reg = LinearRegression().fit(X_train, y_train)
-        if r_type == "tree":
-            reg = RandomForestRegressor().fit(X_train, y_train)
+    if r_type == "linear":
+        reg = LinearRegression().fit(X_train, y_train)
+    elif r_type == "tree":
+        reg = RandomForestRegressor().fit(X_train, y_train)
+    else:
+        raise ValueError(f"Unknown r_type: {r_type!r}. Expected 'linear' or 'tree'.")
     return reg
 
 

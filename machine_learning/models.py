@@ -54,7 +54,7 @@ from core import as_function_node
 
 
 @as_function_node("model")
-def LinearRegression_model(
+def LinearRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     fit_intercept: bool = True,
@@ -79,16 +79,17 @@ def LinearRegression_model(
     """
     model = LinearRegression(fit_intercept=fit_intercept, copy_X=copy_X, n_jobs=n_jobs)
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "LinearRegression",
         "coefficients": model.coef_,
         "intercept": model.intercept_,
     }
+    return result
 
 
 @as_function_node("model")
-def RidgeRegression_model(
+def RidgeRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -123,17 +124,18 @@ def RidgeRegression_model(
         solver=solver,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "Ridge",
         "alpha": alpha,
         "coefficients": model.coef_,
         "intercept": model.intercept_,
     }
+    return result
 
 
 @as_function_node("model")
-def LassoRegression_model(
+def LassoRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -168,7 +170,7 @@ def LassoRegression_model(
         warm_start=warm_start,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "Lasso",
         "alpha": alpha,
@@ -176,10 +178,11 @@ def LassoRegression_model(
         "intercept": model.intercept_,
         "n_iter": model.n_iter_,
     }
+    return result
 
 
 @as_function_node("model")
-def ElasticNetRegression_model(
+def ElasticNetRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     alpha: float = 1.0,
@@ -214,7 +217,7 @@ def ElasticNetRegression_model(
         tol=tol,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "ElasticNet",
         "alpha": alpha,
@@ -223,10 +226,11 @@ def ElasticNetRegression_model(
         "intercept": model.intercept_,
         "n_iter": model.n_iter_,
     }
+    return result
 
 
 @as_function_node("model")
-def LogisticClassification_model(
+def LogisticClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     penalty: str = "l2",
@@ -234,7 +238,6 @@ def LogisticClassification_model(
     fit_intercept: bool = True,
     max_iter: int = 100,
     solver: str = "lbfgs",
-    multi_class: str = "auto",
     class_weight: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -251,7 +254,6 @@ def LogisticClassification_model(
         fit_intercept: Whether to calculate intercept (default: True)
         max_iter: Maximum iterations (default: 100)
         solver: Optimization algorithm - 'lbfgs', 'liblinear', 'newton-cg', 'newton-cholesky', 'sag', 'saga'
-        multi_class: Strategy for multiclass - 'auto', 'ovr', 'multinomial' (default: 'auto')
         class_weight: Weight classes - 'balanced' or None (default: None)
 
     Returns:
@@ -263,11 +265,10 @@ def LogisticClassification_model(
         fit_intercept=fit_intercept,
         max_iter=max_iter,
         solver=solver,
-        multi_class=multi_class,
         class_weight=class_weight,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "LogisticRegression",
         "coefficients": model.coef_,
@@ -275,6 +276,7 @@ def LogisticClassification_model(
         "classes": model.classes_,
         "n_iter": model.n_iter_,
     }
+    return result
 
 
 # =============================================================================
@@ -283,7 +285,7 @@ def LogisticClassification_model(
 
 
 @as_function_node("model")
-def DecisionTreeRegression_model(
+def DecisionTreeRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     criterion: str = "squared_error",
@@ -321,17 +323,18 @@ def DecisionTreeRegression_model(
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "DecisionTreeRegressor",
         "feature_importances": model.feature_importances_,
         "tree_depth": model.get_depth(),
         "n_leaves": model.get_n_leaves(),
     }
+    return result
 
 
 @as_function_node("model")
-def DecisionTreeClassification_model(
+def DecisionTreeClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     criterion: str = "gini",
@@ -372,7 +375,7 @@ def DecisionTreeClassification_model(
         class_weight=class_weight,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "DecisionTreeClassifier",
         "feature_importances": model.feature_importances_,
@@ -380,6 +383,7 @@ def DecisionTreeClassification_model(
         "tree_depth": model.get_depth(),
         "n_leaves": model.get_n_leaves(),
     }
+    return result
 
 
 # =============================================================================
@@ -388,7 +392,7 @@ def DecisionTreeClassification_model(
 
 
 @as_function_node("model")
-def RandomForestRegression_model(
+def RandomForestRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -429,16 +433,17 @@ def RandomForestRegression_model(
         n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "RandomForestRegressor",
         "feature_importances": model.feature_importances_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 @as_function_node("model")
-def RandomForestClassification_model(
+def RandomForestClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -482,13 +487,14 @@ def RandomForestClassification_model(
         class_weight=class_weight,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "RandomForestClassifier",
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 # =============================================================================
@@ -497,7 +503,7 @@ def RandomForestClassification_model(
 
 
 @as_function_node("model")
-def GradientBoostingRegression_model(
+def GradientBoostingRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -538,17 +544,18 @@ def GradientBoostingRegression_model(
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "GradientBoostingRegressor",
         "feature_importances": model.feature_importances_,
         "train_score": model.train_score_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 @as_function_node("model")
-def GradientBoostingClassification_model(
+def GradientBoostingClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 100,
@@ -589,7 +596,7 @@ def GradientBoostingClassification_model(
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "GradientBoostingClassifier",
         "feature_importances": model.feature_importances_,
@@ -597,6 +604,7 @@ def GradientBoostingClassification_model(
         "train_score": model.train_score_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 # =============================================================================
@@ -605,7 +613,7 @@ def GradientBoostingClassification_model(
 
 
 @as_function_node("model")
-def AdaBoostRegression_model(
+def AdaBoostRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 50,
@@ -637,21 +645,21 @@ def AdaBoostRegression_model(
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "AdaBoostRegressor",
         "feature_importances": model.feature_importances_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 @as_function_node("model")
-def AdaBoostClassification_model(
+def AdaBoostClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_estimators: int = 50,
     learning_rate: float = 1.0,
-    algorithm: str = "SAMME.R",
     random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
@@ -665,7 +673,6 @@ def AdaBoostClassification_model(
         y_train: Training target values
         n_estimators: Number of boosting stages (default: 50)
         learning_rate: Weight shrinkage parameter (default: 1.0)
-        algorithm: Boosting algorithm - 'SAMME', 'SAMME.R' (default: 'SAMME.R')
         random_state: Random seed (default: None)
 
     Returns:
@@ -674,17 +681,17 @@ def AdaBoostClassification_model(
     model = AdaBoostClassifier(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
-        algorithm=algorithm,
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "AdaBoostClassifier",
         "feature_importances": model.feature_importances_,
         "classes": model.classes_,
         "n_estimators": n_estimators,
     }
+    return result
 
 
 # =============================================================================
@@ -693,7 +700,7 @@ def AdaBoostClassification_model(
 
 
 @as_function_node("model")
-def KNeighborsRegression_model(
+def KNeighborsRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_neighbors: int = 5,
@@ -734,15 +741,16 @@ def KNeighborsRegression_model(
         n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "KNeighborsRegressor",
         "n_neighbors": n_neighbors,
     }
+    return result
 
 
 @as_function_node("model")
-def KNeighborsClassification_model(
+def KNeighborsClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     n_neighbors: int = 5,
@@ -783,12 +791,13 @@ def KNeighborsClassification_model(
         n_jobs=n_jobs,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "KNeighborsClassifier",
         "classes": model.classes_,
         "n_neighbors": n_neighbors,
     }
+    return result
 
 
 # =============================================================================
@@ -797,7 +806,7 @@ def KNeighborsClassification_model(
 
 
 @as_function_node("model")
-def SupportVectorClassification_model(
+def SupportVectorClassificationModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     kernel: str = "rbf",
@@ -835,17 +844,18 @@ def SupportVectorClassification_model(
         random_state=random_state,
     )
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "SVC",
         "classes": model.classes_,
         "n_support": model.n_support_,
         "kernel": kernel,
     }
+    return result
 
 
 @as_function_node("model")
-def SupportVectorRegression_model(
+def SupportVectorRegressionModel(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     kernel: str = "rbf",
@@ -874,12 +884,13 @@ def SupportVectorRegression_model(
     """
     model = SVR(kernel=kernel, C=C, gamma=gamma, degree=degree, epsilon=epsilon)
     model.fit(X_train, y_train)
-    return {
+    result = {
         "model": model,
         "model_type": "SVR",
         "n_support": model.n_support_,
         "kernel": kernel,
     }
+    return result
 
 
 # =============================================================================
@@ -888,7 +899,7 @@ def SupportVectorRegression_model(
 
 
 @as_function_node("metrics")
-def EvaluateRegressionModelSklearn_model(
+def EvaluateRegressionModelSklearn(
     model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, float]:
     """
@@ -909,11 +920,12 @@ def EvaluateRegressionModelSklearn_model(
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mse)
 
-    return {"R2": r2, "MSE": mse, "RMSE": rmse, "MAE": mae}
+    result = {"R2": r2, "MSE": mse, "RMSE": rmse, "MAE": mae}
+    return result
 
 
 @as_function_node("metrics")
-def EvaluateClassificationModelSklearn_model(
+def EvaluateClassificationModelSklearn(
     model: Dict, X_test: pd.DataFrame, y_test: pd.Series
 ) -> Dict[str, Any]:
     """
@@ -935,13 +947,14 @@ def EvaluateClassificationModelSklearn_model(
     f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
     cm = confusion_matrix(y_test, y_pred)
 
-    return {
+    result = {
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
         "f1_score": f1,
         "confusion_matrix": cm.tolist(),
     }
+    return result
 
 
 # =============================================================================
@@ -950,7 +963,7 @@ def EvaluateClassificationModelSklearn_model(
 
 
 @as_function_node("predictions")
-def PredictRegression_model(model: Dict, X: pd.DataFrame) -> np.ndarray:
+def PredictRegressionModel(model: Dict, X: pd.DataFrame) -> np.ndarray:
     """
     Makes predictions using a fitted regression model.
 
@@ -961,11 +974,12 @@ def PredictRegression_model(model: Dict, X: pd.DataFrame) -> np.ndarray:
     Returns:
         Predicted values as numpy array
     """
-    return model["model"].predict(X)
+    predictions = model["model"].predict(X)
+    return predictions
 
 
 @as_function_node("predictions")
-def PredictClassification_model(
+def PredictClassificationModel(
     model: Dict, X: pd.DataFrame, return_probabilities: bool = False
 ) -> Dict[str, Any]:
     """
@@ -995,7 +1009,7 @@ def PredictClassification_model(
 
 
 @as_function_node("comparison_results")
-def CompareRegressionModels_model(
+def CompareRegressionModels(
     model_1: Dict,
     model_2: Dict,
     X_validation: pd.DataFrame,
@@ -1040,16 +1054,17 @@ def CompareRegressionModels_model(
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
-    return {
+    result = {
         "best_model": best_model,
         "model_1_metrics": {"R2": r2_1, "RMSE": rmse_1, "MAE": mae_1},
         "model_2_metrics": {"R2": r2_2, "RMSE": rmse_2, "MAE": mae_2},
         "winning_model": 1 if best_model is model_1 else 2,
     }
+    return result
 
 
 @as_function_node("comparison_results")
-def CompareClassificationModels_model(
+def CompareClassificationModels(
     model_1: Dict,
     model_2: Dict,
     X_validation: pd.DataFrame,
@@ -1093,7 +1108,7 @@ def CompareClassificationModels_model(
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
-    return {
+    result = {
         "best_model": best_model,
         "model_1_metrics": {
             "accuracy": acc_1,
@@ -1109,3 +1124,4 @@ def CompareClassificationModels_model(
         },
         "winning_model": 1 if best_model is model_1 else 2,
     }
+    return result
