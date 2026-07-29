@@ -301,10 +301,17 @@ def CCESetup(
     output_files = ["el_pot_z.dat", "Q.dat", "phi.dat"]
 
     # Remove existing output files to avoid confusion with previous runs
-    for filename in output_files:
-        filepath = os.path.join(io_bundle.working_directory, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    existing_files = [
+        filename for filename in output_files
+        if os.path.exists(os.path.join(io_bundle.working_directory, filename))
+    ]
+
+    if existing_files:
+        raise FileExistsError(
+            f"The following file(s) already exist in '{io_bundle.working_directory}': "
+            f"{', '.join(existing_files)}. "
+            f"Please choose a new/empty working directory instead of overwriting existing results."
+        )
 
     return io_bundle
 
