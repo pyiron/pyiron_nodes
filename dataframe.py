@@ -3,16 +3,42 @@ Operations and views for pandas DataFrames in Pyiron Nodes.
 This module provides functions to manipulate and analyze pandas DataFrames
 """
 
+from typing import Literal
+
 import pandas as pd
 
 from core import Node, as_function_node
 
 
 @as_function_node("df")
-def ReadDataFrame(filename: str, compression: str = None):
+def ReadDataFrame(
+    filename: str,
+    file_format: Literal["csv", "pickle", "parquet", "json", "excel"] = "pickle",
+):
     import pandas as pd
 
-    return pd.read_pickle(filename, compression=compression)
+    if file_format == "csv":
+        file = pd.read_csv(filename)
+    elif file_format == "parquet":
+        file = pd.read_parquet(filename)
+    elif file_format == "json":
+        file = pd.read_json(filename)
+    elif file_format == "excel":
+        file = pd.read_excel(filename)
+    else:
+        raise ValueError(
+            f"Unsupported file format '{file_format}'. Choose one of: csv, pickle, parquet, json, excel."
+        )
+
+    return file
+
+
+@as_function_node("df")
+def ReadPickleDataFrame(filename: str, compression: str = "infer"):
+    import pandas as pd
+
+    file = pd.read_pickle(filename, compression=compression)
+    return file
 
 
 # get column from dataframe
