@@ -38,6 +38,7 @@ dependencies:
 - scipy =1.15.2
 - seaborn =0.13.2
 - structuretoolkit = 0.0.42
+- pymatgen-analysis-defects =2026.3.20
 - pysqa =0.4.1
 - h5py =3.15.1
 - executorlib =1.9.2

@@ -6,12 +6,16 @@ from typing import Optional, Literal
 
 from ase.atoms import Atoms
 
-from lammpsparser.compatibility.calculate import calc_md
+from lammpsparser.compatibility.calculate import calc_md, calc_minimize, calc_static
 from lammpsparser.compatibility.constraints import set_selective_dynamics
 from lammpsparser.output import parse_lammps_output
 from lammpsparser.structure import LammpsStructure
 
-from pyiron_nodes.atomistic.calculator.data import InputCalcMD
+from pyiron_nodes.atomistic.calculator.data import (
+    InputCalcMD,
+    InputCalcMinimize,
+    InputCalcStatic,
+)
 
 from core import as_function_node
 
@@ -26,6 +30,7 @@ from dataclasses import dataclass
 class LammpsIOBundle:
     structure: Atoms
     potential: str | pd.DataFrame
+    mode: Optional[str] = None
     working_directory: str = "."
     lammps_input_string: str = ""
     lammps_input_filename: str = "lmp.in"
@@ -42,11 +47,10 @@ class LammpsIOBundle:
 @as_function_node
 def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
 
-    import os
-    from lammpsparser.potential import view_potentials
+    from lammpsparser.potential import get_resource_path_from_conda, view_potentials
 
     if resource_path is None:
-        resource_path = os.path.join(os.environ["CONDA_PREFIX"], "share", "iprpy")
+        resource_path = get_resource_path_from_conda()
 
     potentials = list(
         view_potentials(structure, resource_path=resource_path)["Name"].values
@@ -116,7 +120,6 @@ def CreateLammpsStructure(
         units=units,
         resource_path=resource_path,
     )
-
     _, potential_replace, potential_elements = _get_potential(
         potential=potential, resource_path=resource_path
     )
@@ -128,7 +131,7 @@ def CreateLammpsStructure(
     if atom_type == "full":
         # LammpsStructure does not support "full" atom_style, so an additional function write_lammps_data_full was added in this file and is used for the 'full' case
         # Does not include dihedrals or impropers, but should be sufficient for bonds and angles.
-        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for WaterPotential node.
+        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for TIP3PSlabPotential node.
 
         structure_string = write_lammps_data_full(
             structure=structure,
@@ -165,7 +168,7 @@ def CreateLammpsStructure(
 @as_function_node
 def CreateLammpsMDInput(
     io_bundle: LammpsIOBundle,
-    calc_dataclass: Optional[InputCalcMD],
+    calc_dataclass: InputCalcMD,
     read_restart_filename: Optional[str] = None,
     write_restart_filename: Optional[str] = None,
 ):
@@ -236,6 +239,9 @@ def CreateLammpsMDInput(
         ).items()
     ]
 
+    calc_kwargs["units"] = io_bundle.units
+    lmp_str_lst += calc_md(**calc_kwargs)
+
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
 
@@ -253,6 +259,131 @@ def CreateLammpsMDInput(
         lmp_str_lst.append(f"write_restart {os.path.basename(write_restart_filename)}")
 
     io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "md"
+
+    return io_bundle
+
+
+@as_function_node
+def CreateLammpsStaticInput(
+    io_bundle: LammpsIOBundle,
+    # calc_dataclass: Optional[InputCalcStatic] = None,
+):
+    from lammpsparser.compatibility.file import (
+        lammps_file_initialization,
+        _get_potential,
+    )
+
+    os.makedirs(io_bundle.working_directory, exist_ok=True)
+    potential_lst, potential_replace, _ = _get_potential(
+        potential=io_bundle.potential, resource_path=io_bundle.resource_path
+    )
+
+    lmp_str_lst = []
+    for l in lammps_file_initialization(
+        structure=io_bundle.structure,
+        units=io_bundle.units,
+        read_restart_file=False,
+        restart_file=None,
+    ):
+        if l.strip().startswith("units") and "units" in potential_replace:
+            lmp_str_lst.append(potential_replace["units"])
+        elif l.strip().startswith("atom_style") and "atom_style" in potential_replace:
+            lmp_str_lst.append(potential_replace["atom_style"])
+        elif l.strip().startswith("dimension") and "dimension" in potential_replace:
+            lmp_str_lst.append(potential_replace["dimension"])
+        else:
+            lmp_str_lst.append(l)
+
+    if isinstance(io_bundle.potential, pd.DataFrame):
+        lmp_str_lst += [f"include {io_bundle.lammps_potential_filename}\n"]
+        io_bundle.lammps_potential_string = "".join(potential_lst)
+    else:
+        lmp_str_lst += potential_lst
+
+    lmp_str_lst += ["variable dumptime equal 1"]
+    lmp_str_lst += [
+        "dump 1 all custom ${dumptime} dump.out id type xsu ysu zsu fx fy fz vx vy vz",
+        'dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"',
+    ]
+    lmp_str_lst += [
+        k + " " + v
+        for k, v in set_selective_dynamics(
+            structure=io_bundle.structure, calc_md=False
+        ).items()
+    ]
+    lmp_str_lst += calc_static()
+
+    io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "static"
+
+    return io_bundle
+
+
+@as_function_node
+def CreateLammpsMinimizeInput(
+    io_bundle: LammpsIOBundle,
+    calc_dataclass: InputCalcMinimize,
+):
+    from lammpsparser.compatibility.file import (
+        lammps_file_initialization,
+        _get_potential,
+    )
+
+    os.makedirs(io_bundle.working_directory, exist_ok=True)
+    potential_lst, potential_replace, _ = _get_potential(
+        potential=io_bundle.potential, resource_path=io_bundle.resource_path
+    )
+
+    lmp_str_lst = []
+    for l in lammps_file_initialization(
+        structure=io_bundle.structure,
+        units=io_bundle.units,
+        read_restart_file=False,
+        restart_file=None,
+    ):
+        if l.strip().startswith("units") and "units" in potential_replace:
+            lmp_str_lst.append(potential_replace["units"])
+        elif l.strip().startswith("atom_style") and "atom_style" in potential_replace:
+            lmp_str_lst.append(potential_replace["atom_style"])
+        elif l.strip().startswith("dimension") and "dimension" in potential_replace:
+            lmp_str_lst.append(potential_replace["dimension"])
+        else:
+            lmp_str_lst.append(l)
+
+    if isinstance(io_bundle.potential, pd.DataFrame):
+        lmp_str_lst += [f"include {io_bundle.lammps_potential_filename}\n"]
+        io_bundle.lammps_potential_string = "".join(potential_lst)
+    else:
+        lmp_str_lst += potential_lst
+
+    lmp_str_lst += ["variable dumptime equal {}".format(calc_dataclass.n_print)]
+    lmp_str_lst += [
+        "dump 1 all custom ${dumptime} dump.out id type xsu ysu zsu fx fy fz vx vy vz",
+        'dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"',
+    ]
+    lmp_str_lst += [
+        k + " " + v
+        for k, v in set_selective_dynamics(
+            structure=io_bundle.structure, calc_md=False
+        ).items()
+    ]
+
+    minimize_lines, updated_structure = calc_minimize(
+        structure=io_bundle.structure,
+        ionic_energy_tolerance=calc_dataclass.e_tol,
+        ionic_force_tolerance=calc_dataclass.f_tol,
+        max_iter=calc_dataclass.max_iter,
+        pressure=calc_dataclass.pressure,
+        n_print=calc_dataclass.n_print,
+        style=calc_dataclass.style,
+        units=io_bundle.units,
+    )
+    lmp_str_lst += minimize_lines
+    io_bundle.structure = updated_structure
+
+    io_bundle.lammps_input_string = "\n".join(lmp_str_lst)
+    io_bundle.mode = "minimize"
 
     return io_bundle
 
@@ -261,10 +392,12 @@ def CreateLammpsMDInput(
 def RunLammpsCalculation(
     io_bundle: LammpsIOBundle,
     lmp_command: Optional[str] = None,
-    cores: int = 1,
+    threads_per_core: int = 1,
     debug: bool = False,
+    executor=None,
 ):
     # Writing
+    print(f"Running LAMMPS on {threads_per_core} cores")
     os.makedirs(io_bundle.working_directory, exist_ok=True)
     with open(
         os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w"
@@ -292,19 +425,34 @@ def RunLammpsCalculation(
             lmp_command = (
                 os.getenv(
                     "ASE_LAMMPSRUN_COMMAND",
-                    f"mpiexec -n {cores} --oversubscribe lmp_mpi",
+                    f"mpiexec -n {threads_per_core} --oversubscribe lmp_mpi",
                 )
                 + f" -in {io_bundle.lammps_input_filename}"
             )
-        result = subprocess.run(
-            lmp_command,
-            cwd=io_bundle.working_directory,
-            shell=True,
-            universal_newlines=True,
-            env=os.environ.copy(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        if executor is None:
+            result = subprocess.run(
+                lmp_command,
+                cwd=io_bundle.working_directory,
+                shell=True,
+                universal_newlines=True,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        else:
+            # Use the provided executor to run the command
+            future = executor.submit(
+                subprocess.run,
+                lmp_command,
+                cwd=io_bundle.working_directory,
+                shell=True,
+                universal_newlines=True,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            result = future.result()
+
         if result.returncode != 0:
             error_path = os.path.join(io_bundle.working_directory, "error.msg")
             with open(error_path, "w") as f:
@@ -321,13 +469,12 @@ def RunLammpsCalculation(
     return io_bundle, output
 
 
-@as_function_node
-def ParseLammpsOutput(
+def _parse_lammps_raw(
     io_bundle: LammpsIOBundle,
-    dump_h5_file_name: str = "dump.h5",
-    dump_out_file_name: str = "dump.out",
-    log_lammps_file_name: str = "log.lammps",
-):
+    dump_h5_file_name: str,
+    dump_out_file_name: str,
+    log_lammps_file_name: str,
+) -> dict:
     from lammpsparser.compatibility.file import _get_potential
 
     _, _, species = _get_potential(
@@ -343,24 +490,85 @@ def ParseLammpsOutput(
         dump_out_file_name=dump_out_file_name,
         log_lammps_file_name=log_lammps_file_name,
     )
-    from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
+    return output["generic"]
 
-    out = OutputCalcMD.pure_dataclass()
 
-    out.cells = output["generic"].get("cells")
-    out.energies_tot = output["generic"].get("energies_tot")
-    out.energies_pot = output["generic"].get("energies_pot")
-    out.forces = output["generic"].get("forces")
-    out.indices = output["generic"].get("indices")
-    out.natoms = output["generic"].get("natoms")
-    out.positions = output["generic"].get("positions")
-    out.pressures = output["generic"].get("pressures")
-    out.steps = output["generic"].get("steps")
-    out.temperatures = output["generic"].get("temperature")
-    out.unwrapped_positions = output["generic"].get("unwrapped_positions")
-    out.velocities = output["generic"].get("velocities")
-    out.volumes = output["generic"].get("volume")
-    out.species = io_bundle.structure.get_chemical_symbols()
+@as_function_node
+def ParseLammpsOutput(
+    io_bundle: LammpsIOBundle,
+    dump_h5_file_name: str = "dump.h5",
+    dump_out_file_name: str = "dump.out",
+    log_lammps_file_name: str = "log.lammps",
+):
+    if io_bundle.mode is None:
+        raise ValueError(
+            "io_bundle.mode is not set — pass the bundle through "
+            "CreateLammpsMDInput, CreateLammpsStaticInput, or "
+            "CreateLammpsMinimizeInput before parsing."
+        )
+    if io_bundle.mode not in ("md", "static", "minimize"):
+        raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
+
+    generic = _parse_lammps_raw(
+        io_bundle, dump_h5_file_name, dump_out_file_name, log_lammps_file_name
+    )
+
+    if io_bundle.mode == "md":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
+
+        out = OutputCalcMD.pure_dataclass()
+        out.cells = generic.get("cells")
+        out.energies_tot = generic.get("energy_tot")
+        out.energies_pot = generic.get("energy_pot")
+        out.forces = generic.get("forces")
+        out.indices = generic.get("indices")
+        out.natoms = generic.get("natoms")
+        out.positions = generic.get("positions")
+        out.pressures = generic.get("pressures")
+        out.steps = generic.get("steps")
+        out.temperatures = generic.get("temperature")
+        out.unwrapped_positions = generic.get("unwrapped_positions")
+        out.velocities = generic.get("velocities")
+        out.volumes = generic.get("volume")
+        out.species = io_bundle.structure.get_chemical_symbols()
+    elif io_bundle.mode == "static":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
+
+        out = OutputCalcStatic.pure_dataclass()
+        energies_pot = generic.get("energy_pot")
+        out.energy = energies_pot[-1] if energies_pot is not None else None
+        forces = generic.get("forces")
+        out.force = forces[-1] if forces is not None else None
+        stresses = generic.get("pressures")
+        out.stress = stresses[-1] if stresses is not None else None
+        out.structure = io_bundle.structure
+    elif io_bundle.mode == "minimize":
+        from pyiron_nodes.atomistic.calculator.data import OutputCalcMinimize
+
+        energies_pot = generic.get("energy_pot")
+        forces = generic.get("forces")
+        stresses = generic.get("pressures")
+        positions = generic.get("positions")
+        cells = generic.get("cells")
+
+        out = OutputCalcMinimize.pure_dataclass()
+        out.initial.energy = energies_pot[0] if energies_pot is not None else None
+        out.initial.force = forces[0] if forces is not None else None
+        out.initial.stress = stresses[0] if stresses is not None else None
+        out.initial.structure = io_bundle.structure
+        out.final.energy = energies_pot[-1] if energies_pot is not None else None
+        out.final.force = forces[-1] if forces is not None else None
+        out.final.stress = stresses[-1] if stresses is not None else None
+        if positions is not None and cells is not None:
+            relaxed = io_bundle.structure.copy()
+            relaxed.set_positions(positions[-1])
+            relaxed.set_cell(cells[-1], scale_atoms=False)
+            out.final.structure = relaxed
+        else:
+            out.final.structure = io_bundle.structure
+        out.iter_steps = len(energies_pot) if energies_pot is not None else 0
+    else:
+        raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
 
     return out
 
