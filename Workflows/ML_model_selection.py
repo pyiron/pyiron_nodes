@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.dataframe import ReadDataFrame
 from pyiron_nodes.machine_learning.models import (
     EvaluateRegressionModelSklearn,

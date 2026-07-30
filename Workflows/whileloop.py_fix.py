@@ -1,4 +1,4 @@
-from core import Workflow, as_function_node, group_node
+from core import Workflow, as_function_node
 
 # ── Local node definitions ──────────────────────
 

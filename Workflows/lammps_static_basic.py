@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsStaticInput,
