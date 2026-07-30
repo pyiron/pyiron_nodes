@@ -7,9 +7,11 @@ from pathlib import Path
 import pandas as pd
 from ase.build import bulk, molecule
 
-from pyiron_nodes.atomistic.calculator.data import InputCalcMD
+from pyiron_nodes.atomistic.calculator.data import InputCalcMD, InputCalcMinimize
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsMDInput,
+    CreateLammpsMinimizeInput,
+    CreateLammpsStaticInput,
     CreateLammpsStructure,
     LammpsIOBundle,
     ListPotentials,
@@ -170,6 +172,68 @@ class TestLammpsDataFramePotential(unittest.TestCase):
 
     def test_debug_output_is_working_directory(self):
         self.assertEqual(self.output, self.io_bundle.working_directory)
+
+
+class TestLammpsStringPotentialStaticAndMinimize(unittest.TestCase):
+    """CreateLammpsStructure with a plain string potential exercises the
+    non-'full' atom_type branch (LammpsStructure, not write_lammps_data_full),
+    and CreateLammpsStaticInput/CreateLammpsMinimizeInput otherwise only get
+    exercised by the integration tests, which require a real LAMMPS binary."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.structure = bulk("Al", cubic=True)
+        cls._tmp = tempfile.TemporaryDirectory()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _make_bundle(self, subdir):
+        return CreateLammpsStructure._original_func(
+            structure=self.structure,
+            potential=AL_POTENTIAL,
+            working_directory=self._tmp.name + "/" + subdir,
+            resource_path=RESOURCE_PATH,
+        )
+
+    def test_structure_string_generated_for_string_potential(self):
+        io_bundle = self._make_bundle("structure")
+        self.assertIn("atoms", io_bundle.lammps_structure_string)
+
+    def test_static_input_mode_and_content(self):
+        io_bundle = self._make_bundle("static")
+        static_bundle = CreateLammpsStaticInput._original_func(io_bundle=io_bundle)
+        self.assertEqual(static_bundle.mode, "static")
+        self.assertNotEqual(static_bundle.lammps_input_string, "")
+
+    def test_static_debug_run_returns_working_directory(self):
+        io_bundle = self._make_bundle("static_debug")
+        static_bundle = CreateLammpsStaticInput._original_func(io_bundle=io_bundle)
+        _, output = RunLammpsCalculation._original_func(
+            io_bundle=static_bundle, debug=True
+        )
+        self.assertEqual(output, static_bundle.working_directory)
+
+    def test_minimize_input_mode_and_content(self):
+        io_bundle = self._make_bundle("minimize")
+        minimize_bundle = CreateLammpsMinimizeInput._original_func(
+            io_bundle=io_bundle,
+            calc_dataclass=InputCalcMinimize._original_dataclass(),
+        )
+        self.assertEqual(minimize_bundle.mode, "minimize")
+        self.assertNotEqual(minimize_bundle.lammps_input_string, "")
+
+    def test_minimize_debug_run_returns_working_directory(self):
+        io_bundle = self._make_bundle("minimize_debug")
+        minimize_bundle = CreateLammpsMinimizeInput._original_func(
+            io_bundle=io_bundle,
+            calc_dataclass=InputCalcMinimize._original_dataclass(),
+        )
+        _, output = RunLammpsCalculation._original_func(
+            io_bundle=minimize_bundle, debug=True
+        )
+        self.assertEqual(output, minimize_bundle.working_directory)
 
 
 class TestParseLammpsOutputErrors(unittest.TestCase):
