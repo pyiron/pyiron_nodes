@@ -1,13 +1,12 @@
+from core import Workflow, group_node
 from pyiron_nodes.dataframe import ReadDataFrame
-from pyiron_nodes.machine_learning.pipeline import ChooseBestModel, MLDataSplitter
 from pyiron_nodes.machine_learning.models import (
     EvaluateRegressionModelSklearn,
     LinearRegressionModel,
     PredictRegressionModel,
     SupportVectorRegressionModel,
 )
-from core import Workflow
-from core import group_node
+from pyiron_nodes.machine_learning.pipeline import ChooseBestModel, MLDataSplitter
 
 wf = Workflow("simple_inference")
 

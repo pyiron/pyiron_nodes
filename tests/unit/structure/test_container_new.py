@@ -2,61 +2,57 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 from ase.build import bulk
 
-import pyiron_nodes.atomistic.structure.container_new as container_new
 from pyiron_nodes.atomistic.structure.container_new import (
-    StructureContainer,
     AddPristine,
-    CreateDefectFromIds,
-    CreateDefectFromSeed,
     CreateDefectBatchFromIds,
     CreateDefectBatchFromSeed,
-    GetStoichiometry,
-    ValidateStructure,
+    CreateDefectFromIds,
+    CreateDefectFromSeed,
     ElementUids,
-    FindStructureIndex,
-    GetVacancyDistances,
-    GetSubstitutionDistances,
-    GetSubstitutionDistancesRelaxed,
-    GetInterstitialDistances,
-    GetInterstitialDistancesRelaxed,
-    GetVoronoiInterstitialSites,
-    GetVoronoiInterstitialSitesPymatgen,
-    GetDelaunayInterstitialSites,
+    FilterByElementCount,
     FilterByGeneration,
-    FilterByStoichiometry,
     FilterByIndices,
     FilterByMaxGeneration,
-    FilterByOperationsShort,
-    FilterByOperationsContains,
-    FilterByUniqueId,
     FilterByNumberOfAtoms,
-    FilterByElementCount,
+    FilterByOperationsContains,
+    FilterByOperationsShort,
     FilterByParent,
-    filter_by_condition,
+    FilterByStoichiometry,
+    FilterByUniqueId,
+    FindStructureIndex,
+    GetDefectStructures,
+    GetDefectTable,
+    GetDelaunayInterstitialSites,
+    GetInterstitialDistances,
+    GetInterstitialDistancesRelaxed,
+    GetPristineStructures,
+    GetPristineTable,
+    GetStoichiometry,
     GetStructure,
     GetStructureTable,
-    GetDefectTable,
-    GetPristineTable,
-    GetPristineStructures,
-    GetDefectStructures,
+    GetSubstitutionDistances,
+    GetSubstitutionDistancesRelaxed,
+    GetVacancyDistances,
+    GetVoronoiInterstitialSites,
+    GetVoronoiInterstitialSitesPymatgen,
     LatestPristineIndex,
-    ResolveDefectRow,
     ResolveAnyRow,
+    ResolveDefectRow,
+    StructureContainer,
+    ValidateStructure,
+    _filter_cluster_tile_interstitial_candidates,
+    _protected_uids_from_events,
+    _resolve_parent,
     ensure_uids,
+    filter_by_condition,
+    make_operations_short,
     next_uid,
     uid_to_index,
     validate_atoms_arrays,
-    make_operations_short,
-    _protected_uids_from_events,
-    _resolve_parent,
-    _filter_cluster_tile_interstitial_candidates,
-    _deduplicate_frac,
-    _extract_defect_frac_coords,
 )
 
 try:
@@ -592,12 +588,12 @@ class TestTableAndSelectionWrappers(unittest.TestCase):
     def test_get_defect_table(self):
         df = GetDefectTable._original_func(self.container)
         self.assertEqual(len(df), 2)
-        self.assertTrue((df["is_pristine"] == False).all())
+        self.assertTrue((~df["is_pristine"]).all())
 
     def test_get_pristine_table(self):
         df = GetPristineTable._original_func(self.container)
         self.assertEqual(len(df), 1)
-        self.assertTrue((df["is_pristine"] == True).all())
+        self.assertTrue(df["is_pristine"].all())
 
     def test_get_pristine_structures(self):
         rows = GetPristineStructures._original_func(self.container)
@@ -1257,6 +1253,7 @@ class TestOptionalDependencyFlagsFallback(unittest.TestCase):
             capture_output=True,
             text=True,
             cwd=repo_root,
+            check=False,
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("OK", result.stdout)

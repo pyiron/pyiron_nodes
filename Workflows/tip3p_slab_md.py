@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcMD, OutputCalcMD
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsMDInput,
@@ -10,8 +11,6 @@ from pyiron_nodes.atomistic.structure.view import Animate
 from pyiron_nodes.electrochemistry.structure.build import AddNeonLayer, AddWaterFilm
 from pyiron_nodes.electrochemistry.structure.equilibrate import TIP3PSlabPotential
 from pyiron_nodes.plotting import Plot
-from core import Workflow
-from core import group_node
 
 wf = Workflow("tip3p_slab_md")
 
