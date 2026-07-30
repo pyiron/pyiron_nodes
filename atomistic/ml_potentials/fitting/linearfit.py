@@ -1,9 +1,7 @@
 from dataclasses import asdict, dataclass, field
-from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-
 from core import Workflow, as_function_node
 
 
@@ -13,7 +11,7 @@ def ListDataSets(
     rel_to_module: bool = True,
     index: int | None = None,
     exclude_exts: str = ".py, .ipynb",
-) -> Union[List[str], str]:
+) -> list[str] | str:
     """
     List files in a directory (or a single element by index) with optional
     extension filtering.
@@ -89,7 +87,7 @@ def ListDataSets(
     # ----------------------------------------------------------------------
     # 4️⃣ Gather file entries (non‑recursive, skip hidden files & excluded extensions)
     # ----------------------------------------------------------------------
-    entries: List[pathlib.Path] = [
+    entries: list[pathlib.Path] = [
         p
         for p in target_dir.iterdir()
         if p.is_file()
@@ -106,7 +104,7 @@ def ListDataSets(
     # 6️⃣ Decide what to return – either the whole list (relative) or a single
     #    absolute path when an index is supplied.
     # ----------------------------------------------------------------------
-    result: Union[List[str], str]
+    result: list[str] | str
 
     if index is None:
         # No index → return the full (relative) list, exactly as before.
@@ -162,7 +160,7 @@ class FunctionsALL:
 
 @dataclass
 class Functions:
-    number_of_functions_per_element: Optional[int] = None
+    number_of_functions_per_element: int | None = None
     ALL: FunctionsALL = field(default_factory=FunctionsALL)
 
 
@@ -198,7 +196,7 @@ class PotentialConfig:
 
 @as_function_node
 def ReadPickledDatasetAsDataframe(
-    file_path: str = "", compression: Optional[str] = None
+    file_path: str = "", compression: str | None = None
 ):
 
     from ase.atoms import Atoms as aseAtoms
@@ -785,8 +783,5 @@ def MinMaxIndices(
         i_max = num_structures
     energies = indices[i_min:i_max]
     forces = indices[num_atoms + 3 * i_min : num_atoms + 3 * i_max]
-    if energy_only:
-        indices = energies
-    else:
-        indices = np.append(energies, forces, axis=0)
+    indices = energies if energy_only else np.append(energies, forces, axis=0)
     return indices

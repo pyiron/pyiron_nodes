@@ -13,40 +13,15 @@ Supported Models:
 - Support Vector: SVC, SVR
 """
 
-from typing import Optional, Dict, Any, Tuple
-import pandas as pd
-import numpy as np
+from __future__ import annotations
 
-from sklearn.linear_model import (
-    LinearRegression,
-    Ridge,
-    Lasso,
-    ElasticNet,
-    LogisticRegression,
-)
-from sklearn.ensemble import (
-    RandomForestRegressor,
-    RandomForestClassifier,
-    GradientBoostingRegressor,
-    GradientBoostingClassifier,
-    AdaBoostRegressor,
-    AdaBoostClassifier,
-)
-from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
-from sklearn.svm import SVC, SVR
-from sklearn.metrics import (
-    r2_score,
-    mean_squared_error,
-    mean_absolute_error,
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix,
-)
+from typing import TYPE_CHECKING, Any
 
 from core import as_function_node
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
 
 # =============================================================================
 # LINEAR REGRESSION MODELS
@@ -59,8 +34,8 @@ def LinearRegressionModel(
     y_train: pd.Series,
     fit_intercept: bool = True,
     copy_X: bool = True,
-    n_jobs: Optional[int] = None,
-) -> Dict[str, Any]:
+    n_jobs: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Linear Regression model.
 
@@ -77,6 +52,8 @@ def LinearRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.linear_model import LinearRegression
+
     model = LinearRegression(fit_intercept=fit_intercept, copy_X=copy_X, n_jobs=n_jobs)
     model.fit(X_train, y_train)
     result = {
@@ -94,10 +71,10 @@ def RidgeRegressionModel(
     y_train: pd.Series,
     alpha: float = 1.0,
     fit_intercept: bool = True,
-    max_iter: Optional[int] = None,
+    max_iter: int | None = None,
     tol: float = 1e-4,
     solver: str = "auto",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Trains a Ridge Regression model.
 
@@ -116,6 +93,8 @@ def RidgeRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.linear_model import Ridge
+
     model = Ridge(
         alpha=alpha,
         fit_intercept=fit_intercept,
@@ -143,7 +122,7 @@ def LassoRegressionModel(
     max_iter: int = 1000,
     tol: float = 1e-4,
     warm_start: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Trains a Lasso Regression model.
 
@@ -162,6 +141,8 @@ def LassoRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.linear_model import Lasso
+
     model = Lasso(
         alpha=alpha,
         fit_intercept=fit_intercept,
@@ -190,7 +171,7 @@ def ElasticNetRegressionModel(
     fit_intercept: bool = True,
     max_iter: int = 1000,
     tol: float = 1e-4,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Trains an ElasticNet Regression model.
 
@@ -209,6 +190,8 @@ def ElasticNetRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.linear_model import ElasticNet
+
     model = ElasticNet(
         alpha=alpha,
         l1_ratio=l1_ratio,
@@ -238,8 +221,8 @@ def LogisticClassificationModel(
     fit_intercept: bool = True,
     max_iter: int = 100,
     solver: str = "lbfgs",
-    class_weight: Optional[str] = None,
-) -> Dict[str, Any]:
+    class_weight: str | None = None,
+) -> dict[str, Any]:
     """
     Trains a Logistic Regression model for classification.
 
@@ -259,6 +242,8 @@ def LogisticClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.linear_model import LogisticRegression
+
     model = LogisticRegression(
         penalty=penalty,
         C=C,
@@ -290,11 +275,11 @@ def DecisionTreeRegressionModel(
     y_train: pd.Series,
     criterion: str = "squared_error",
     splitter: str = "best",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Decision Tree Regressor.
 
@@ -314,6 +299,8 @@ def DecisionTreeRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.tree import DecisionTreeRegressor
+
     model = DecisionTreeRegressor(
         criterion=criterion,
         splitter=splitter,
@@ -339,12 +326,12 @@ def DecisionTreeClassificationModel(
     y_train: pd.Series,
     criterion: str = "gini",
     splitter: str = "best",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    random_state: Optional[int] = None,
-    class_weight: Optional[str] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+    class_weight: str | None = None,
+) -> dict[str, Any]:
     """
     Trains a Decision Tree Classifier.
 
@@ -365,6 +352,8 @@ def DecisionTreeClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.tree import DecisionTreeClassifier
+
     model = DecisionTreeClassifier(
         criterion=criterion,
         splitter=splitter,
@@ -397,12 +386,12 @@ def RandomForestRegressionModel(
     y_train: pd.Series,
     n_estimators: int = 100,
     criterion: str = "squared_error",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    random_state: Optional[int] = None,
-    n_jobs: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+    n_jobs: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Random Forest Regressor.
 
@@ -423,6 +412,8 @@ def RandomForestRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import RandomForestRegressor
+
     model = RandomForestRegressor(
         n_estimators=n_estimators,
         criterion=criterion,
@@ -448,13 +439,13 @@ def RandomForestClassificationModel(
     y_train: pd.Series,
     n_estimators: int = 100,
     criterion: str = "gini",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
-    random_state: Optional[int] = None,
-    n_jobs: Optional[int] = None,
-    class_weight: Optional[str] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+    n_jobs: int | None = None,
+    class_weight: str | None = None,
+) -> dict[str, Any]:
     """
     Trains a Random Forest Classifier.
 
@@ -476,6 +467,8 @@ def RandomForestClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import RandomForestClassifier
+
     model = RandomForestClassifier(
         n_estimators=n_estimators,
         criterion=criterion,
@@ -512,8 +505,8 @@ def GradientBoostingRegressionModel(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     subsample: float = 1.0,
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Gradient Boosting Regressor.
 
@@ -534,6 +527,8 @@ def GradientBoostingRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import GradientBoostingRegressor
+
     model = GradientBoostingRegressor(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
@@ -564,8 +559,8 @@ def GradientBoostingClassificationModel(
     min_samples_split: int = 2,
     min_samples_leaf: int = 1,
     subsample: float = 1.0,
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Gradient Boosting Classifier.
 
@@ -586,6 +581,8 @@ def GradientBoostingClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import GradientBoostingClassifier
+
     model = GradientBoostingClassifier(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
@@ -619,8 +616,8 @@ def AdaBoostRegressionModel(
     n_estimators: int = 50,
     learning_rate: float = 1.0,
     loss: str = "linear",
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains an AdaBoost Regressor.
 
@@ -638,6 +635,8 @@ def AdaBoostRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import AdaBoostRegressor
+
     model = AdaBoostRegressor(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
@@ -660,8 +659,8 @@ def AdaBoostClassificationModel(
     y_train: pd.Series,
     n_estimators: int = 50,
     learning_rate: float = 1.0,
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains an AdaBoost Classifier.
 
@@ -678,6 +677,8 @@ def AdaBoostClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.ensemble import AdaBoostClassifier
+
     model = AdaBoostClassifier(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
@@ -709,8 +710,8 @@ def KNeighborsRegressionModel(
     leaf_size: int = 30,
     p: float = 2,
     metric: str = "minkowski",
-    n_jobs: Optional[int] = None,
-) -> Dict[str, Any]:
+    n_jobs: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a K-Neighbors Regressor.
 
@@ -731,6 +732,8 @@ def KNeighborsRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.neighbors import KNeighborsRegressor
+
     model = KNeighborsRegressor(
         n_neighbors=n_neighbors,
         weights=weights,
@@ -759,8 +762,8 @@ def KNeighborsClassificationModel(
     leaf_size: int = 30,
     p: float = 2,
     metric: str = "minkowski",
-    n_jobs: Optional[int] = None,
-) -> Dict[str, Any]:
+    n_jobs: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a K-Neighbors Classifier.
 
@@ -781,6 +784,8 @@ def KNeighborsClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.neighbors import KNeighborsClassifier
+
     model = KNeighborsClassifier(
         n_neighbors=n_neighbors,
         weights=weights,
@@ -814,8 +819,8 @@ def SupportVectorClassificationModel(
     gamma: str = "scale",
     degree: int = 3,
     probability: bool = False,
-    random_state: Optional[int] = None,
-) -> Dict[str, Any]:
+    random_state: int | None = None,
+) -> dict[str, Any]:
     """
     Trains a Support Vector Classifier (SVC).
 
@@ -835,6 +840,8 @@ def SupportVectorClassificationModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.svm import SVC
+
     model = SVC(
         kernel=kernel,
         C=C,
@@ -863,7 +870,7 @@ def SupportVectorRegressionModel(
     gamma: str = "scale",
     degree: int = 3,
     epsilon: float = 0.1,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Trains a Support Vector Regressor (SVR).
 
@@ -882,6 +889,8 @@ def SupportVectorRegressionModel(
     Returns:
         Dictionary containing the fitted model and metadata
     """
+    from sklearn.svm import SVR
+
     model = SVR(kernel=kernel, C=C, gamma=gamma, degree=degree, epsilon=epsilon)
     model.fit(X_train, y_train)
     result = {
@@ -900,8 +909,8 @@ def SupportVectorRegressionModel(
 
 @as_function_node("metrics")
 def EvaluateRegressionModelSklearn(
-    model: Dict, X_test: pd.DataFrame, y_test: pd.Series
-) -> Dict[str, float]:
+    model: dict, X_test: pd.DataFrame, y_test: pd.Series
+) -> dict[str, float]:
     """
     Evaluates a regression model on test data.
 
@@ -913,6 +922,9 @@ def EvaluateRegressionModelSklearn(
     Returns:
         Dictionary containing R2, MSE, MAE, and RMSE scores
     """
+    import numpy as np
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
     y_pred = model["model"].predict(X_test)
 
     r2 = r2_score(y_test, y_pred)
@@ -926,8 +938,8 @@ def EvaluateRegressionModelSklearn(
 
 @as_function_node("metrics")
 def EvaluateClassificationModelSklearn(
-    model: Dict, X_test: pd.DataFrame, y_test: pd.Series
-) -> Dict[str, Any]:
+    model: dict, X_test: pd.DataFrame, y_test: pd.Series
+) -> dict[str, Any]:
     """
     Evaluates a classification model on test data.
 
@@ -939,6 +951,14 @@ def EvaluateClassificationModelSklearn(
     Returns:
         Dictionary containing accuracy, precision, recall, F1-score, and confusion matrix
     """
+    from sklearn.metrics import (
+        accuracy_score,
+        confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
+    )
+
     y_pred = model["model"].predict(X_test)
 
     accuracy = accuracy_score(y_test, y_pred)
@@ -963,7 +983,7 @@ def EvaluateClassificationModelSklearn(
 
 
 @as_function_node("predictions")
-def PredictRegressionModel(model: Dict, X: pd.DataFrame) -> np.ndarray:
+def PredictRegressionModel(model: dict, X: pd.DataFrame) -> np.ndarray:
     """
     Makes predictions using a fitted regression model.
 
@@ -980,8 +1000,8 @@ def PredictRegressionModel(model: Dict, X: pd.DataFrame) -> np.ndarray:
 
 @as_function_node("predictions")
 def PredictClassificationModel(
-    model: Dict, X: pd.DataFrame, return_probabilities: bool = False
-) -> Dict[str, Any]:
+    model: dict, X: pd.DataFrame, return_probabilities: bool = False
+) -> dict[str, Any]:
     """
     Makes predictions using a fitted classification model.
 
@@ -1010,12 +1030,12 @@ def PredictClassificationModel(
 
 @as_function_node("comparison_results")
 def CompareRegressionModels(
-    model_1: Dict,
-    model_2: Dict,
+    model_1: dict,
+    model_2: dict,
     X_validation: pd.DataFrame,
     y_validation: pd.Series,
     metric: str = "r2",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compares two regression models on validation data.
 
@@ -1034,6 +1054,9 @@ def CompareRegressionModels(
     Returns:
         Dictionary containing best model and comparison results
     """
+    import numpy as np
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
     pred_1 = model_1["model"].predict(X_validation)
     pred_2 = model_2["model"].predict(X_validation)
 
@@ -1065,12 +1088,12 @@ def CompareRegressionModels(
 
 @as_function_node("comparison_results")
 def CompareClassificationModels(
-    model_1: Dict,
-    model_2: Dict,
+    model_1: dict,
+    model_2: dict,
     X_validation: pd.DataFrame,
     y_validation: pd.Series,
     metric: str = "f1",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compares two classification models on validation data.
 
@@ -1084,6 +1107,13 @@ def CompareClassificationModels(
     Returns:
         Dictionary containing best model and comparison results
     """
+    from sklearn.metrics import (
+        accuracy_score,
+        f1_score,
+        precision_score,
+        recall_score,
+    )
+
     pred_1 = model_1["model"].predict(X_validation)
     pred_2 = model_2["model"].predict(X_validation)
 
