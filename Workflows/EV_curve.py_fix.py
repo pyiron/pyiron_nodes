@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.calculator.data import OutputSEFS
 from pyiron_nodes.atomistic.calculator.generic import ApplyEngine, CreateSEFSContainer
 from pyiron_nodes.atomistic.engine.ase import GRACE

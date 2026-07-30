@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import IterToDataFrame
 from pyiron_nodes.math_utils import Linspace

@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.dataframe import GetColumnFromDataFrame
 from pyiron_nodes.dpg2026.atomistic.assyst.stoichiometry import (
