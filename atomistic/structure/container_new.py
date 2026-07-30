@@ -92,9 +92,14 @@ from __future__ import annotations  # Enables lazy imports for type hints
 
 from ase import Atoms
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union, Callable
+from typing import TYPE_CHECKING, Literal
+from collections.abc import Callable
 
 from core import as_function_node
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
 
 # Optional dependencies for GetVoronoiInterstitialSitesPymatgen. structuretoolkit
 # and pymatgen-analysis-defects are independent packages -- either can be
@@ -276,7 +281,7 @@ def get_stoichiometry(atoms: Atoms) -> str:
     return "".join(f"{el}{counts[el]}" for el in sorted(counts))
 
 
-def make_operations_short(events: List[dict]) -> str:
+def make_operations_short(events: list[dict]) -> str:
     """
     Create pipe-separated short form from events.
 
@@ -373,14 +378,14 @@ class StructureContainer:
       - metadata: User-provided additional data
     """
 
-    _structures: List[dict] = field(default_factory=list)
+    _structures: list[dict] = field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Basic Methods
     # ------------------------------------------------------------------
     import pandas as pd
 
-    def to_dataframe(self) -> "pd.DataFrame":
+    def to_dataframe(self) -> pd.DataFrame:
         """Convert internal list to pandas DataFrame on demand."""
         import pandas as pd
 
@@ -404,16 +409,16 @@ class StructureContainer:
             )
         return pd.DataFrame(df_data)
 
-    def get_structure_table(self) -> "pd.DataFrame":
+    def get_structure_table(self) -> pd.DataFrame:
         """Return a copy of the full structure table."""
         return self.to_dataframe()
 
-    def get_defect_table(self) -> "pd.DataFrame":
+    def get_defect_table(self) -> pd.DataFrame:
         """Return a filtered copy containing only defect rows."""
         df = self.to_dataframe()
         return df[df["is_pristine"] == False].copy()
 
-    def get_pristine_table(self) -> "pd.DataFrame":
+    def get_pristine_table(self) -> pd.DataFrame:
         """Return a filtered copy containing only pristine rows."""
         df = self.to_dataframe()
         return df[df["is_pristine"] == True].copy()
@@ -425,8 +430,8 @@ class StructureContainer:
     def add_pristine(
         self,
         atoms: Atoms,
-        unique_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        unique_id: str | None = None,
+        metadata: dict | None = None,
         check_duplicates: bool = True,
         tolerance: float = 1e-6,
     ) -> int:
@@ -497,9 +502,9 @@ class StructureContainer:
         operation: str,
         pristine_index: int,
         parent_index: int,
-        events: List[dict],
-        unique_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        events: list[dict],
+        unique_id: str | None = None,
+        metadata: dict | None = None,
     ) -> int:
         """
         Add a defect structure.
@@ -553,16 +558,14 @@ class StructureContainer:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _make_operations_short(events: List[dict]) -> str:
+    def _make_operations_short(events: list[dict]) -> str:
         return make_operations_short(events)
 
     @staticmethod
     def _get_stoichiometry(atoms: Atoms) -> str:
         return get_stoichiometry(atoms)
 
-    def find_structure_index(
-        self, atoms: Atoms, tolerance: float = 1e-6
-    ) -> Optional[int]:
+    def find_structure_index(self, atoms: Atoms, tolerance: float = 1e-6) -> int | None:
         """
         Return the absolute row index of a structure, or None if absent.
 
@@ -594,15 +597,15 @@ class StructureContainer:
     # Filtering Methods
     # ------------------------------------------------------------------
 
-    def filter_by_indices(self, indices: List[int]) -> List[dict]:
+    def filter_by_indices(self, indices: list[int]) -> list[dict]:
         """Get structures by absolute indices."""
         return [self._structures[i] for i in indices if i < len(self._structures)]
 
-    def filter_by_generation(self, generation: int) -> List[dict]:
+    def filter_by_generation(self, generation: int) -> list[dict]:
         """Get all structures at specific distance from pristine."""
         return [s for s in self._structures if s["generation"] == generation]
 
-    def filter_by_operations_short(self, pattern: str) -> List[dict]:
+    def filter_by_operations_short(self, pattern: str) -> list[dict]:
         """
         Filter by operations_short field (supports wildcards).
 
@@ -624,7 +627,7 @@ class StructureContainer:
                 s for s in self._structures if s.get("operations_short", "") == pattern
             ]
 
-    def filter_by_operations_contains(self, operation_type: str) -> List[dict]:
+    def filter_by_operations_contains(self, operation_type: str) -> list[dict]:
         """
         Filter structures whose operations contain a specific type.
 
@@ -638,18 +641,18 @@ class StructureContainer:
             if operation_type in s.get("operations_short", "")
         ]
 
-    def filter_by_condition(self, condition: Callable[[dict], bool]) -> List[dict]:
+    def filter_by_condition(self, condition: Callable[[dict], bool]) -> list[dict]:
         """Filter by custom function."""
         return [s for s in self._structures if condition(s)]
 
-    def filter_by_unique_id(self, unique_id: str) -> Optional[dict]:
+    def filter_by_unique_id(self, unique_id: str) -> dict | None:
         """Get structure by unique ID."""
         for s in self._structures:
             if s["unique_id"] == unique_id:
                 return s
         return None
 
-    def filter_by_max_generation(self, max_generation: int) -> List[dict]:
+    def filter_by_max_generation(self, max_generation: int) -> list[dict]:
         """
         Get all structures within N steps of pristine.
 
@@ -670,7 +673,7 @@ class StructureContainer:
         """
         return [s for s in self._structures if s["generation"] <= max_generation]
 
-    def filter_by_number_of_atoms(self, n_atoms: int) -> List[dict]:
+    def filter_by_number_of_atoms(self, n_atoms: int) -> list[dict]:
         """
         Get structures with a specific number of atoms.
 
@@ -694,10 +697,10 @@ class StructureContainer:
     def filter_by_element_count(
         self,
         element: str,
-        min_count: Optional[int] = None,
-        max_count: Optional[int] = None,
-        exact_count: Optional[int] = None,
-    ) -> List[dict]:
+        min_count: int | None = None,
+        max_count: int | None = None,
+        exact_count: int | None = None,
+    ) -> list[dict]:
         """
         Get structures matching element count criteria.
 
@@ -739,17 +742,14 @@ class StructureContainer:
             if exact_count is not None:
                 if element_count == exact_count:
                     matching.append(s)
-            else:
-                if (min_count is None or element_count >= min_count) and (
-                    max_count is None or element_count <= max_count
-                ):
-                    matching.append(s)
+            elif (min_count is None or element_count >= min_count) and (
+                max_count is None or element_count <= max_count
+            ):
+                matching.append(s)
 
         return matching
 
-    def filter_by_stoichiometry(
-        self, formula_pattern: Optional[str] = None
-    ) -> List[dict]:
+    def filter_by_stoichiometry(self, formula_pattern: str | None = None) -> list[dict]:
         """
         Get structures matching a stoichiometry pattern.
 
@@ -788,7 +788,7 @@ class StructureContainer:
 
         return matching
 
-    def filter_by_parent(self, parent_index: int) -> List[dict]:
+    def filter_by_parent(self, parent_index: int) -> list[dict]:
         """
         Get structures that have a specific parent structure.
 
@@ -813,11 +813,11 @@ class StructureContainer:
     # Selection Methods
     # ------------------------------------------------------------------
 
-    def get_pristine_structures(self) -> List[dict]:
+    def get_pristine_structures(self) -> list[dict]:
         """Get all pristine structures."""
         return [s for s in self._structures if s["is_pristine"]]
 
-    def get_defect_structures(self) -> List[dict]:
+    def get_defect_structures(self) -> list[dict]:
         """Get all defect structures."""
         return [s for s in self._structures if not s["is_pristine"]]
 
@@ -989,7 +989,7 @@ class StructureContainer:
 # ============================================================================
 
 
-def _pairwise_pbc_distances(positions: List["np.ndarray"], cell) -> tuple:
+def _pairwise_pbc_distances(positions: list[np.ndarray], cell) -> tuple:
     """
     Compute all pairwise minimum-image distances for a list of Cartesian
     positions under periodic boundary conditions.
@@ -1378,7 +1378,7 @@ def GetInterstitialDistancesRelaxed(atoms, events: list):
 
 
 @as_function_node("table")
-def GetStructureTable(structure_container: StructureContainer) -> "pd.DataFrame":
+def GetStructureTable(structure_container: StructureContainer) -> pd.DataFrame:
     """
     Return a copy of the full structure table.
 
@@ -1401,7 +1401,7 @@ def GetStructureTable(structure_container: StructureContainer) -> "pd.DataFrame"
 
 
 @as_function_node("table")
-def GetDefectTable(structure_container: StructureContainer) -> "pd.DataFrame":
+def GetDefectTable(structure_container: StructureContainer) -> pd.DataFrame:
     """
     Return a filtered copy containing only defect rows (is_pristine == False).
 
@@ -1423,7 +1423,7 @@ def GetDefectTable(structure_container: StructureContainer) -> "pd.DataFrame":
 
 
 @as_function_node("table")
-def GetPristineTable(structure_container: StructureContainer) -> "pd.DataFrame":
+def GetPristineTable(structure_container: StructureContainer) -> pd.DataFrame:
     """
     Return a filtered copy containing only pristine rows (is_pristine == True).
 
@@ -1505,7 +1505,7 @@ def ValidateStructure(atoms: Atoms, min_distance: float = 0.5) -> bool:
 
 
 @as_function_node("uids")
-def ElementUids(atoms: Atoms, element: str, uid_key: str = UID_KEY) -> List[int]:
+def ElementUids(atoms: Atoms, element: str, uid_key: str = UID_KEY) -> list[int]:
     """
     Get all UIDs for a given element.
 
@@ -1537,10 +1537,10 @@ def ElementUids(atoms: Atoms, element: str, uid_key: str = UID_KEY) -> List[int]
 
 @as_function_node
 def AddPristine(
-    structure_container: Optional[StructureContainer] = None,
+    structure_container: StructureContainer | None = None,
     atoms: Atoms = None,
-    unique_id: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    unique_id: str | None = None,
+    metadata: dict | None = None,
     check_duplicates: bool = True,
     tolerance: float = 1e-6,
 ) -> StructureContainer:
@@ -1590,8 +1590,8 @@ def AddPristine(
 
 @as_function_node("structures")
 def FilterByIndices(
-    structure_container: StructureContainer, indices: List[int]
-) -> List[dict]:
+    structure_container: StructureContainer, indices: list[int]
+) -> list[dict]:
     """
     Get structures by absolute indices.
 
@@ -1613,7 +1613,7 @@ def FilterByIndices(
 @as_function_node("structures")
 def FilterByGeneration(
     structure_container: StructureContainer, generation: int
-) -> List[dict]:
+) -> list[dict]:
     """
     Get all structures at specific distance from pristine.
 
@@ -1639,7 +1639,7 @@ def FilterByGeneration(
 @as_function_node("structures")
 def FilterByMaxGeneration(
     structure_container: StructureContainer, max_generation: int
-) -> List[dict]:
+) -> list[dict]:
     """
     Get all structures within N steps of pristine.
 
@@ -1665,7 +1665,7 @@ def FilterByMaxGeneration(
 @as_function_node("structures")
 def FilterByOperationsShort(
     structure_container: StructureContainer, pattern: str
-) -> List[dict]:
+) -> list[dict]:
     """
     Filter by operations_short field (supports wildcards).
 
@@ -1702,7 +1702,7 @@ def FilterByOperationsShort(
 @as_function_node("structures")
 def FilterByOperationsContains(
     structure_container: StructureContainer, operation_type: str
-) -> List[dict]:
+) -> list[dict]:
     """
     Filter structures whose operations contain a specific type.
 
@@ -1728,7 +1728,7 @@ def FilterByOperationsContains(
 @as_function_node("structure")
 def FilterByUniqueId(
     structure_container: StructureContainer, unique_id: str
-) -> Optional[dict]:
+) -> dict | None:
     """
     Get structure by unique ID.
 
@@ -1750,7 +1750,7 @@ def FilterByUniqueId(
 @as_function_node("structures")
 def FilterByNumberOfAtoms(
     structure_container: StructureContainer, n_atoms: int
-) -> List[dict]:
+) -> list[dict]:
     """
     Get structures with a specific number of atoms.
 
@@ -1777,10 +1777,10 @@ def FilterByNumberOfAtoms(
 def FilterByElementCount(
     structure_container: StructureContainer,
     element: str,
-    min_count: Optional[int] = None,
-    max_count: Optional[int] = None,
-    exact_count: Optional[int] = None,
-) -> List[dict]:
+    min_count: int | None = None,
+    max_count: int | None = None,
+    exact_count: int | None = None,
+) -> list[dict]:
     """
     Get structures matching element count criteria.
 
@@ -1814,8 +1814,8 @@ def FilterByElementCount(
 
 @as_function_node("structures")
 def FilterByStoichiometry(
-    structure_container: StructureContainer, formula_pattern: Optional[str] = None
-) -> List[dict]:
+    structure_container: StructureContainer, formula_pattern: str | None = None
+) -> list[dict]:
     """
     Get structures matching a stoichiometry pattern.
 
@@ -1842,7 +1842,7 @@ def FilterByStoichiometry(
 @as_function_node("structures")
 def FilterByParent(
     structure_container: StructureContainer, parent_index: int
-) -> List[dict]:
+) -> list[dict]:
     """
     Get structures that have a specific parent structure.
 
@@ -1869,7 +1869,7 @@ def FilterByParent(
 # node-graph port. Plain Python helper for direct scripting use only.
 def filter_by_condition(
     structure_container: StructureContainer, condition: Callable[[dict], bool]
-) -> List[dict]:
+) -> list[dict]:
     """
     Filter by custom function.
 
@@ -1928,7 +1928,7 @@ def GetStructure(structure_container: StructureContainer, index: int) -> dict:
 @as_function_node("index")
 def FindStructureIndex(
     structure_container: StructureContainer, atoms: Atoms, tolerance: float = 1e-6
-) -> Optional[int]:
+) -> int | None:
     """
     Return the absolute row index of a structure, or None if absent.
 
@@ -1953,7 +1953,7 @@ def FindStructureIndex(
 
 
 @as_function_node("structures")
-def GetPristineStructures(structure_container: StructureContainer) -> List[dict]:
+def GetPristineStructures(structure_container: StructureContainer) -> list[dict]:
     """
     Get all pristine structures.
 
@@ -1971,7 +1971,7 @@ def GetPristineStructures(structure_container: StructureContainer) -> List[dict]
 
 
 @as_function_node("structures")
-def GetDefectStructures(structure_container: StructureContainer) -> List[dict]:
+def GetDefectStructures(structure_container: StructureContainer) -> list[dict]:
     """
     Get all defect structures.
 
@@ -2075,8 +2075,8 @@ def ResolveAnyRow(structure_container: StructureContainer, relative_index: int) 
 
 def _resolve_parent(
     container: StructureContainer,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
+    parent_defect_index: int | None = None,
+    input_structure: Atoms | None = None,
 ) -> int:
     """
     Resolve which structure to use as parent.
@@ -2160,14 +2160,14 @@ def _resolve_parent(
 def CreateDefectFromIds(
     structure_container: StructureContainer,
     defect_type: Literal["vacancy", "substitution", "interstitial"],
-    atom_ids: Optional[List[int]] = None,
-    to_element: Optional[str] = None,
-    sublattice: Optional["np.ndarray"] = None,
-    site_ids: Optional[List[int]] = None,
-    element: Optional[str] = None,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-    forbid_atom_ids: Optional[List[int]] = None,
+    atom_ids: list[int] | None = None,
+    to_element: str | None = None,
+    sublattice: np.ndarray | None = None,
+    site_ids: list[int] | None = None,
+    element: str | None = None,
+    parent_defect_index: int | None = None,
+    input_structure: Atoms | None = None,
+    forbid_atom_ids: list[int] | None = None,
     protect_history: bool = False,
 ) -> StructureContainer:
     """
@@ -2426,14 +2426,14 @@ def CreateDefectFromIds(
 def CreateDefectBatchFromIds(
     structure_container: StructureContainer,
     defect_type: Literal["vacancy", "substitution", "interstitial"],
-    target_indices: List[int],
-    atom_ids: Optional[List[int]] = None,
+    target_indices: list[int],
+    atom_ids: list[int] | None = None,
     to_element: str = "Mg",
-    sublattice: Optional["np.ndarray"] = None,
-    element: Optional[str] = None,
-    site_ids: Optional[List[int]] = None,
+    sublattice: np.ndarray | None = None,
+    element: str | None = None,
+    site_ids: list[int] | None = None,
     separate_structures: bool = True,
-    forbid_atom_ids: Optional[List[int]] = None,
+    forbid_atom_ids: list[int] | None = None,
     protect_history: bool = False,
 ) -> StructureContainer:
     """
@@ -2575,15 +2575,15 @@ def CreateDefectFromSeed(
     structure_container: StructureContainer,
     defect_type: Literal["vacancy", "substitution", "interstitial"],
     n: int = 1,
-    seed: Optional[int] = None,
-    vacancy_element: Optional[Union[str, List[str]]] = None,
+    seed: int | None = None,
+    vacancy_element: str | list[str] | None = None,
     from_element: str = "Al",
     to_element: str = "Mg",
-    sublattice: Optional["np.ndarray"] = None,
-    element: Optional[str] = None,
-    parent_defect_index: Optional[int] = None,
-    input_structure: Optional[Atoms] = None,
-    forbid_uids: Optional[List[int]] = None,
+    sublattice: np.ndarray | None = None,
+    element: str | None = None,
+    parent_defect_index: int | None = None,
+    input_structure: Atoms | None = None,
+    forbid_uids: list[int] | None = None,
     protect_history: bool = False,
 ) -> StructureContainer:
     """
@@ -2864,15 +2864,15 @@ def CreateDefectFromSeed(
 def CreateDefectBatchFromSeed(
     structure_container: StructureContainer,
     defect_type: Literal["vacancy", "substitution", "interstitial"],
-    target_indices: List[int],
+    target_indices: list[int],
     n: int = 1,
-    seed: Optional[int] = None,
-    vacancy_element: Optional[Union[str, List[str]]] = None,
+    seed: int | None = None,
+    vacancy_element: str | list[str] | None = None,
     from_element: str = "Al",
     to_element: str = "Mg",
-    sublattice: Optional["np.ndarray"] = None,
-    element: Optional[str] = None,
-    forbid_uids: Optional[List[int]] = None,
+    sublattice: np.ndarray | None = None,
+    element: str | None = None,
+    forbid_uids: list[int] | None = None,
     protect_history: bool = False,
     n_structures: int = 1,
 ) -> StructureContainer:
@@ -2951,7 +2951,7 @@ def CreateDefectBatchFromSeed(
 
     structure_counter = 0
     for parent_idx in rows_to_modify:
-        for copy_idx in range(n_structures):
+        for _copy_idx in range(n_structures):
             structure_seed = seed + structure_counter if seed is not None else None
             container = CreateDefectFromSeed._original_func(
                 structure_container=container,
@@ -3126,12 +3126,12 @@ def _filter_cluster_tile_interstitial_candidates(
 @as_function_node
 def GetVoronoiInterstitialSitesPymatgen(
     atoms: Atoms,
-    primitive_atoms: Optional[Atoms] = None,
-    repeat: Optional[tuple] = None,
+    primitive_atoms: Atoms | None = None,
+    repeat: tuple | None = None,
     symprec: float = 1e-3,
     angle_tolerance: float = 5.0,
     dedup_tol: float = 1e-5,
-) -> tuple["np.ndarray", "np.ndarray"]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Find Voronoi interstitial sites via pymatgen (symmetry-aware, slow).
 
@@ -3292,12 +3292,12 @@ def GetVoronoiInterstitialSitesPymatgen(
 @as_function_node
 def GetVoronoiInterstitialSites(
     atoms: Atoms,
-    primitive_atoms: Optional[Atoms] = None,
-    repeat: Optional[tuple] = None,
+    primitive_atoms: Atoms | None = None,
+    repeat: tuple | None = None,
     r_min: float = 0.8,
     cluster_tol: float = 0.5,
     n_images: int = 1,
-) -> tuple["np.ndarray", "np.ndarray"]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Find Voronoi interstitial sites via scipy — fast, no pymatgen dependency.
 
@@ -3379,12 +3379,12 @@ def GetVoronoiInterstitialSites(
 @as_function_node
 def GetDelaunayInterstitialSites(
     atoms: Atoms,
-    primitive_atoms: Optional[Atoms] = None,
-    repeat: Optional[tuple] = None,
+    primitive_atoms: Atoms | None = None,
+    repeat: tuple | None = None,
     r_min: float = 0.8,
     cluster_tol: float = 0.5,
     n_images: int = 1,
-) -> tuple["np.ndarray", "np.ndarray"]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Find interstitial sites via Delaunay circumcenters — much faster than
     Voronoi tessellation for large or complex primitive cells.
