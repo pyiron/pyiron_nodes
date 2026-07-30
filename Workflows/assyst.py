@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.dataframe import GetColumnFromDataFrame
 from pyiron_nodes.dpg2026.atomistic.assyst.stoichiometry import (
@@ -18,8 +19,6 @@ from pyiron_nodes.plotting import (
     MergePlots,
     Scatter,
 )
-from core import Workflow
-from core import group_node
 
 wf = Workflow("assyst")
 

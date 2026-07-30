@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.dpg2026.atomistic.calculator.calphy import (
@@ -6,8 +7,6 @@ from pyiron_nodes.dpg2026.atomistic.calculator.calphy import (
 )
 from pyiron_nodes.dpg2026.atomistic.engine.lammps import ListPotentials
 from pyiron_nodes.plotting import InputPlotOptions, Plot
-from core import Workflow
-from core import group_node
 
 wf = Workflow("calphy_solid")
 

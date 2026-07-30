@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.calculator.data import OutputCalcStatic
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsStaticInput,
@@ -9,8 +10,6 @@ from pyiron_nodes.atomistic.engine.lammps import (
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.controls import pick_element
-from core import Workflow
-from core import group_node
 
 wf = Workflow("lammps_static_basic")
 

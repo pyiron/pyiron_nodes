@@ -1,8 +1,7 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.structure.build import Surface
 from pyiron_nodes.atomistic.structure.view import Plot3d
 from pyiron_nodes.electrochemistry.structure.build import add_neon_layer, add_water_film
-from core import Workflow
-from core import group_node
 
 wf = Workflow("electrochemistry_cell")
 

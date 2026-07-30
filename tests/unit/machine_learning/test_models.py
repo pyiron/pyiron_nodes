@@ -6,46 +6,46 @@ in the pyiron_nodes package. Tests cover initialization, training, prediction,
 edge cases, and integration with the pyiron workflow system.
 """
 
+import contextlib
 import unittest
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
 
 from pyiron_nodes.machine_learning.models import (
-    # Linear models
-    LinearRegressionModel,
-    RidgeRegressionModel,
-    LassoRegressionModel,
-    ElasticNetRegressionModel,
-    LogisticClassificationModel,
-    # Tree models
-    DecisionTreeRegressionModel,
-    DecisionTreeClassificationModel,
-    # Random Forest
-    RandomForestRegressionModel,
-    RandomForestClassificationModel,
-    # Gradient Boosting
-    GradientBoostingRegressionModel,
-    GradientBoostingClassificationModel,
+    AdaBoostClassificationModel,
     # AdaBoost
     AdaBoostRegressionModel,
-    AdaBoostClassificationModel,
+    CompareClassificationModels,
+    # Comparison
+    CompareRegressionModels,
+    DecisionTreeClassificationModel,
+    # Tree models
+    DecisionTreeRegressionModel,
+    ElasticNetRegressionModel,
+    EvaluateClassificationModelSklearn,
+    # Evaluation
+    EvaluateRegressionModelSklearn,
+    GradientBoostingClassificationModel,
+    # Gradient Boosting
+    GradientBoostingRegressionModel,
+    KNeighborsClassificationModel,
     # KNeighbors
     KNeighborsRegressionModel,
-    KNeighborsClassificationModel,
+    LassoRegressionModel,
+    # Linear models
+    LinearRegressionModel,
+    LogisticClassificationModel,
+    PredictClassificationModel,
+    # Prediction
+    PredictRegressionModel,
+    RandomForestClassificationModel,
+    # Random Forest
+    RandomForestRegressionModel,
+    RidgeRegressionModel,
     # SVM
     SupportVectorClassificationModel,
     SupportVectorRegressionModel,
-    # Evaluation
-    EvaluateRegressionModelSklearn,
-    EvaluateClassificationModelSklearn,
-    # Prediction
-    PredictRegressionModel,
-    PredictClassificationModel,
-    # Comparison
-    CompareRegressionModels,
-    CompareClassificationModels,
 )
 
 # =============================================================================
@@ -53,7 +53,7 @@ from pyiron_nodes.machine_learning.models import (
 # =============================================================================
 
 
-def regression_data() -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
+def regression_data() -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
     """Generate synthetic regression dataset: (X_train, y_train, X_test, y_test)."""
     np.random.seed(42)
     n_train, n_test, n_features = 50, 20, 5
@@ -80,7 +80,7 @@ def regression_data() -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]
 
 
 def binary_classification_data() -> (
-    Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]
+    tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]
 ):
     """Generate synthetic binary classification dataset."""
     np.random.seed(42)
@@ -106,7 +106,7 @@ def binary_classification_data() -> (
 
 
 def multiclass_classification_data() -> (
-    Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]
+    tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]
 ):
     """Generate synthetic multiclass (3-class) classification dataset."""
     np.random.seed(42)
@@ -133,14 +133,14 @@ def multiclass_classification_data() -> (
     return X_train, y_train, X_test, y_test
 
 
-def empty_data() -> Tuple[pd.DataFrame, pd.Series]:
+def empty_data() -> tuple[pd.DataFrame, pd.Series]:
     """Generate an empty dataset."""
     X_empty = pd.DataFrame(np.empty((0, 5)), columns=[f"feature_{i}" for i in range(5)])
     y_empty = pd.Series([], dtype=float, name="target")
     return X_empty, y_empty
 
 
-def single_sample_data() -> Tuple[pd.DataFrame, pd.Series]:
+def single_sample_data() -> tuple[pd.DataFrame, pd.Series]:
     """Generate a single-sample dataset."""
     np.random.seed(42)
     X_single = pd.DataFrame(
@@ -872,20 +872,16 @@ class TestEdgeCases(unittest.TestCase):
         X_nan.iloc[:, 0] = np.nan
 
         # Should either handle gracefully or raise appropriate error
-        try:
+        with contextlib.suppress(ValueError, RuntimeError):
             LinearRegressionModel._original_func(X_nan, y_train)
-        except (ValueError, RuntimeError):
-            pass  # Expected behavior
 
     def test_infinity_values(self):
         X_train, y_train, _, _ = regression_data()
         X_inf = X_train.copy()
         X_inf.iloc[0, 0] = np.inf
 
-        try:
+        with contextlib.suppress(ValueError, RuntimeError):
             LinearRegressionModel._original_func(X_inf, y_train)
-        except (ValueError, RuntimeError):
-            pass  # Expected behavior
 
 
 # =============================================================================

@@ -1,13 +1,13 @@
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
-
-import tempfile
 
 import pandas as pd
 from ase.build import bulk, molecule
 
+from pyiron_nodes.atomistic.calculator.data import InputCalcMD
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsMDInput,
     CreateLammpsStructure,
@@ -18,7 +18,6 @@ from pyiron_nodes.atomistic.engine.lammps import (
     extract_charges_from_lammps_potential,
     write_lammps_data_full,
 )
-from pyiron_nodes.atomistic.calculator.data import InputCalcMD
 from pyiron_nodes.electrochemistry.structure.equilibrate import TIP3PSlabPotential
 
 AL_POTENTIAL = "1999--Mishin-Y--Al--LAMMPS--ipr1"

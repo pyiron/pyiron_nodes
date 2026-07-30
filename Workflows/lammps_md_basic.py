@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcMD, OutputCalcMD
 from pyiron_nodes.atomistic.engine.lammps import (
     CreateLammpsMDInput,
@@ -10,8 +11,6 @@ from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.controls import pick_element
 from pyiron_nodes.plotting import Plot
-from core import Workflow
-from core import group_node
 
 wf = Workflow("lammps_md_basic")
 
