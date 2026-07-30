@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.dpg2026.atomistic.calculator.calphy import (

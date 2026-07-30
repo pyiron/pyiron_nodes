@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.ml_potentials.fitting.linearfit import (
     ParameterizePotentialConfig,
     PlotEnergyFittingCurve,

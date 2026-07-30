@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 from pyiron_nodes.atomistic.engine.ase import EMT
 from pyiron_nodes.atomistic.structure.build import Bulk

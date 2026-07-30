@@ -1,4 +1,4 @@
-from core import Workflow, group_node
+from core import Workflow
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import IterToDataFrame

@@ -5,7 +5,7 @@ from pyiron_nodes.atomistic.diffusion import (
     PlotNEBPath,
     RunNEB,
 )
-from pyiron_nodes.atomistic.engine.lammps import CreateLammpsStructure, ListPotentials
+from pyiron_nodes.atomistic.engine.lammps import ListPotentials
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import pick_element
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
@@ -13,7 +13,6 @@ from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     Relax,
 )
 from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
-from pyiron_nodes.plotting import Plot
 
 wf = Workflow("h_diffusion_neb_lammps")
 
