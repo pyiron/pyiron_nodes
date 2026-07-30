@@ -1,3 +1,4 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 from pyiron_nodes.atomistic.engine.ase import EMT
 from pyiron_nodes.atomistic.structure.build import Bulk
@@ -7,8 +8,6 @@ from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     Relax,
 )
 from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
-from core import Workflow
-from core import group_node
 
 wf = Workflow("h_diffusion_EMT")
 

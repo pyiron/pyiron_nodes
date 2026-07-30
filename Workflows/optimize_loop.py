@@ -1,14 +1,13 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.engine.ase import GRACE
+from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import iterate
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     GenericOptimizerSettings,
     MapCalculatorOnStructures,
     Relax,
 )
-from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.math_utils import Linspace
-from core import Workflow
-from core import group_node
 
 wf = Workflow("optimize_loop")
 

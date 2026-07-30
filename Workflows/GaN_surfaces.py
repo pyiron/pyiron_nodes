@@ -1,8 +1,7 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.atomistic.structure.view import Plot3d
-from core import Workflow
-from core import group_node
 
 wf = Workflow("GaN_surfaces")
 

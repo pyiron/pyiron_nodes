@@ -1,11 +1,10 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.engine.ase import GRACE
+from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     GenericOptimizerSettings,
     Relax,
 )
-from pyiron_nodes.atomistic.structure.build import Bulk
-from core import Workflow
-from core import group_node
 
 wf = Workflow("optimize")
 
