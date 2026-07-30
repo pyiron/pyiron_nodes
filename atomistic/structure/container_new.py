@@ -565,9 +565,7 @@ class StructureContainer:
     def _get_stoichiometry(atoms: Atoms) -> str:
         return get_stoichiometry(atoms)
 
-    def find_structure_index(
-        self, atoms: Atoms, tolerance: float = 1e-6
-    ) -> int | None:
+    def find_structure_index(self, atoms: Atoms, tolerance: float = 1e-6) -> int | None:
         """
         Return the absolute row index of a structure, or None if absent.
 
@@ -751,9 +749,7 @@ class StructureContainer:
 
         return matching
 
-    def filter_by_stoichiometry(
-        self, formula_pattern: str | None = None
-    ) -> list[dict]:
+    def filter_by_stoichiometry(self, formula_pattern: str | None = None) -> list[dict]:
         """
         Get structures matching a stoichiometry pattern.
 

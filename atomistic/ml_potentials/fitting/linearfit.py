@@ -195,9 +195,7 @@ class PotentialConfig:
 
 
 @as_function_node
-def ReadPickledDatasetAsDataframe(
-    file_path: str = "", compression: str | None = None
-):
+def ReadPickledDatasetAsDataframe(file_path: str = "", compression: str | None = None):
 
     from ase.atoms import Atoms as aseAtoms
 
