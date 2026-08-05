@@ -10,7 +10,6 @@ pyiron_base itself builds on: pyfileindex (file-system indexing) and h5io_browse
 
 from core import as_function_node
 
-
 # ---------------------------------------------------------------------------
 # low level HDF5 / file-system helpers
 # ---------------------------------------------------------------------------
