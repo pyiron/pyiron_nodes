@@ -151,31 +151,178 @@ class InputCalcStatic:
 
 
 @as_inp_dataclass_node
-class InputCalcDFT:
-    energy_cutoff: float = 400.0  # energy cutoff in eV
-    electronic_convergence: float = 1e-6  # electronic convergence criterion
-    ionic_convergence: float = -0.01  # ionic convergence (negative = forces in eV/Å)
-    max_ionic_steps: int = 0  # ionic steps (0 = static, >0 = relaxation)
-    ionic_relaxation: bool = False
-    ionic_update_algorithm: Optional[
-        Literal[
-            "MolecularDynamics",
-            "RMM-DIIS",
-            "ConjugateGradient",
-            "DampedMolecularDynamics",
-        ]
-    ] = None
-    # ibrion: int = -1            # ion update algorithm (-1 = none, 2 = CG, 1 = RMM-DIIS)
-    isif: int = 2  # stress/relaxation mask (2 = ions only, 3 = ions+cell)
-    ismear: int = (
-        1  # smearing method (1 = Methfessel-Paxton, 0 = Gaussian, -5 = tetrahedron)
+class InputSCF:
+    """
+    Basic inputs for a static (SCF) DFT calculation.
+    """
+
+    kpoints: str
+    kpoint_offset: str = "0.5 0.5 0.5"
+    functional: str = "PBE"
+    energy_cutoff: float = 400.0
+    smearing_type: Literal[
+        "gaussian", "methfessel-paxton", "fermi-dirac", "tetrahedron"
+    ] = "gaussian"
+    smearing_width: float = 0.2
+    smearing_order: int = 1
+    electronic_convergence: float = 1e-6
+    num_electronic_steps: int = 100
+    spin_polarized: bool = False  # ISPIN 2/1 — required for magnetic moments
+
+
+@as_inp_dataclass_node
+class InputMinimizationVASP:
+    """Ionic relaxation settings for VASP — minimization algorithms only (no MD).
+
+    ``algorithm`` maps to IBRION: ConjugateGradient → 2, RMM-DIIS → 1,
+    DampedMolecularDynamics → 3 (a damped relaxation scheme, not true MD).
+    """
+
+    algorithm: Literal["ConjugateGradient", "RMM-DIIS", "DampedMolecularDynamics"] = (
+        "ConjugateGradient"  # IBRION 2 / 1 / 3
     )
-    sigma: float = 0.2  # smearing width in eV
-    ispin: int = 1  # spin polarization (1 = off, 2 = on)
-    algo: str = "Fast"  # electronic minimization algorithm
-    prec: str = "Normal"  # precision mode
-    ncore: int = 1  # number of cores per band
-    kpoints_mesh: str = (
-        "1 1 1"  # Optional[list] = None  # Gamma-centred mesh e.g. [4, 4, 4]; None → 1x1x1
+    max_ionic_steps: int = 100  # NSW, number of ionic steps
+    ionic_convergence: float = -0.01  # EDIFFG; negative = max force (eV/Å)
+    isif: int = 2  # ISIF: 2 = ions only, 3 = ions + cell shape + volume
+
+
+@as_inp_dataclass_node
+class InputMDVASP:
+    """Molecular dynamics settings for VASP with a Langevin thermostat.
+
+    Field names follow the LAMMPS ``InputCalcMD`` convention rather than the raw
+    INCAR tags. The mapping onto INCAR is done in
+    ``pyiron_nodes.atomistic.engine.vasp_new._build_incar``:
+
+    ensemble ``"NVT"``           → ISIF 2 (fixed cell)
+    ensemble ``"NpT"``           → ISIF 3 (cell shape + volume free)
+    temperature                  → TEBEG
+    final_temperature            → TEEND (defaults to ``temperature``)
+    n_ionic_steps                → NSW
+    n_print                      → NBLOCK
+    time_step                    → POTIM
+    pressure                     → PSTRESS (GPa here, kBar in the INCAR)
+    temperature_damping_timescale→ LANGEVIN_GAMMA = 1000 / tau, one entry per species
+    pressure_damping_timescale   → LANGEVIN_GAMMA_L = 1000 / tau (NpT only)
+    lattice_mass                 → PMASS (NpT only)
+    seed                         → RANDOM_SEED
+
+    Only the Langevin thermostat is supported for the moment (MDALGO 3), so
+    there is no thermostat selector; ISYM is switched off, as symmetry must not
+    be imposed during MD.
+    """
+
+    ensemble: Literal["NVT", "NpT"] = "NVT"
+    temperature: float = 300.0  # in K, initial/target temperature
+    final_temperature: Optional[float] = None  # in K, None → isothermal at temperature
+    n_ionic_steps: int = 10_000
+    n_print: int = 100
+    time_step: float = 1.0  # in fs
+    pressure: Optional[float] = None  # in GPa, required for NpT, ignored for NVT
+    temperature_damping_timescale: float = 100.0  # in fs, Langevin friction on the ions
+    pressure_damping_timescale: float = 1000.0  # in fs, Langevin friction on the cell
+    lattice_mass: float = (
+        1000.0  # in amu, fictitious mass of the cell degrees of freedom
     )
-    functional: str = "PBE"  # exchange-correlation functional ("PBE" or "LDA")
+    seed: Optional[int] = None  # None → let VASP pick its own random seed
+
+
+@as_inp_dataclass_node
+class InputDipoleCorrection:
+    """Dipole correction settings for VASP (e.g. asymmetric slabs)."""
+
+    direction: int = 3  # IDIPOL: 1 / 2 / 3 = a / b / c lattice direction
+    ldipol: bool = True  # LDIPOL: switch on the potential/dipole correction
+
+
+@as_out_dataclass_node
+class OutputVaspDOS:
+    """Density of states — the same data VASP puts in the ``DOSCAR``.
+
+    ``energies`` are absolute (not shifted to the Fermi level); subtract
+    ``efermi`` to plot against E − E_F. The density arrays carry a leading spin
+    axis, so a non-magnetic run has ``total_densities.shape == (1, n_points)``
+    and a spin-polarized one ``(2, n_points)``.
+
+    ``resolved_densities`` is the site- and orbital-projected DOS, shape
+    ``(n_spin, n_atoms, n_orbitals, n_points)``. It is only filled when the run
+    asked for the projection (``InputVaspDOS.projected``); ``orbitals`` then
+    names the orbital axis, e.g. ``["s", "py", "pz", "px", "dxy", ...]``.
+    """
+
+    energies: DataArray = EmptyArrayField()
+    total_densities: DataArray = EmptyArrayField()
+    integrated_densities: DataArray = EmptyArrayField()
+    resolved_densities: DataArray = EmptyArrayField()
+    orbitals: Optional[list] = None
+    efermi: Optional[float] = None
+
+
+@as_inp_dataclass_node
+class InputVaspDOS:
+    """How finely VASP resolves the density of states.
+
+    A ``DOSCAR`` is written whatever these are set to; they decide what ends up
+    in it, and therefore what the ``dos`` port of ``ParseVaspOutput`` carries.
+
+    ``projected`` (LORBIT 11) is the expensive one: it adds the site- and
+    orbital-projected DOS *and* makes VASP print the per-ion magnetization
+    table. Without it a spin-polarized run still has a total magnetic moment but
+    the ``magnetic_moments`` port stays empty, since those moments are read from
+    that table.
+
+    For a smooth DOS, pair this with ``InputSCF(smearing_type="tetrahedron")``.
+    """
+
+    n_points: int = 301  # NEDOS: number of points on the energy grid
+    projected: bool = False  # LORBIT 11: site- and orbital-projected DOS
+    energy_min: Optional[float] = None  # EMIN: lower end of the window, None → auto
+    energy_max: Optional[float] = None  # EMAX: upper end of the window, None → auto
+
+
+@as_inp_dataclass_node
+class InputVaspOutputFiles:
+    """Which output files VASP should write.
+
+    VASP only writes ``CHGCAR``/``LOCPOT`` when asked to, so these flags decide
+    which ports ``ParseVaspOutput`` can fill: without ``charge_density`` there is
+    no ``electron_density``, without ``electrostatic_potential`` (or
+    ``hartree_potential_only``) there is no ``electrostatic_potential``.
+
+    The files are large — a ``CHGCAR`` scales with the FFT grid, not the number
+    of atoms — so only switch on what is actually going to be analysed.
+    """
+
+    charge_density: bool = True  # LCHARG → CHGCAR, also a restart file
+    electrostatic_potential: bool = False  # LVTOT → LOCPOT, full local potential
+    hartree_potential_only: bool = False  # LVHAR → LOCPOT without the XC part
+    wavefunctions: bool = False  # LWAVE → WAVECAR
+
+
+@as_inp_dataclass_node
+class AdditionalInputFlags:
+    """Adding additional Input Flags that are not present in the predefined dataclasses."""
+
+    key1: Optional[str] = None
+    value1: Optional[str] = None
+    key2: Optional[str] = None
+    value2: Optional[str] = None
+    key3: Optional[str] = None
+    value3: Optional[str] = None
+    key4: Optional[str] = None
+    value4: Optional[str] = None
+    key5: Optional[str] = None
+    value5: Optional[str] = None
+
+    def to_dict(self) -> dict:
+
+        extra_flags = {}
+
+        for i in range(1, 6):  # 1 to 5
+            key = getattr(self, f"key{i}")
+            value = getattr(self, f"value{i}")
+
+            if key is not None:
+                extra_flags[key] = value
+
+        return extra_flags

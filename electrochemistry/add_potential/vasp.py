@@ -4,6 +4,7 @@ from typing import Optional
 from ase import Atoms
 import numpy as np
 import re
+import warnings
 
 from core import as_function_node
 
@@ -17,6 +18,16 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
 
 @dataclass
 class CEParameters:
+    """Values substituted into a constant-potential VASP plugin template.
+
+    One bundle carries the parameters for both the CCE and CDCE plugins. The
+    fields above ``i_Ne`` are common to both; the ``CCE-specific`` and
+    ``CDCE-specific`` blocks are only filled by the corresponding setup node and
+    default to ``None`` otherwise. The ``ax``/``ay``/``az``, ``d_electrode`` and
+    the species-count fields are derived from the structure inside ``CCESetup`` /
+    ``CDCESetup`` rather than passed in by the user.
+    """
+
     path_to_plugin: str  # Default path to plugin template
     phi0: float  # Target voltage (V)
     Q0: float  # Adjusted charge for plugin (C), includes precision-matched ZVAL adjustment
@@ -40,13 +51,36 @@ class CEParameters:
 
 
 def _modify_potcar(working_directory: str, original_line: str, zval_ne: float) -> None:
+    """Rewrite the Ne pseudopotential's ``ZVAL`` in the working-dir POTCAR.
 
+    The CCE method tunes the electrode charge by giving the Ne counter-charge a
+    fractional valence: this replaces the single ``ZVAL`` value on
+    ``original_line`` (the exact Ne line located by ``CCESetup``) with
+    ``zval_ne`` and writes the POTCAR back in place.
+
+    Parameters
+    ----------
+    working_directory
+        Directory holding the concatenated POTCAR written by
+        ``CreateVaspInputResources``.
+    original_line
+        The verbatim Ne ``ZVAL`` line to replace (must be present in the POTCAR).
+    zval_ne
+        The new Ne valence electron count.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no POTCAR is present in ``working_directory``.
+    ValueError
+        If ``original_line`` is not found in the POTCAR.
+    """
     potcar_path = os.path.join(working_directory, "POTCAR")
 
     if not os.path.exists(potcar_path):
         raise FileNotFoundError(
             f"POTCAR not found in {working_directory}. "
-            "Make sure WriteVaspInputSet has been called first."
+            "Make sure CreateVaspInputResources has been called first."
         )
 
     new_line = re.sub(
@@ -75,7 +109,7 @@ def _write_plugin_file(working_directory: str, ce_params: CEParameters) -> None:
     Fill the vasp_plugin.py template with CCE parameters and write
     it to the working directory.
 
-    Must be called after WriteVaspInputSet has created the working directory.
+    Must be called after CreateVaspInputResources has created the working directory.
 
     Parameters
     ----------
@@ -130,52 +164,86 @@ def _write_plugin_file(working_directory: str, ce_params: CEParameters) -> None:
 
 @as_function_node
 def CCESetup(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
     electrode: Atoms,
-    phi0: float,
-    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CCE.py",
+    potential: float = 0.0,
+    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CCE.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
-    temperature: float = 300.0,
-    n_steps: int = 500,
-    potim: float = 0.5,
-    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
+    """Add the Ne-CCE thermopotentiostat plugin to a VASP MD calculation.
+
+    The counter-charge electrode (CCE) method holds the electrode at a fixed
+    potential during MD by adjusting the electron count against a Ne
+    counter-charge. This computes every structure-dependent quantity from the
+    ASE structure (cell dimensions, electrode distance, Ne count, neutral
+    electron count from the POTCARs), writes the electrochemistry INCAR tags on
+    top of the base input, rewrites the Ne ``ZVAL`` in the POTCAR and drops the
+    filled plugin file into the working directory made by
+    ``CreateVaspInputResources``. The calc must carry MD settings.
+
+    Parameters
+    ----------
+    io_bundle
+        Resource bundle from ``CreateVaspInputResources`` (must have an MD calc).
+    electrode
+        The electrode structure; its elements identify the electrode atoms in
+        the full cell, used to measure the electrode–Ne distance.
+    potential
+        Target electrode potential in volts (``phi0`` in the plugin).
+    path_to_plugin
+        Path to the CCE plugin template.
+    Q0
+        Extra charge (electrons) added to the electrode, spread over the Ne atoms.
+    dipole_position
+        Fractional z where the dipole correction is applied.
+    grid_roll_frac
+        Grid roll fraction passed to the plugin.
+    tau
+        Thermostat time constant, in units of the MD time step.
+
+    Returns
+    -------
+    VaspInputResources
+        The same bundle, after the INCAR, POTCAR and plugin file are written.
+
+    Raises
+    ------
+    ValueError
+        If the calc has no MD settings, the cell is not orthogonal, or the
+        structure contains no Ne atoms.
+
+    Warns
+    -----
+    UserWarning
+        If plugin output files already exist in the working directory.
     """
-    Build INCAR dictionary and plugin parameters for an electrochemistry
-    VASP calculation using the Ne-CCE thermopotentiostat plugin.
 
-    Computes all structure-dependent quantities from the ASE structure
-    and packages everything needed for:
-      - additional_incar  -> passed directly to the VASP node
-      - plugin_params     -> passed to WriteAndRunVasp node for file modifications
-
-    """
-
-    if input_resources.calc.ionic_update_algorithm != "MolecularDynamics":
-        # Set default values for molecular dynamics parameters
+    if io_bundle.calc.md is None:
         raise ValueError(
-            "Warning: Ionic update algorithm is not MolecularDynamics. "
-            "CCE plugin is designed for MD simulations. Make sure to set appropriate "
-            "parameters for your simulation."
+            "CCE plugin is designed for MD simulations, but no MD settings were "
+            "found on the calc. Set an InputMDVASP on the `md` port of "
+            "MergeVaspInput before running CCESetup."
         )
 
     # -------------------------------------------------------------------------
     # Calculate nelect_neutral from individual POTCAR files
     # Uses existing _get_potcar_paths() helper — reads before concatenation
     # -------------------------------------------------------------------------
+    temperature = io_bundle.calc.md.temperature
+
     potcar_paths = _get_potcar_paths(
-        input_resources.structure,
-        input_resources.calc.functional,
-        input_resources.potcar_lib_path,
+        io_bundle.structure,
+        io_bundle.calc.scf.functional,
+        io_bundle.potcar_lib_path,
     )
 
     # Read ZVAL for each element from its individual POTCAR file
     # POTCAR line format: "   POMASS =  196.970; ZVAL   =   11.000    mass and valenz"
     zval_per_element = {}
-    unique_elements = _ordered_elements(input_resources.structure)
+    unique_elements = _ordered_elements(io_bundle.structure)
 
     for el, potcar_path in zip(unique_elements, potcar_paths):
         with open(potcar_path, "r") as f:
@@ -196,21 +264,18 @@ def CCESetup(
 
     # nelect_neutral = sum of ZVAL over all atoms
     nelect_neutral = int(
-        sum(
-            zval_per_element[sym]
-            for sym in input_resources.structure.get_chemical_symbols()
-        )
+        sum(zval_per_element[sym] for sym in io_bundle.structure.get_chemical_symbols())
     )
 
     # -------------------------------------------------------------------------
     # Structure-derived quantities
     # -------------------------------------------------------------------------
 
-    unique_elements = _ordered_elements(input_resources.structure)
+    unique_elements = _ordered_elements(io_bundle.structure)
     n_elements = len(unique_elements)
 
     # Cell dimensions - must be orthogonal
-    cell = input_resources.structure.get_cell()
+    cell = io_bundle.structure.get_cell()
     if (np.abs(cell[0] @ cell[2]) + np.abs(cell[1] @ cell[2])) > 1e-6:
         raise ValueError(
             "Cell must be orthogonal (a3 perpendicular to a1 and a2) "
@@ -221,7 +286,7 @@ def CCESetup(
     # Ne CCE atoms
     ne_indices = [
         i
-        for i, sym in enumerate(input_resources.structure.get_chemical_symbols())
+        for i, sym in enumerate(io_bundle.structure.get_chemical_symbols())
         if sym == "Ne"
     ]
     if len(ne_indices) == 0:
@@ -240,24 +305,15 @@ def CCESetup(
         [
             [
                 i
-                for i, sym in enumerate(
-                    input_resources.structure.get_chemical_symbols()
-                )
+                for i, sym in enumerate(io_bundle.structure.get_chemical_symbols())
                 if sym in electrode_elements
             ]
         ]
     )
 
     d_electrode = float(
-        np.max(input_resources.structure[ne_indices].positions[:, 2])
-    ) - float(np.max(input_resources.structure[electrode_indices].positions[:, 2]))
-
-    # Dipole correction center
-    dipole_center = [
-        0.0,
-        0.0,
-        float(np.max(input_resources.structure.get_scaled_positions()[:, 2]) / 2.0),
-    ]
+        np.max(io_bundle.structure[ne_indices].positions[:, 2])
+    ) - float(np.max(io_bundle.structure[electrode_indices].positions[:, 2]))
 
     #  This is to make sure NELECT and the Ne ZVAL cancel out exactly
     zval_ne = float(f"{(8 + np.round(Q0 / n_Ne, 8)):.7f}")
@@ -265,29 +321,18 @@ def CCESetup(
         np.float64(f"{zval_ne:.7f}") - 8
     )
 
-    # Langevin gamma string - must have one value per element in the system
-    langevin_gamma_str = " ".join([str(langevin_gamma)] * n_elements)
-
     # -------------------------------------------------------------------------
     # INCAR dictionary
     # -------------------------------------------------------------------------
     additional_incar = {
         "PLUGINS/LOCAL_POTENTIAL": "T",
         "PLUGINS/OCCUPANCIES": "T",
-        "TEBEG": temperature,
-        "MDALGO": 3,  # Langevin thermostat
-        "LANGEVIN_GAMMA": langevin_gamma_str,
-        "NSW": n_steps,
-        "POTIM": potim,
         "NELECT": nelect_adjusted,
-        "IDIPOL": 3,
-        "DIPOL": " ".join([str(c) for c in dipole_center]),
-        "LDIPOL": ".TRUE.",
     }
 
     cce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=phi0,
+        phi0=potential,
         Q0=Q0,
         nelect_neutral=nelect_neutral,
         grid_position_frac=dipole_position,
@@ -303,79 +348,123 @@ def CCESetup(
         temperature=temperature,
     )
 
-    if input_resources.extra_incar is not None:
-        input_resources.extra_incar.update(additional_incar)
+    if io_bundle.extra_incar is not None:
+        io_bundle.extra_incar.update(additional_incar)
     else:
-        input_resources.extra_incar = additional_incar
+        io_bundle.extra_incar = additional_incar
 
-    incar = _build_incar(input_resources.calc, input_resources.extra_incar)
-    incar.write_file(os.path.join(input_resources.working_directory, "INCAR"))
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
+    incar.write_file(os.path.join(io_bundle.working_directory, "INCAR"))
 
-    _modify_potcar(input_resources.working_directory, ne_zval_original_line, zval_ne)
+    _modify_potcar(io_bundle.working_directory, ne_zval_original_line, zval_ne)
 
-    _write_plugin_file(input_resources.working_directory, cce_params)
+    _write_plugin_file(io_bundle.working_directory, cce_params)
 
     output_files = ["el_pot_z.dat", "Q.dat", "phi.dat"]
 
-    # Remove existing output files to avoid confusion with previous runs
-    for filename in output_files:
-        filepath = os.path.join(input_resources.working_directory, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    # Warning if the output files already exist in the working directory
+    existing_files = [
+        filename
+        for filename in output_files
+        if os.path.exists(os.path.join(io_bundle.working_directory, filename))
+    ]
 
-    return input_resources
+    if existing_files:
+        warnings.warn(
+            f"The following file(s) already exist in '{io_bundle.working_directory}': "
+            f"{', '.join(existing_files)}. "
+            f"If running a new calculation, use a new/empty working directory."
+        )
+
+    return io_bundle
 
 
 @as_function_node
 def CDCESetup(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
     electrode: Atoms,
-    phi0: float,
-    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.py",
+    potential: float = 0.0,
+    path_to_plugin: str = "pyiron_nodes/electrochemistry/add_potential/vasp_plugin-CDCE_MD.plugin",
     Q0: float = 0.0,
     dipole_position: float = 0.85,
     grid_roll_frac: float = 0.1,
     pos_right_wall: float = 0.75,  # for now this is in fractional coordinates
     width_wall: float = 6.5,
-    temperature: float = 300.0,
-    n_steps: int = 500,
-    potim: float = 0.5,
-    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
+    """Add the CDCE (charged-dielectric counter-charge) plugin to a VASP MD run.
+
+    The CDCE variant places a Gaussian counter-charge behind a wall potential
+    instead of a Ne layer, so unlike ``CCESetup`` it needs no Ne atoms and does
+    not touch the POTCAR. It computes the structure-dependent quantities (cell
+    dimensions, counter-charge position, electrode distance, neutral electron
+    count), writes the electrochemistry INCAR tags on top of the base input and
+    drops the filled plugin file into the working directory made by
+    ``CreateVaspInputResources``. The calc must carry MD settings.
+
+    Parameters
+    ----------
+    io_bundle
+        Resource bundle from ``CreateVaspInputResources`` (must have an MD calc).
+    electrode
+        The electrode structure; its elements identify the electrode atoms in
+        the full cell, used to measure the electrode–counter-charge distance.
+    potential
+        Target electrode potential in volts (``phi0`` in the plugin).
+    path_to_plugin
+        Path to the CDCE plugin template.
+    Q0
+        Extra charge (electrons) added to the electrode; shifts NELECT directly.
+    dipole_position
+        Fractional z where the dipole correction is applied.
+    grid_roll_frac
+        Grid roll fraction passed to the plugin.
+    pos_right_wall
+        Fractional z position of the right wall potential.
+    width_wall
+        Width of the wall potential, in Å.
+    tau
+        Thermostat time constant, in units of the MD time step.
+
+    Returns
+    -------
+    VaspInputResources
+        The same bundle, after the INCAR and plugin file are written.
+
+    Raises
+    ------
+    ValueError
+        If the calc has no MD settings or the cell is not orthogonal.
+
+    Warns
+    -----
+    UserWarning
+        If plugin output files already exist in the working directory.
     """
-    Build INCAR dictionary and plugin parameters for an electrochemistry
-    VASP calculation using the Ne-CCE thermopotentiostat plugin.
 
-    Computes all structure-dependent quantities from the ASE structure
-    and packages everything needed for:
-      - additional_incar  -> passed directly to the VASP node
-      - plugin_params     -> passed to WriteAndRunVasp node for file modifications
-
-    """
-
-    if input_resources.calc.ionic_update_algorithm != "MolecularDynamics":
-        # Set default values for molecular dynamics parameters
+    if io_bundle.calc.md is None:
         raise ValueError(
-            "Warning: Ionic update algorithm is not MolecularDynamics. "
-            "This CDCE plugin is designed for MD simulations. Make sure to set appropriate "
-            "parameters for your simulation."
+            "CDCE plugin is designed for MD simulations, but no MD settings were "
+            "found on the calc. Set an InputMDVASP on the `md` port of "
+            "MergeVaspInput before running CDCESetup."
         )
+
+    temperature = io_bundle.calc.md.temperature
 
     # -------------------------------------------------------------------------
     # Calculate nelect_neutral from individual POTCAR files
     # Uses existing _get_potcar_paths() helper — reads before concatenation
     # -------------------------------------------------------------------------
     potcar_paths = _get_potcar_paths(
-        input_resources.structure,
-        input_resources.calc.functional,
-        input_resources.potcar_lib_path,
+        io_bundle.structure,
+        io_bundle.calc.scf.functional,
+        io_bundle.potcar_lib_path,
     )
 
     # Read ZVAL for each element from its individual POTCAR file
     # POTCAR line format: "   POMASS =  196.970; ZVAL   =   11.000    mass and valenz"
     zval_per_element = {}
-    unique_elements = _ordered_elements(input_resources.structure)
+    unique_elements = _ordered_elements(io_bundle.structure)
 
     for el, potcar_path in zip(unique_elements, potcar_paths):
         with open(potcar_path, "r") as f:
@@ -390,10 +479,7 @@ def CDCESetup(
 
     # nelect_neutral = sum of ZVAL over all atoms
     nelect_neutral = int(
-        sum(
-            zval_per_element[sym]
-            for sym in input_resources.structure.get_chemical_symbols()
-        )
+        sum(zval_per_element[sym] for sym in io_bundle.structure.get_chemical_symbols())
     )
 
     # -------------------------------------------------------------------------
@@ -401,7 +487,7 @@ def CDCESetup(
     # -------------------------------------------------------------------------
 
     # Cell dimensions - must be orthogonal
-    cell = input_resources.structure.get_cell()
+    cell = io_bundle.structure.get_cell()
     if (np.abs(cell[0] @ cell[2]) + np.abs(cell[1] @ cell[2])) > 1e-6:
         raise ValueError(
             "Cell must be orthogonal (a3 perpendicular to a1 and a2) "
@@ -417,9 +503,7 @@ def CDCESetup(
         [
             [
                 i
-                for i, sym in enumerate(
-                    input_resources.structure.get_chemical_symbols()
-                )
+                for i, sym in enumerate(io_bundle.structure.get_chemical_symbols())
                 if sym in electrode_elements
             ]
         ]
@@ -428,18 +512,13 @@ def CDCESetup(
     Q_pos = np.array([ax * 0.5, ay * 0.5, az * pos_right_wall - 2.0])
 
     d_electrode = float(
-        Q_pos[2]
-        - float(np.max(input_resources.structure[electrode_indices].positions[:, 2]))
+        Q_pos[2] - float(np.max(io_bundle.structure[electrode_indices].positions[:, 2]))
     )
 
     # Conwering to string to ensure the format in vasp_plugin.py is correct
     Q_pos = f"np.array({Q_pos.tolist()})"
 
     nelect_adjusted = float(nelect_neutral) + np.round(Q0)
-
-    # Langevin gamma string - must have one value per element in the system
-    n_elements = len(unique_elements)
-    langevin_gamma_str = " ".join([str(langevin_gamma)] * n_elements)
 
     # -------------------------------------------------------------------------
     # INCAR dictionary
@@ -448,18 +527,13 @@ def CDCESetup(
         "PLUGINS/LOCAL_POTENTIAL": "T",
         "PLUGINS/OCCUPANCIES": "T",
         "PLUGINS/FORCE_AND_STRESS": "T",
-        "TEBEG": temperature,
-        "MDALGO": 3,  # Langevin thermostat
-        "LANGEVIN_GAMMA": langevin_gamma_str,
-        "NSW": n_steps,
-        "POTIM": potim,
         "NELECT": nelect_adjusted,
         "LREMOVE_DRIFT": "F",
     }
 
     cdce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=phi0,
+        phi0=potential,
         Q0=Q0,
         Q_pos=Q_pos,
         nelect_neutral=nelect_neutral,
@@ -475,42 +549,70 @@ def CDCESetup(
         temperature=temperature,
     )
 
-    if input_resources.extra_incar is not None:
-        input_resources.extra_incar.update(additional_incar)
+    if io_bundle.extra_incar is not None:
+        io_bundle.extra_incar.update(additional_incar)
     else:
-        input_resources.extra_incar = additional_incar
+        io_bundle.extra_incar = additional_incar
 
-    incar = _build_incar(input_resources.calc, input_resources.extra_incar)
-    incar.write_file(os.path.join(input_resources.working_directory, "INCAR"))
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
+    incar.write_file(os.path.join(io_bundle.working_directory, "INCAR"))
 
-    _write_plugin_file(input_resources.working_directory, cdce_params)
+    _write_plugin_file(io_bundle.working_directory, cdce_params)
 
     output_files = ["el_pot_z.dat", "Q.dat", "phi.dat", "dipole_corr.dat"]
 
-    # Remove existing output files to avoid confusion with previous runs
-    for filename in output_files:
-        filepath = os.path.join(input_resources.working_directory, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    # Warning if the output files already exist in the working directory
+    existing_files = [
+        filename
+        for filename in output_files
+        if os.path.exists(os.path.join(io_bundle.working_directory, filename))
+    ]
 
-    return input_resources
+    if existing_files:
+        warnings.warn(
+            f"The following file(s) already exist in '{io_bundle.working_directory}': "
+            f"{', '.join(existing_files)}. "
+            f"If running a new calculation, use a new/empty working directory."
+        )
+
+    return io_bundle
 
 
 @as_function_node
 def ParsePotential(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
 ):
-    """
-    Reads electrode charge (Q.dat), potential (phi.dat), and electrostatic
-    potential (el_pot_z.dat) from VASP working directory and saves the data.
+    """Read the constant-potential plugin's output traces from the working dir.
+
+    Loads the three files the CCE/CDCE plugin writes over the MD run — electrode
+    charge (``Q.dat``), electrode potential (``phi.dat``) and the planar-averaged
+    electrostatic potential (``el_pot_z.dat``) — and reshapes the flat
+    electrostatic-potential trace into ``(NSW, nz)``, one profile per ionic step.
+    ``NSW`` is taken from ``extra_incar`` if present, otherwise from the MD
+    settings on the calc.
 
     Parameters
     ----------
-    input_resources : VaspInputResources
-        Input dataclass containing VASP resources.
+    io_bundle : VaspInputResources
+        Bundle whose ``working_directory`` holds the plugin output files.
 
+    Returns
+    -------
+    electrostatic_potential_z_2d : numpy.ndarray
+        Planar-averaged electrostatic potential, shape ``(NSW, nz)``.
+    charge_list : numpy.ndarray
+        Electrode charge per step, from ``Q.dat``.
+    pot_list : numpy.ndarray
+        Electrode potential per step, from ``phi.dat``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If any of ``Q.dat`` / ``phi.dat`` / ``el_pot_z.dat`` is missing.
+    ValueError
+        If ``NSW`` can be found neither in ``extra_incar`` nor on the MD calc.
     """
-    working_dir = input_resources.working_directory
+    working_dir = io_bundle.working_directory
 
     # --- Check files exist ---
     files = {
@@ -530,19 +632,23 @@ def ParsePotential(
     electrostatic_potential_z = np.loadtxt(files["el_pot_z.dat"])
 
     # --- Check for NSW ---
-    if input_resources.extra_incar is not None:
-        nsw = input_resources.extra_incar.get("NSW") or input_resources.extra_incar.get(
-            "nsw"
+    nsw = None
+    if io_bundle.extra_incar is not None:
+        nsw = io_bundle.extra_incar.get("NSW") or io_bundle.extra_incar.get("nsw")
+    if nsw is None and io_bundle.calc is not None:
+        md = io_bundle.calc.md
+        if md is not None:
+            nsw = md.n_ionic_steps
+    if nsw is None:
+        raise ValueError(
+            "Could not determine NSW: not present in extra_incar and no MD "
+            "settings found on the calc."
         )
-        if nsw is None:
-            nsw = getattr(input_resources.calc, "NSW", None) or getattr(
-                input_resources.calc, "nsw", None
-            )
 
     # --- Reshape electrostatic potential ---
     nz = electrostatic_potential_z.shape[0] // nsw
     electrostatic_potential_z_2d = electrostatic_potential_z.reshape([nsw, nz])
-    # cell_z       = input_resources.vasp_resources.structure.cell[2][2]
+    # cell_z       = io_bundle.vasp_resources.structure.cell[2][2]
     # z_coords     = np.linspace(0, cell_z, nz)
 
     return electrostatic_potential_z_2d, charge_list, pot_list
