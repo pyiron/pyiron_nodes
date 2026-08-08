@@ -1,6 +1,27 @@
 from ase.atoms import Atoms
 import logging
-from core import as_function_node
+from core import as_function_node, PortList
+
+
+@as_function_node
+def CombineStructureSets(
+    sets: PortList = PortList(
+        ["spacegroups", "volume_relax", "full_relax", "rattle", "stretch"],
+        required=False,
+    ),
+    store: bool = True,
+):
+    """Combine any number of structure sets into a full training set.
+
+    Add, rename and remove inputs with the "+" and "x" buttons on the node.
+    """
+    structures = [s for values in sets.values() if values for s in values]
+    if len(structures) == 0:
+        logging.warning(
+            "Either no inputs given or all inputs are empty. "
+            "Returning the empty list!"
+        )
+    return structures
 
 
 @as_function_node
@@ -12,7 +33,7 @@ def CombineStructures(
     stretch: list[Atoms] | None,
     store: bool = True,
 ):
-    """Combine individual structure sets into a full training set."""
+    """Deprecated: use ``CombineStructureSets``, which takes any number of sets."""
     from functools import reduce
 
     structures = [spacegroups, volume_relax, full_relax, rattle, stretch]

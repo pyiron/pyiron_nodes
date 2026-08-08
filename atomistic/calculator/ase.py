@@ -126,17 +126,16 @@ def Minimize(
     dyn.run(fmax=fmax)
 
     traj = Trajectory("minimize.traj")
-    atoms_relaxed = traj[-1]
-    atoms_relaxed.calc = engine.calculator
+    atoms_relaxed = traj[-1]  # has SinglePointCalculator with stored results
 
-    out.forces.append(atoms_relaxed.get_forces())
+    forces_relaxed = atoms_relaxed.get_forces()
+    out.forces.append(forces_relaxed)
     out.energies_pot.append(float(atoms_relaxed.get_potential_energy()))
+    out.is_converged = dyn.converged(forces_relaxed.flatten())
+    out.iter_steps = dyn.nsteps
 
     # ASE calculators are not picklable — detach before storing
     atoms_relaxed.calc = None
     out.structures.append(atoms_relaxed)
-
-    out.is_converged = dyn.converged()
-    out.iter_steps = dyn.nsteps
 
     return out

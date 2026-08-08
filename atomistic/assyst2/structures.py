@@ -8,6 +8,7 @@ from ase import Atoms
 from core import (
     as_function_node,
     as_inp_dataclass_node,
+    PortList,
 )
 
 
@@ -119,6 +120,18 @@ def SpaceGroupSampling(input: SpaceGroupInput) -> list[Atoms]:
 
 
 @as_function_node
+def CombineStructureSets(
+    sets: PortList = PortList(["set1", "set2"], required=False),
+) -> list[Atoms]:
+    """Combine any number of structure lists into a single list.
+
+    Add, rename and remove inputs with the "+" and "x" buttons on the node.
+    """
+    structures = [s for values in sets.values() if values for s in values]
+    return structures
+
+
+@as_function_node
 def CombineStructures(
     set1: list[Atoms],
     set2: list[Atoms],
@@ -126,7 +139,7 @@ def CombineStructures(
     set4: list[Atoms] | None,
     set5: list[Atoms] | None,
 ) -> list[Atoms]:
-    """Combine a number of structure lists into a single list."""
+    """Deprecated: use ``CombineStructureSets``, which takes any number of sets."""
     set3 = set3 or []
     set4 = set4 or []
     set5 = set5 or []

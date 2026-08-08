@@ -125,6 +125,79 @@ def Animate(
     return animation
 
 
+@as_function_node("plot")
+def PlotCNA(
+    structure: _Atoms | OutputAtoms,
+    camera: str = "orthographic",
+    particle_size: float = 1.0,
+    background: Literal["white", "black"] = "white",
+    view_plane: Optional[list] = None,
+    distance_from_camera: float = 1.0,
+):
+    """
+    Visualize an atomic structure color-coded by Common Neighbor Analysis (CNA).
+
+    Task
+    ----
+    Identify and highlight local crystal structures (FCC, HCP, BCC, icosahedral,
+    unknown) in a grain boundary, defect, or phase-mixed structure. Useful for
+    pinpointing disordered interface atoms, stacking faults, and phase boundaries.
+
+    CNA label → color mapping (OVITO convention)
+    ---------------------------------------------
+    FCC         → green  (#39a600)
+    HCP         → red    (#ff2800)
+    BCC         → blue   (#0053d6)
+    Icosahedral → yellow (#ffdc00)
+    Unknown     → grey   (#c0c0c0)
+
+    Parameters
+    ----------
+    structure : ase.Atoms or OutputAtoms
+        The structure to analyze and display.
+    camera : str, optional
+        ``"orthographic"`` (default) or ``"perspective"``.
+    particle_size : float, optional
+        Rendered atom radius scale factor.
+    background : {"white", "black"}, optional
+        Viewer background color.
+    view_plane : list of 3 floats, optional
+        Normal vector of the viewing plane (default ``[0, 0, 1]``).
+    distance_from_camera : float, optional
+        Camera distance from the structure centroid.
+    """
+    import numpy as np
+    import structuretoolkit as stk
+    from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase
+
+    if view_plane is None:
+        view_plane = [0, 0, 1]
+    if isinstance(structure, OutputAtoms):
+        structure = _data_to_ase(structure)
+
+    # CNA numeric codes: 0=unknown, 1=fcc, 2=hcp, 3=bcc, 4=icosahedral
+    _CNA_COLORS = {
+        0: "#c0c0c0",  # unknown  → grey
+        1: "#39a600",  # fcc      → green
+        2: "#ff2800",  # hcp      → red
+        3: "#0053d6",  # bcc      → blue
+        4: "#ffdc00",  # icosa    → yellow
+    }
+
+    labels = stk.analyse_cna_adaptive(structure, mode="numeric")
+    colors = np.array([_CNA_COLORS.get(int(l), "#c0c0c0") for l in labels])
+
+    return stk.plot3d(
+        structure,
+        camera=camera,
+        particle_size=particle_size,
+        background=background,
+        colors=colors,
+        view_plane=view_plane,
+        distance_from_camera=distance_from_camera,
+    )
+
+
 @as_function_node("fig")
 def VisualizeMultipleStructures(
     ase_structure_list: list,

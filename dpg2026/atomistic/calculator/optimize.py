@@ -172,6 +172,7 @@ def Relax(
         Dataclass containing the relaxed structure, energy, forces and stress.
     """
     from ase.optimize import LBFGS
+    from pyiron_nodes.atomistic.structure._atoms import to_ase
 
     if opt_parameters is None:
         opt_parameters = GenericOptimizerSettings()
@@ -179,7 +180,7 @@ def Relax(
     # print("mode: ", opt_mode, engine, structure)
     mode = RelaxMode(opt_mode.lower())
 
-    structure = structure.copy()
+    structure = to_ase(structure).copy()
     calculator = engine.calculator
     # print("calculator: ", calculator)
 
@@ -232,7 +233,8 @@ def Static(
         Dataclass containing the structure, energy, forces and stress.
     """
 
-    structure = structure.copy()
+    from pyiron_nodes.atomistic.structure._atoms import to_ase
+    structure = to_ase(structure).copy()
     print("alat: ", structure.cell[0, 0])
     structure.calc = engine.calculator
 

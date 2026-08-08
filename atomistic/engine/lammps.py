@@ -348,8 +348,8 @@ def ParseLammpsOutput(
     out = OutputCalcMD.pure_dataclass()
 
     out.cells = output["generic"].get("cells")
-    out.energies_tot = output["generic"].get("energies_tot")
-    out.energies_pot = output["generic"].get("energies_pot")
+    out.energies_tot = output["generic"].get("energy_tot")
+    out.energies_pot = output["generic"].get("energy_pot")
     out.forces = output["generic"].get("forces")
     out.indices = output["generic"].get("indices")
     out.natoms = output["generic"].get("natoms")

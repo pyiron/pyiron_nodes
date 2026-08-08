@@ -524,3 +524,145 @@ def CollectResults() -> pd.DataFrame:
 
     results = gather_results(".")
     return results
+
+
+def _fit_free_energies(temp_solid, fe_solid, temp_liquid, fe_liquid, fit_order):
+    """Fit G(T) for both phases and return the fit coefficients and arrays."""
+    t_s = np.asarray(temp_solid, dtype=float)
+    f_s = np.asarray(fe_solid, dtype=float)
+    t_l = np.asarray(temp_liquid, dtype=float)
+    f_l = np.asarray(fe_liquid, dtype=float)
+    solid_fit = np.polyfit(t_s, f_s, fit_order)
+    liquid_fit = np.polyfit(t_l, f_l, fit_order)
+    return (t_s, f_s, t_l, f_l), solid_fit, liquid_fit
+
+
+def _melting_temperature(t_s, t_l, solid_fit, liquid_fit, n=1000):
+    """Locate the solid-liquid free-energy crossing on the overlapping range.
+
+    The melting point is the sign change of ``G_solid(T) - G_liquid(T)``.  A
+    linear interpolation of the crossing is returned.  If the curves do not
+    cross within the overlapping range, the closest-approach temperature is
+    returned instead (never ``None``).
+    """
+    # Restrict to the range covered by BOTH phases to avoid extrapolation.
+    tmin = float(max(t_s.min(), t_l.min()))
+    tmax = float(min(t_s.max(), t_l.max()))
+    grid = np.linspace(tmin, tmax, n)
+    diff = np.polyval(solid_fit, grid) - np.polyval(liquid_fit, grid)
+
+    sign_change = np.where(np.diff(np.sign(diff)))[0]
+    if len(sign_change) > 0:
+        i = sign_change[0]
+        t0, t1 = grid[i], grid[i + 1]
+        d0, d1 = diff[i], diff[i + 1]
+        # linear interpolation of the zero crossing
+        return float(t0 - d0 * (t1 - t0) / (d1 - d0))
+    # no crossing: fall back to closest approach so we always return a number
+    return float(grid[np.argmin(np.abs(diff))])
+
+
+@as_function_node("T_melt")
+def FindMeltingTemperature(
+    temp_solid: list,
+    fe_solid: list,
+    temp_liquid: list,
+    fe_liquid: list,
+    fit_order: int = 4,
+) -> float:
+    """
+    Find the solid-liquid phase transition temperature by locating the
+    intersection of polynomial fits to G_solid(T) and G_liquid(T).
+
+    The melting point is detected as the sign change of
+    ``G_solid(T) - G_liquid(T)`` over the temperature range covered by both
+    phases, then refined by linear interpolation.  This reliably finds a
+    genuine crossing (the previous nearest-point search could return an
+    endpoint and miss the intersection).
+
+    Parameters
+    ----------
+    temp_solid : list
+        Temperature array from SolidFreeEnergyWithTemp.
+    fe_solid : list
+        Free energy array from SolidFreeEnergyWithTemp.
+    temp_liquid : list
+        Temperature array from LiquidFreeEnergyWithTemp.
+    fe_liquid : list
+        Free energy array from LiquidFreeEnergyWithTemp.
+    fit_order : int
+        Polynomial order used for fitting.
+
+    Returns
+    -------
+    float
+        Melting temperature in K.
+    """
+    (t_s, _, t_l, _), solid_fit, liquid_fit = _fit_free_energies(
+        temp_solid, fe_solid, temp_liquid, fe_liquid, fit_order
+    )
+    T_melt = _melting_temperature(t_s, t_l, solid_fit, liquid_fit)
+    return T_melt
+
+
+@as_function_node("fig")
+def PlotSolidLiquidFreeEnergy(
+    temp_solid: list,
+    fe_solid: list,
+    temp_liquid: list,
+    fe_liquid: list,
+    T_melt: Optional[float] = None,
+    fit_order: int = 4,
+):
+    """
+    Plot the solid and liquid free energies versus temperature, marking the
+    melting temperature with a vertical dashed line and its value.
+
+    Parameters
+    ----------
+    temp_solid, fe_solid : list
+        Temperature and free energy of the solid phase.
+    temp_liquid, fe_liquid : list
+        Temperature and free energy of the liquid phase.
+    T_melt : float, optional
+        Melting temperature to mark.  If ``None`` it is computed from the fits.
+    fit_order : int
+        Polynomial order used for the fitted curves.
+    """
+    import matplotlib.pyplot as plt
+
+    (t_s, f_s, t_l, f_l), solid_fit, liquid_fit = _fit_free_energies(
+        temp_solid, fe_solid, temp_liquid, fe_liquid, fit_order
+    )
+    if T_melt is None:
+        T_melt = _melting_temperature(t_s, t_l, solid_fit, liquid_fit)
+
+    tmin = float(min(t_s.min(), t_l.min()))
+    tmax = float(max(t_s.max(), t_l.max()))
+    grid = np.linspace(tmin, tmax, 400)
+
+    fig, ax = plt.subplots()
+    ax.plot(t_s, f_s, "o", ms=4, color="#b71c1c", label="solid (data)")
+    ax.plot(t_l, f_l, "o", ms=4, color="#0d47a1", label="liquid (data)")
+    ax.plot(grid, np.polyval(solid_fit, grid), "-", color="#ef9a9a", label="solid fit")
+    ax.plot(
+        grid, np.polyval(liquid_fit, grid), "-", color="#90caf9", label="liquid fit"
+    )
+
+    if T_melt is not None and np.isfinite(T_melt):
+        fe_at_melt = float(np.polyval(solid_fit, T_melt))
+        ax.axvline(T_melt, ls="dashed", color="#37474f")
+        ax.scatter([T_melt], [fe_at_melt], color="k", zorder=10)
+        ymin, ymax = ax.get_ylim()
+        ax.text(
+            T_melt,
+            ymin + 0.05 * (ymax - ymin),
+            f"  $T_m$ = {T_melt:.0f} K",
+            rotation=90,
+            va="bottom",
+        )
+
+    ax.set_xlabel("Temperature (K)")
+    ax.set_ylabel("Free energy (eV/atom)")
+    ax.legend(frameon=False)
+    return fig
