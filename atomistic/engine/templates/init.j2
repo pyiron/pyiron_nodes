@@ -1,0 +1,9 @@
+units {{ units }}
+dimension {{ dim }}
+boundary {{ boundary }}
+atom_style {{ atom_style }}
+{% if read_restart %}
+read_restart {{ read_restart }}
+{% else %}
+read_data {{ structure_filename }}
+{% endif %}

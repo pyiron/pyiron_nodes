@@ -1,0 +1,8 @@
+{% if pressure_relax is not none %}
+fix ensemble all box/relax iso {{ pressure_relax }}
+{% endif %}
+min_style {{ style }}
+minimize {{ e_tol }} {{ f_tol }} {{ max_iter }} {{ max_iter }}
+{% if pressure_relax is not none %}
+unfix ensemble
+{% endif %}

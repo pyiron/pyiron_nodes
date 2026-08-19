@@ -1,0 +1,9 @@
+{% if n_steps is not none %}
+run {{ n_steps }}
+{% endif %}
+{% if write_restart %}
+write_restart {{ write_restart }}
+{% endif %}
+{% for fix_id in fix_ids %}
+unfix {{ fix_id }}
+{% endfor %}
