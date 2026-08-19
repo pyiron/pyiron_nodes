@@ -136,9 +136,8 @@ def SaveStructures(structures: list[Atoms], filename: str):
         structures (list of Atoms): structures to save
         filename (str): path where the dataframe is written to
     """
-    import os.path
-
     import pandas as pd
+    import os.path
 
     df = pd.DataFrame(
         [
@@ -155,3 +154,4 @@ def SaveStructures(structures: list[Atoms], filename: str):
     dirname = os.path.dirname(filename)
     os.makedirs(dirname, exist_ok=True)
     df.to_pickle(filename)
+    return df

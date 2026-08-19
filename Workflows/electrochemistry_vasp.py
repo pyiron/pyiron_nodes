@@ -7,7 +7,7 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
 from pyiron_nodes.atomistic.structure.build import Surface
 from pyiron_nodes.atomistic.structure.view import Plot3d
 from pyiron_nodes.electrochemistry.add_potential.vasp import CCESetup, ParsePotential
-from pyiron_nodes.electrochemistry.structure.build import add_neon_layer, add_water_film
+from pyiron_nodes.electrochemistry.structure.build import AddNeonLayer, AddWaterFilm
 from core import Workflow
 from core import group_node
 
@@ -17,9 +17,9 @@ wf = Workflow("electrochemistry_vasp")
 # orthogonal Al electrode slab with vacuum, then a water film and a Ne layer on top
 wf.Surface = Surface(element="Al", size="3 4 4", vacuum=20, orthogonal=True)
 
-wf.add_water_film = add_water_film(electrode=wf.Surface)
+wf.add_water_film = AddWaterFilm(electrode=wf.Surface)
 
-wf.add_neon_layer = add_neon_layer(structure=wf.add_water_film)
+wf.add_neon_layer = AddNeonLayer(structure=wf.add_water_film)
 
 wf.Plot3d = Plot3d(structure=wf.add_neon_layer)
 

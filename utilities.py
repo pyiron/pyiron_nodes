@@ -26,9 +26,10 @@ def Append(xs: list, x) -> list:
     return [*xs, x]
 
 
-@as_function_node("list")
+@as_function_node
 def List5(x1, x2=None, x3=None, x4=None, x5=None) -> list:
-    return [x for x in (x1, x2, x3, x4, x5) if x is not None]
+    list_out = [x for x in (x1, x2, x3, x4, x5) if x is not None]
+    return list_out
 
 
 @as_function_node("item")
