@@ -319,7 +319,7 @@ def AssembleLammpsInput(
         potential = ""
 
     if calculation:
-        io_bundle.lammps_pending_fix_ids = list(calculation_fix_ids)
+        io_bundle.lammps_pending_fix_ids = ",".join(calculation_fix_ids)
 
     render_run_section = run is not None or write_restart
     run_section = (
@@ -327,7 +327,9 @@ def AssembleLammpsInput(
             "run.j2",
             n_steps=run,
             write_restart=write_restart,
-            fix_ids=io_bundle.lammps_pending_fix_ids,
+            fix_ids=io_bundle.lammps_pending_fix_ids.split(",")
+            if io_bundle.lammps_pending_fix_ids
+            else [],
         )
         if render_run_section
         else ""
@@ -348,7 +350,7 @@ def AssembleLammpsInput(
         io_bundle.lammps_input_string += "\n" + new_block
 
     if render_run_section:
-        io_bundle.lammps_pending_fix_ids = []
+        io_bundle.lammps_pending_fix_ids = ""
 
     if potential_file_content:
         io_bundle.lammps_potential_string = potential_file_content

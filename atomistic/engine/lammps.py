@@ -42,6 +42,7 @@ class LammpsIOBundle:
     write_restart_filename: Optional[str] = None
     units: str = "metal"
     resource_path: Optional[str] = None
+    lammps_pending_fix_ids: str = ""
 
 
 @as_function_node
