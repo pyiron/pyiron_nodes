@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -195,7 +196,9 @@ class PotentialConfig:
 
 
 @as_function_node
-def ReadPickledDatasetAsDataframe(file_path: str = "", compression: str | None = None):
+def ReadPickledDatasetAsDataframe(
+    file_path: str = "", compression: Optional[str] = None
+):
 
     from ase.atoms import Atoms as aseAtoms
 
@@ -744,6 +747,15 @@ def DesignMatrix(
 
 @as_function_node("matrix")
 def SliceArray(matrix, indices):
+    """Slice a matrix (numpy array) using the provided indices.
+
+    Args:
+        matrix: A numpy array or similar matrix-like object.
+        indices: Index or slice to select from the matrix.
+
+    Returns:
+        The sliced portion of the matrix.
+    """
     return matrix[indices]
 
 
@@ -753,6 +765,20 @@ def GetVector(
     indices,
     scale_energy_per_atom: bool = False,
 ):
+    """Extract a feature vector from a DataFrame.
+
+    This function concatenates the corrected energies and flattened forces,
+    optionally scaling the energies per atom.
+
+    Args:
+        df: pandas DataFrame containing `energy_corrected`, `NUMBER_OF_ATOMS`,
+            and `forces` columns.
+        indices: Indices to select from the assembled vector.
+        scale_energy_per_atom: If True, divide the energy by the number of atoms.
+
+    Returns:
+        A numpy array containing the selected elements of the vector.
+    """
     import numpy as np
 
     vec = df.energy_corrected

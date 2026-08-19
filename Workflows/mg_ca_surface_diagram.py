@@ -1,11 +1,9 @@
 import pandas as pd
 from ase import Atoms
 from core import Workflow, as_function_node, group_node
+from pyiron_nodes.atomistic.assyst.calculators import GenericOptimizerSettings
 from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
-    GenericOptimizerSettings,
-    Relax,
-)
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
 from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
 
 # ── Local node definitions ──────────────────────

@@ -2,16 +2,6 @@ from core import as_function_node
 import numpy as np
 
 
-@as_function_node("range")
-def Range(start: int, stop: int, step: int):
-    return list(range(start, stop, step))
-
-
-@as_function_node("linspace")
-def Linspace(start: float | int, stop: float | int, num: int) -> np.ndarray:
-    return np.linspace(start, stop, num)
-
-
 @as_function_node("value")
 def Index(values: list, index: int):
     return values[index]
@@ -39,13 +29,6 @@ def Append(xs: list, x) -> list:
 @as_function_node("list")
 def List5(x1, x2=None, x3=None, x4=None, x5=None) -> list:
     return [x for x in (x1, x2, x3, x4, x5) if x is not None]
-
-
-@as_function_node("df")
-def ReadDataFrame(filename: str, compression: str = None):
-    import pandas as pd
-
-    return pd.read_pickle(filename, compression=compression)
 
 
 @as_function_node("item")

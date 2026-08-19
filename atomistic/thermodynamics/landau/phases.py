@@ -15,21 +15,22 @@ def LinePhase(
     return landau.phases.LinePhase(name, concentration, energy, entropy)
 
 
-@as_function_node("phase")
+@as_function_node
 def TemperatureLinePhase(
     name: str,
     concentration: float,
     temperatures: np.ndarray | list[float],
     free_energies: np.ndarray | list[float],
-    num_parameters: int = 3,
+    num_parameters: int | None = 3,
 ):
-    return landau.phases.TemperatureDependentLinePhase(
+    phase = landau.phases.TemperatureDependentLinePhase(
         name,
         concentration,
         temperatures,
         free_energies,
         landau.interpolate.SGTE(num_parameters),
     )
+    return phase
 
 
 @as_function_node("phase")

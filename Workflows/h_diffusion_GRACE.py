@@ -1,4 +1,5 @@
 from core import Workflow
+from pyiron_nodes.atomistic.assyst.calculators import GenericOptimizerSettings
 from pyiron_nodes.atomistic.diffusion import (
     AddInterstitialH,
     InterstitialHPositions,
@@ -8,10 +9,7 @@ from pyiron_nodes.atomistic.diffusion import (
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.view import Animate
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
-    GenericOptimizerSettings,
-    Relax,
-)
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
 from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
 
 wf = Workflow("h_diffusion_GRACE")

@@ -5,42 +5,6 @@ import numpy as np
 
 
 @as_function_node
-def ReadPickledDatasetAsDataframe(
-    file_path: str = "", compression: Optional[str] = None
-):
-
-    from ase.atoms import Atoms as aseAtoms
-
-    df = pd.read_pickle(file_path, compression=compression)
-
-    # Atoms check
-    if "atoms" in df.columns:
-        at = df.iloc[0]["atoms"]
-        # Checking that the elements themselves have the correct atoms format
-        if isinstance(at, aseAtoms):
-            df.rename(columns={"atoms": "ase_atoms"}, inplace=True)
-    elif "ase_atoms" not in df.columns:
-        raise ValueError(
-            "DataFrame should contain 'atoms' or 'ase_atoms' (ASE atoms) columns"
-        )
-
-    # NUMBER OF ATOMS check
-    if "NUMBER_OF_ATOMS" not in df.columns and "number_of_atoms" in df.columns:
-        df.rename(columns={"number_of_atoms": "NUMBER_OF_ATOMS"}, inplace=True)
-
-    df["NUMBER_OF_ATOMS"] = df["NUMBER_OF_ATOMS"].astype(int)
-
-    # energy corrected check
-    if "energy_corrected" not in df.columns and "energy" in df.columns:
-        df.rename(columns={"energy": "energy_corrected"}, inplace=True)
-
-    if "pbc" not in df.columns:
-        df["pbc"] = df["ase_atoms"].map(lambda atoms: np.all(atoms.pbc))
-
-    return df
-
-
-@as_function_node
 def SplitTrainingAndTesting(
     data_df: pd.DataFrame, training_frac: float = 0.5, random_state: int = 42
 ):

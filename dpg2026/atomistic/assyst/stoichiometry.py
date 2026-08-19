@@ -58,24 +58,6 @@ class Stoichiometry(Sequence):
         return len(self.stoichiometry)
 
 
-@as_function_node
-def ElementInput(
-    element: str,
-    min_ion: int = 1,
-    max_ion: int = 10,
-    step_ion: int = 1,
-) -> Stoichiometry:
-    stoichiometry = Stoichiometry(
-        tuple({element: i} for i in range(min_ion, max_ion + 1, step_ion))
-    )
-    return stoichiometry
-
-
-@as_function_node("df")
-def StoichiometryTable(stoichiometry: Stoichiometry) -> pd.DataFrame:
-    return pd.DataFrame(stoichiometry.stoichiometry)
-
-
 @as_function_node("filtered")
 def FilterSize(
     elements: Stoichiometry,

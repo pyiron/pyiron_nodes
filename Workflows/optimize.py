@@ -1,10 +1,8 @@
 from core import Workflow
+from pyiron_nodes.atomistic.assyst.calculators import GenericOptimizerSettings
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
-    GenericOptimizerSettings,
-    Relax,
-)
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
 
 wf = Workflow("optimize")
 

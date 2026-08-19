@@ -14,27 +14,14 @@ from pyiron_nodes.atomistic.structure._atoms import (
     OutputAtoms,
 )
 
+# moved to its non-fork home; re-exported here for existing importers
+from pyiron_nodes.atomistic.assyst.calculators import GenericOptimizerSettings
+
 """Utility nodes for atomistic calculations using ASE within the pyiron workflow framework.
 
 This module provides a concise yet comprehensive suite of helper nodes that
 streamline common atomistic simulation tasks when building pyiron workflows.
 """
-
-
-@as_inp_dataclass_node
-class GenericOptimizerSettings:
-    """Configuration parameters for generic optimization runs.
-
-    Attributes
-    ----------
-    max_steps : int
-        Maximum number of optimization steps.
-    force_tolerance : float
-        Convergence criterion for the maximum force (in eV/Å).
-    """
-
-    max_steps: int = 10
-    force_tolerance: float = 1e-2
 
 
 @as_out_dataclass_node

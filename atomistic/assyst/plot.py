@@ -6,8 +6,8 @@ from ase import Atoms
 from core import as_function_node
 
 
-@as_function_node
-def PlotSPG(structures: list[Atoms]) -> list[int]:
+@as_function_node("plot")  
+def PlotSPG(structures: list[Atoms]):
     """Plot a histogram of space groups in input list."""
     import matplotlib.pyplot as plt
     from structuretoolkit.analyse import get_symmetry
@@ -16,10 +16,10 @@ def PlotSPG(structures: list[Atoms]) -> list[int]:
     for structure in structures:
         spacegroups.append(get_symmetry(structure).info["number"])
     plt.hist(spacegroups)
-    return spacegroups
+    return plt.show()
 
 
-@as_function_node("fig")
+@as_function_node("plot")
 def PlotAtomsHistogram(structures: list[Atoms]):
     """
     Plot a histogram of the number of atoms in each structure.
@@ -34,14 +34,11 @@ def PlotAtomsHistogram(structures: list[Atoms]):
     plt.hist(length, bins=np.arange(lo, hi + 2) - 0.5)
     plt.xlabel("#Atoms")
     plt.ylabel("Count")
-
     return plt.show()
 
 
-@as_function_node("fig")
-def PlotAtomsCells(
-    structures: list[Atoms], angle_in_degrees: bool = True
-) -> pd.DataFrame:
+@as_function_node("plot")
+def PlotAtomsCells(structures: list[Atoms], angle_in_degrees: bool = True):
     """
     Plot histograms of cell parameters.
 
@@ -118,11 +115,10 @@ def PlotAtomsCells(
     else:
         label = r"$\alpha,\beta,\gamma$ [rad]"
     plt.xlabel(label)
-
     return plt.show()
 
 
-@as_function_node("fig")
+@as_function_node("plot")
 def PlotDistances(
     structures: list[Atoms],
     bins: int | Iterable[float] = 50,
@@ -157,5 +153,4 @@ def PlotDistances(
         plt.hist(distances, bins=bins)
         plt.ylabel("Neighbor count")
     plt.xlabel(r"Distance [$\mathrm{\AA}$]")
-
     return plt.show()

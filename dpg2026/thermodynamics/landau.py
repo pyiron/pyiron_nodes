@@ -5,24 +5,6 @@ import landau
 
 
 @as_function_node
-def TemperatureLinePhase(
-    name: str,
-    concentration: float,
-    temperatures: np.ndarray | list[float],
-    free_energies: np.ndarray | list[float],
-    num_parameters: int | None = 3,
-):
-    phase = landau.phases.TemperatureDependentLinePhase(
-        name,
-        concentration,
-        temperatures,
-        free_energies,
-        landau.interpolate.SGTE(num_parameters),
-    )
-    return phase
-
-
-@as_function_node
 def TransitionTemperature(
     phase1,
     phase2,
@@ -90,24 +72,6 @@ def LinePhase(
     import landau
 
     phase = landau.phases.LinePhase(name, concentration, energy, entropy)
-    return phase
-
-
-@as_function_node
-def TemperatureLinePhase(
-    name: str,
-    concentration: float,
-    temperatures: np.ndarray | list[float],
-    free_energies: np.ndarray | list[float],
-    num_parameters: int | None = 3,
-):
-    phase = landau.phases.TemperatureDependentLinePhase(
-        name,
-        concentration,
-        temperatures,
-        free_energies,
-        landau.interpolate.SGTE(num_parameters),
-    )
     return phase
 
 

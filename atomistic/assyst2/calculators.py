@@ -30,34 +30,6 @@ class PawDftInput:
     scf_energy_convergence: float = 1e-2
 
 
-@as_inp_dataclass_node
-class GpawInput(AseCalculatorConfig, PawDftInput):
-    def get_calculator(self, use_symmetry=True):
-        import gpaw
-
-        return gpaw.GPAW(
-            xc="PBE",
-            kpts=(1, 1, 1),
-            h=0.25,
-            nbands=-2,
-            mode=gpaw.PW(self.encut, dedecut="estimate"),
-            # FIXME deliberately high values for testing
-            convergence={
-                "energy": self.scf_energy_convergence,
-                "density": 1,
-                "eigenstates": 1e-3,
-            },
-            symmetry={"point_group": use_symmetry},
-            txt=None,
-        )
-
-
-@as_inp_dataclass_node
-class GenericOptimizerSettings:
-    max_steps: int = 10
-    force_tolerance: float = 1e-2
-
-
 class RelaxMode(Enum):
     VOLUME = "volume"
     FULL = "full"
@@ -131,16 +103,3 @@ def RelaxLoop(
     for structure in tqdm(structures, desc=f"Relax {mode.value}"):
         relaxed_structures.append(Relax(calculator, opt, structure, mode))
     return relaxed_structures
-
-
-@as_inp_dataclass_node
-class M3gnetConfig(AseCalculatorConfig):
-    model: str = "M3GNet-MP-2021.2.8-PES"
-
-    def get_calculator(self, use_symmetry=True):
-        from matgl import load_model
-        from matgl.ext.ase import M3GNetCalculator
-
-        return M3GNetCalculator(
-            load_model(self.model), compute_stress=True, stress_weight=GPA2EVA3
-        )

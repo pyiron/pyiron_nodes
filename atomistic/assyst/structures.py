@@ -5,12 +5,20 @@ from core import (
     as_function_node,
     as_inp_dataclass_node,
 )
+from pyiron_nodes.atomistic.assyst2.structures import Stoichiometry
 
 
-@as_inp_dataclass_node
-class ElementInput:
-    element: str = "Al"
-    num: int = 1
+@as_function_node
+def ElementInput(
+    element: str,
+    min_ion: int = 1,
+    max_ion: int = 10,
+    step_ion: int = 1,
+) -> Stoichiometry:
+    stoichiometry = Stoichiometry(
+        tuple({element: i} for i in range(min_ion, max_ion + 1, step_ion))
+    )
+    return stoichiometry
 
 
 @as_inp_dataclass_node
