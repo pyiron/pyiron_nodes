@@ -6,7 +6,7 @@ from ase import Atoms
 from core import as_function_node
 
 
-@as_function_node("plot")  
+@as_function_node("plot")
 def PlotSPG(structures: list[Atoms]):
     """Plot a histogram of space groups in input list."""
     import matplotlib.pyplot as plt

@@ -20,6 +20,3 @@ def _calc_rmse(array_1, array_2, rmse_in_milli: bool = True):
         return rmse * 1000
     else:
         return rmse
-
-
-
