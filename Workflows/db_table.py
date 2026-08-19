@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.databases.node_hash_db import (
     CreateDB,
     DeleteDB,
@@ -9,7 +10,6 @@ from pyiron_nodes.databases.node_hash_db import (
     GetUpstreamGraph,
     ShowTable,
 )
-from core import Workflow
 
 wf = Workflow("db_table")
 

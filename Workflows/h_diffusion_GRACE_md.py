@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.calculator.data import InputCalcMD, OutputCalcMD
 from pyiron_nodes.atomistic.diffusion import (
     AddInterstitialH,
@@ -16,7 +17,6 @@ from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
 from pyiron_nodes.plotting import Plot
-from core import Workflow
 
 wf = Workflow("h_diffusion_GRACE_md")
 

@@ -1,17 +1,16 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.calculator.data import InputCalcMD, OutputCalcMD
 from pyiron_nodes.atomistic.structure.transform import FixSpecies
 from pyiron_nodes.atomistic.structure.view import Animate
-from core import Workflow
-from core import group_node
 
 # ── Group node factories ─────────────────────────────
 
 
 @group_node("structure")
 def Structure(name, cubic=False, repeat_scalar=1):
+    from core import Workflow
     from pyiron_nodes.atomistic.structure.build import Bulk
     from pyiron_nodes.atomistic.structure.transform import Repeat
-    from core import Workflow
 
     inner_wf = Workflow("Structure")
     inner_wf.Bulk = Bulk(name=name, cubic=cubic)
@@ -21,9 +20,9 @@ def Structure(name, cubic=False, repeat_scalar=1):
 
 @group_node("element")
 def GetPotential(structure, index):
+    from core import Workflow
     from pyiron_nodes.atomistic.engine.lammps import ListPotentials
     from pyiron_nodes.controls import pick_element
-    from core import Workflow
 
     inner_wf = Workflow("GetPotential")
     inner_wf.ListPotentials = ListPotentials(structure=structure)
@@ -33,13 +32,13 @@ def GetPotential(structure, index):
 
 @group_node("out")
 def Lammps(calc_dataclass, structure, potential, working_directory="."):
+    from core import Workflow
     from pyiron_nodes.atomistic.engine.lammps import (
         CreateLammpsMDInput,
         CreateLammpsStructure,
         ParseLammpsOutput,
         RunLammpsCalculation,
     )
-    from core import Workflow
 
     inner_wf = Workflow("Lammps")
     inner_wf.CreateLammpsStructure = CreateLammpsStructure(

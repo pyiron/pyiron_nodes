@@ -1,13 +1,12 @@
+import pandas as pd
+from ase import Atoms
+from core import Workflow, as_function_node, group_node
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     GenericOptimizerSettings,
     Relax,
 )
 from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
-from core import Workflow
-from core import group_node
-from core import as_function_node
-import pandas as pd
 
 # ── Local node definitions ──────────────────────
 
@@ -27,10 +26,10 @@ def BuildDecoratedStructures(
     Columns: structure (ASE Atoms), name (str, legend label).
     """
     from pyiron_nodes.atomistic.structure.build_point_defects import (
-        make_pristine_reference,
-        make_config_row,
-        op_substitute,
         expand_configs,
+        make_config_row,
+        make_pristine_reference,
+        op_substitute,
     )
 
     atoms0, pristine_pos = make_pristine_reference._original_func(host_structure)
@@ -116,8 +115,8 @@ def ChemicalPotentialSweep(
 
 @group_node("surface")
 def mg_surface(size="1 1 1", vacuum=1.0):
-    from pyiron_nodes.atomistic.structure.build import Surface
     from core import Workflow
+    from pyiron_nodes.atomistic.structure.build import Surface
 
     inner_wf = Workflow("mg_surface")
     inner_wf.slab = Surface(
@@ -128,9 +127,8 @@ def mg_surface(size="1 1 1", vacuum=1.0):
 
 @group_node("mu")
 def mu_mg(structure, engine, optimizer_settings=None):
+    from core import Workflow, as_function_node
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
-    from core import Workflow
-    from core import as_function_node
 
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
@@ -155,9 +153,8 @@ def mu_mg(structure, engine, optimizer_settings=None):
 
 @group_node("mu")
 def mu_ca_ref(structure, engine, optimizer_settings=None):
+    from core import Workflow, as_function_node
     from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
-    from core import Workflow
-    from core import as_function_node
 
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
@@ -182,13 +179,12 @@ def mu_ca_ref(structure, engine, optimizer_settings=None):
 
 @group_node("result")
 def FormationEnergies(df, mu_host, mu_solute):
+    from core import Workflow, as_function_node
     from pyiron_nodes.atomistic.thermodynamics.defect_phases import (
         AddDefectConcentrationColumns,
         AddElementCountColumns,
         ComputeDefectFormationEnergy,
     )
-    from core import Workflow
-    from core import as_function_node
 
     @as_function_node("chemical_potentials")
     def _pack_chemical_potentials(mu_host, mu_solute, host="Mg", solute="Ca"):

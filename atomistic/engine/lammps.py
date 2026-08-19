@@ -47,11 +47,10 @@ class LammpsIOBundle:
 @as_function_node
 def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
 
-    import os
-    from lammpsparser.potential import view_potentials
+    from lammpsparser.potential import get_resource_path_from_conda, view_potentials
 
     if resource_path is None:
-        resource_path = os.path.join(os.environ["CONDA_PREFIX"], "share", "iprpy")
+        resource_path = get_resource_path_from_conda()
 
     potentials = list(
         view_potentials(structure, resource_path=resource_path)["Name"].values
@@ -132,7 +131,7 @@ def CreateLammpsStructure(
     if atom_type == "full":
         # LammpsStructure does not support "full" atom_style, so an additional function write_lammps_data_full was added in this file and is used for the 'full' case
         # Does not include dihedrals or impropers, but should be sufficient for bonds and angles.
-        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for WaterPotential node.
+        # not hardcoded for tip3p water, but requires bond_dict to be provided. Example is in the electrochemistry/equilibrate.py file for TIP3PSlabPotential node.
 
         structure_string = write_lammps_data_full(
             structure=structure,
@@ -507,6 +506,8 @@ def ParseLammpsOutput(
             "CreateLammpsMDInput, CreateLammpsStaticInput, or "
             "CreateLammpsMinimizeInput before parsing."
         )
+    if io_bundle.mode not in ("md", "static", "minimize"):
+        raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
 
     generic = _parse_lammps_raw(
         io_bundle, dump_h5_file_name, dump_out_file_name, log_lammps_file_name

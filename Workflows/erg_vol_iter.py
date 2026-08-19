@@ -1,17 +1,16 @@
+from core import Workflow, group_node
 from pyiron_nodes.controls import IterToDataFrame
 from pyiron_nodes.math_utils import Linspace
-from core import Workflow
-from core import group_node
 
 # ── Group node factories ─────────────────────────────
 
 
 @group_node("out")
 def Bulk_GRACE_Static_Energy(name, a=None, cubic=False):
+    from core import Workflow
     from pyiron_nodes.atomistic.calculator.ase import Static
     from pyiron_nodes.atomistic.engine.ase import GRACE
     from pyiron_nodes.atomistic.structure.build import Bulk
-    from core import Workflow
 
     inner_wf = Workflow("Bulk_GRACE_Static_Energy")
     inner_wf.Bulk = Bulk(name=name, a=a, cubic=cubic)

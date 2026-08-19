@@ -1,20 +1,19 @@
+from core import Workflow, group_node
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 from pyiron_nodes.atomistic.structure.view import Animate
 from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
     GenericOptimizerSettings,
     Relax,
 )
-from core import Workflow
-from core import group_node
 
 # ── Group node factories ─────────────────────────────
 
 
 @group_node("structure")
 def Bulk(name, cubic=False, repeat_scalar=1):
+    from core import Workflow
     from pyiron_nodes.atomistic.structure.build import Bulk
     from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
-    from core import Workflow
 
     inner_wf = Workflow("Bulk")
     inner_wf.al_unit = Bulk(name=name, cubic=cubic)
@@ -26,10 +25,10 @@ def Bulk(name, cubic=False, repeat_scalar=1):
 
 @group_node("engine")
 def LammpsEngine(structure, index):
+    from core import Workflow
     from pyiron_nodes.atomistic.diffusion import LammpsAseEngine
     from pyiron_nodes.atomistic.engine.lammps import ListPotentials
     from pyiron_nodes.controls import pick_element
-    from core import Workflow
 
     inner_wf = Workflow("LammpsEngine")
     inner_wf.list_potentials = ListPotentials(structure=structure)

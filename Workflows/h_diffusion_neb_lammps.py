@@ -1,19 +1,18 @@
-from pyiron_nodes.atomistic.engine.lammps import ListPotentials, CreateLammpsStructure
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
-    GenericOptimizerSettings,
-    Relax,
-)
-from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+from core import Workflow
 from pyiron_nodes.atomistic.diffusion import (
     AddInterstitialH,
     LammpsAseEngine,
     PlotNEBPath,
     RunNEB,
 )
-from pyiron_nodes.plotting import Plot
+from pyiron_nodes.atomistic.engine.lammps import ListPotentials
+from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import pick_element
-from core import Workflow
+from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+    GenericOptimizerSettings,
+    Relax,
+)
+from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
 
 wf = Workflow("h_diffusion_neb_lammps")
 

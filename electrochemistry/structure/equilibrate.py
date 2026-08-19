@@ -8,7 +8,7 @@ ANION = "F"
 
 
 @as_function_node
-def WaterPotential(
+def TIP3PSlabPotential(
     metal: str = "Al",
     metal_charge: float = 0.0,
     neon_charge: float = 0.0,
@@ -17,7 +17,7 @@ def WaterPotential(
 ):
     import pandas
 
-    water_potential = pandas.DataFrame(
+    slab_potential = pandas.DataFrame(
         {
             "Name": ["H2O_tip3p"],
             "Filename": [[]],
@@ -83,7 +83,7 @@ def WaterPotential(
         }
     }
 
-    return water_potential, bond_dict
+    return slab_potential, bond_dict
 
 
 @as_function_node
@@ -212,7 +212,7 @@ def IonPotential(
         "\n",
     ]
 
-    water_potential = pd.DataFrame(
+    slab_potential = pd.DataFrame(
         {
             "Name": ["H2O_tip3p"],
             "Filename": [[]],
@@ -237,7 +237,7 @@ def IonPotential(
         }
     }
 
-    return water_potential, bond_dict
+    return slab_potential, bond_dict
 
 
 @as_function_node("Ion_density")
