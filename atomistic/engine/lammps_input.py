@@ -327,9 +327,11 @@ def AssembleLammpsInput(
             "run.j2",
             n_steps=run,
             write_restart=write_restart,
-            fix_ids=io_bundle.lammps_pending_fix_ids.split(",")
-            if io_bundle.lammps_pending_fix_ids
-            else [],
+            fix_ids=(
+                io_bundle.lammps_pending_fix_ids.split(",")
+                if io_bundle.lammps_pending_fix_ids
+                else []
+            ),
         )
         if render_run_section
         else ""

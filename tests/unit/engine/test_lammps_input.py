@@ -342,7 +342,9 @@ class TestAssembleLammpsInputMultiStage(unittest.TestCase):
 
 class TestSetLammpsInputString(unittest.TestCase):
     def test_sets_string_and_potential(self):
-        bundle = LammpsIOBundle(structure=bulk("Al", cubic=True), potential=AL_POTENTIAL)
+        bundle = LammpsIOBundle(
+            structure=bulk("Al", cubic=True), potential=AL_POTENTIAL
+        )
         result = SetLammpsInputString._original_func(
             io_bundle=bundle,
             lammps_input_string="units metal\n",

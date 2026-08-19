@@ -6,7 +6,10 @@ from pathlib import Path
 
 from core import Workflow
 
-from pyiron_nodes.atomistic.engine.lammps import CreateLammpsStructure, RunLammpsCalculation
+from pyiron_nodes.atomistic.engine.lammps import (
+    CreateLammpsStructure,
+    RunLammpsCalculation,
+)
 from pyiron_nodes.atomistic.engine.lammps_input import (
     AssembleLammpsInput,
     LammpsDump,
