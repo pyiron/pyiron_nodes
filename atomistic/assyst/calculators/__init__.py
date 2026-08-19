@@ -8,7 +8,7 @@ from ase.calculators.calculator import Calculator
 from ase.constraints import FixAtoms
 from ase.filters import FrechetCellFilter
 
-from core import Workflow
+from core import Workflow, as_inp_dataclass_node
 
 GPA2EVA3 = 0.006_241_509_074
 
@@ -27,8 +27,7 @@ class PawDftInput:
     scf_energy_convergence: float = 1e-2
 
 
-@Workflow.wrap.as_dataclass_node
-@dataclass
+@as_inp_dataclass_node
 class GpawInput(AseCalculatorConfig, PawDftInput):
     def get_calculator(self, use_symmetry=True):
         import gpaw
@@ -50,9 +49,18 @@ class GpawInput(AseCalculatorConfig, PawDftInput):
         )
 
 
-@Workflow.wrap.as_dataclass_node
-@dataclass
+@as_inp_dataclass_node
 class GenericOptimizerSettings:
+    """Configuration parameters for generic optimization runs.
+
+    Attributes
+    ----------
+    max_steps : int
+        Maximum number of optimization steps.
+    force_tolerance : float
+        Convergence criterion for the maximum force (in eV/Å).
+    """
+
     max_steps: int = 10
     force_tolerance: float = 1e-2
 
@@ -116,8 +124,7 @@ def Relax(
     return relaxed_structure
 
 
-@Workflow.wrap.as_dataclass_node
-@dataclass
+@as_inp_dataclass_node
 class M3gnetConfig(AseCalculatorConfig):
     model: str = "M3GNet-MP-2021.2.8-PES"
 

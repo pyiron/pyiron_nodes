@@ -11,13 +11,6 @@ def SingleNodeExecutor(max_workers: int = 1):
 
 
 @as_function_node("Executor")
-def ThreadPoolExecutor(max_workers: int = 1):
-    from concurrent.futures import ThreadPoolExecutor as Executor
-
-    return Executor(max_workers=max_workers)
-
-
-@as_function_node("Executor")
 def ProcessPoolExecutor(max_workers: int = 1):
     from concurrent.futures import ProcessPoolExecutor as Executor
 
@@ -112,7 +105,7 @@ def SlurmExecutor(
 
 
 @as_function_node("Executor")
-def ThreadPoolExecutorNode(max_workers: int = 4):
+def ThreadPoolExecutor(max_workers: int = 1):
     """
     Create a ThreadPoolExecutor as a workflow node.
 
@@ -133,7 +126,7 @@ def ThreadPoolExecutorNode(max_workers: int = 4):
     Examples
     --------
     >>> wf = Workflow("my_workflow")
-    >>> wf.executor = ThreadPoolExecutorNode(max_workers=8)
+    >>> wf.executor = ThreadPoolExecutor(max_workers=8)
     >>> results = wf.run(verbose=True)  # Uses 8 workers automatically
     """
     from concurrent.futures import ThreadPoolExecutor as Executor

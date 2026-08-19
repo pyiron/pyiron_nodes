@@ -322,6 +322,7 @@ def PlotConcPhaseDiagram(
     plot_isolines: bool = False,
     plot_tielines: bool = True,
     linephase_width: float = 0.01,
+    concavity: float | None = None,
 ):
     """
     Plot a concentration-temperature phase diagram.
@@ -333,6 +334,9 @@ def PlotConcPhaseDiagram(
         plot_tielines (bool): add grey lines connecting triple points
         linephase_width (float): phases that have a solubility less than this
             will be plotted as a rectangle
+        concavity (float, optional, range in [0, 1]): how aggressive to be when
+            fitting polyhedra to samples phase data; lower means more ragged
+            shapes, higher means smoother; 1 corresponds to convex hull of points
     """
     import matplotlib.pyplot as plt
     import numpy as np
@@ -344,6 +348,7 @@ def PlotConcPhaseDiagram(
     # Use specified axis for plotting
     plot_phase_diagram(
         phase_data.drop("refined", errors="ignore", axis="columns"),
+        alpha=concavity or 0.1,
         min_c_width=linephase_width,
         ax=ax,
     )
@@ -377,30 +382,26 @@ def PlotConcPhaseDiagram(
     return fig
 
 
-@as_function_node("plot")
+@as_function_node
 def PlotMuPhaseDiagram(phase_data):
     """Plot a chemical potential-temperature phase diagram.
 
     phase_data should originate from CalcPhaseDiagram.
-    Returns a matplotlib Figure object.
+    Phase boundaries are plotted in black.
     """
-    import matplotlib.pyplot as plt
     import seaborn as sns
-
-    fig, ax = plt.subplots()
+    import matplotlib.pyplot as plt
 
     border = None
     if "border" not in phase_data.columns:
-        body = phase_data.query("not border")
+        body = phase_data
     else:
         border = phase_data.query("border")
         body = phase_data.query("not border")
-
+    fig, ax = plt.subplots()
     sns.scatterplot(data=body, x="mu", y="T", hue="phase", s=5, ax=ax)
-
     if border is not None:
         sns.scatterplot(data=border, x="mu", y="T", c="k", s=5, ax=ax)
-
     ax.set_xlabel("Chemical Potential Difference [eV]")
     ax.set_ylabel("Temperature [K]")
     return fig

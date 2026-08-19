@@ -60,19 +60,6 @@ class Stoichiometry(Sequence):
         return len(self.stoichiometry)
 
 
-@as_function_node
-def ElementInput(
-    element: str,
-    min_ion: int = 1,
-    max_ion: int = 10,
-    step_ion: int = 1,
-) -> Stoichiometry:
-    stoichiometry = Stoichiometry(
-        tuple({element: i} for i in range(min_ion, max_ion + 1, step_ion))
-    )
-    return stoichiometry
-
-
 @as_function_node("df")
 def StoichiometryTable(stoichiometry: Stoichiometry) -> pd.DataFrame:
     return pd.DataFrame(stoichiometry.stoichiometry)
@@ -149,9 +136,8 @@ def SaveStructures(structures: list[Atoms], filename: str):
         structures (list of Atoms): structures to save
         filename (str): path where the dataframe is written to
     """
-    import os.path
-
     import pandas as pd
+    import os.path
 
     df = pd.DataFrame(
         [
@@ -168,3 +154,4 @@ def SaveStructures(structures: list[Atoms], filename: str):
     dirname = os.path.dirname(filename)
     os.makedirs(dirname, exist_ok=True)
     df.to_pickle(filename)
+    return df

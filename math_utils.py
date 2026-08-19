@@ -14,10 +14,30 @@ from scipy.sparse.linalg import eigsh
 @as_function_node("linspace")
 def Linspace(
     x_min: float = 0,
-    x_max: float = 10,
+    x_max: float = 1,
     num_points: int = 50,
     endpoint: bool = True,
 ):
+    """Generate a list (or array) of values for a series of calculations.
+
+    Purpose:
+        Generate a list (or array) of values between a start and stop value.
+        This function is generic and can be used for constructing a 1d mesh or lattice constants, energies,
+        or any other set of quantities.
+
+    Required Input Ports:
+        - start (float): start of the interval.
+        - stop (float): end of the interval.
+        - num_points (int, optional): number of points to generate (alternative to step size).
+        - step_size (float, optional): increment between successive values (alternative to num_points).
+
+    Optional Parameters:
+        - endpoint (bool, default True): whether to include the stop value.
+        - log_scale (bool, default False): generate values on a logarithmic scale if True.
+
+    Returns:
+        - values (list of float or numpy.ndarray): generated values.
+    """
     return np.linspace(x_min, x_max, num_points, endpoint=endpoint)
 
 
@@ -96,8 +116,17 @@ def npMultiply(x: list | np.ndarray | float | int, y: list | np.ndarray | float 
     return np.multiply(x, y)
 
 
-@as_function_node("multiply")
-def Multiply(x: any, y: any):
+@as_function_node("product")
+def Multiply(x, y):
+    """Multiply two numbers and return the product.
+
+    Args:
+        x: First number.
+        y: Second number.
+
+    Returns:
+        The product of x and y.
+    """
     return x * y
 
 

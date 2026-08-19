@@ -8,10 +8,3 @@ def ReadCSV(
     import pandas as pd
 
     return pd.read_csv(filename, delimiter=delimiter, header=header, decimal=decimal)
-
-
-@as_function_node("df")
-def ReadDataFrame(filename: str, compression: str = None):
-    import pandas as pd
-
-    return pd.read_pickle(filename, compression=compression)

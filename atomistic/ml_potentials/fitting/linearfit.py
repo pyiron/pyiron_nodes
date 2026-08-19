@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -195,7 +196,9 @@ class PotentialConfig:
 
 
 @as_function_node
-def ReadPickledDatasetAsDataframe(file_path: str = "", compression: str | None = None):
+def ReadPickledDatasetAsDataframe(
+    file_path: str = "", compression: Optional[str] = None
+):
 
     from ase.atoms import Atoms as aseAtoms
 
@@ -268,8 +271,10 @@ def SplitTrainingAndTesting(
         training_frac = np.abs(training_frac)
 
     if training_frac > 1:
-        print("Can't have the training dataset more than 100 % of the dataset\n\
-            Setting the value to 100%")
+        print("""
+            Can't have the training dataset more than 100 % of the dataset
+            Setting the value to 100%
+            """)
         training_frac = 1
     elif training_frac == 0:
         print("Can'fit with no training dataset\nSetting the value to 1%")
@@ -744,6 +749,15 @@ def DesignMatrix(
 
 @as_function_node("matrix")
 def SliceArray(matrix, indices):
+    """Slice a matrix (numpy array) using the provided indices.
+
+    Args:
+        matrix: A numpy array or similar matrix-like object.
+        indices: Index or slice to select from the matrix.
+
+    Returns:
+        The sliced portion of the matrix.
+    """
     return matrix[indices]
 
 
@@ -753,6 +767,20 @@ def GetVector(
     indices,
     scale_energy_per_atom: bool = False,
 ):
+    """Extract a feature vector from a DataFrame.
+
+    This function concatenates the corrected energies and flattened forces,
+    optionally scaling the energies per atom.
+
+    Args:
+        df: pandas DataFrame containing `energy_corrected`, `NUMBER_OF_ATOMS`,
+            and `forces` columns.
+        indices: Indices to select from the assembled vector.
+        scale_energy_per_atom: If True, divide the energy by the number of atoms.
+
+    Returns:
+        A numpy array containing the selected elements of the vector.
+    """
     import numpy as np
 
     vec = df.energy_corrected
@@ -773,6 +801,20 @@ def MinMaxIndices(
     i_max: int = None,
     energy_only: bool = False,
 ):
+    """Generate index arrays for energies and forces in a DataFrame.
+
+    The function creates a flat index range covering both energy entries and
+    force components for all structures in the DataFrame.
+
+    Args:
+        df: pandas DataFrame containing `NUMBER_OF_ATOMS`.
+        i_min: Minimum structure index (inclusive).
+        i_max: Maximum structure index (exclusive). If None, uses total structures.
+        energy_only: If True, return only energy indices; otherwise include force indices.
+
+    Returns:
+        A numpy array of selected indices.
+    """
     num_structures = len(df)
     num_atoms = np.sum(df.NUMBER_OF_ATOMS)
 
@@ -781,5 +823,8 @@ def MinMaxIndices(
         i_max = num_structures
     energies = indices[i_min:i_max]
     forces = indices[num_atoms + 3 * i_min : num_atoms + 3 * i_max]
-    indices = energies if energy_only else np.append(energies, forces, axis=0)
+    if energy_only:
+        indices = energies
+    else:
+        indices = np.append(energies, forces, axis=0)
     return indices
