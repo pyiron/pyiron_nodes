@@ -7,7 +7,7 @@ from ase import Atoms as _Atoms
 from core import as_function_node
 
 # from pyiron_nodes.atomistic.engine.lammps import LammpsIOBundle
-from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase
+from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _data_to_ase, to_ase
 from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 
 
@@ -163,7 +163,8 @@ def VisualizeMultipleStructures(
     elif columns == 1:
         axes = [[ax] for ax in axes]
 
-    for i, struct in enumerate(ase_structure_list):
+    for i, _struct in enumerate(ase_structure_list):
+        struct = to_ase(_struct)
         row, col = divmod(i, columns)
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
