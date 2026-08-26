@@ -5,7 +5,11 @@ from typing import Optional, Union, List, Iterable, Set
 from ase import Atoms
 
 from core import as_function_node
-from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _ase_to_data, _data_to_ase
+from pyiron_nodes.atomistic.structure._atoms import (
+    OutputAtoms,
+    _ase_to_data,
+    _data_to_ase,
+)
 
 import numpy as np
 from ase.neighborlist import NeighborList
@@ -507,7 +511,9 @@ def GenerateHEAStructures(
             symbols[atom_idx] = element_assignment[free_pos]
 
         new_structure.set_chemical_symbols(symbols)
-        new_structure = _ase_to_data(new_structure)  # Convert back to OutputAtoms if needed
+        new_structure = _ase_to_data(
+            new_structure
+        )  # Convert back to OutputAtoms if needed
         results.append(new_structure)
 
     return results
