@@ -379,8 +379,12 @@ def GetHashesByUpstreamQualname(db, qualname: str = "", contains: str = ""):
     dataframes = []
     for node_id, node_hash in matches:
         try:
-            node, _ = pyiron_database.restore_node_from_database(db=db, node_hash=node_hash)
-            if not restore_node_outputs(node, storage_path=db.storage_path, node_hash=node_hash):
+            node, _ = pyiron_database.restore_node_from_database(
+                db=db, node_hash=node_hash
+            )
+            if not restore_node_outputs(
+                node, storage_path=db.storage_path, node_hash=node_hash
+            ):
                 continue
         except Exception as exc:
             print(f"GetHashesByUpstreamQualname: skipping {node_hash[:16]}… — {exc}")
@@ -426,7 +430,9 @@ def GetStoredOutput(db, index: int = 0):
 
     node, _ = pyiron_database.restore_node_from_database(db=db, node_hash=node_hash)
 
-    success = restore_node_outputs(node, storage_path=db.storage_path, node_hash=node_hash)
+    success = restore_node_outputs(
+        node, storage_path=db.storage_path, node_hash=node_hash
+    )
 
     if not success:
         result = (
