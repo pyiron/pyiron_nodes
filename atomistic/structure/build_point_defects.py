@@ -19,7 +19,6 @@ import nglview as nv
 #     calc_static_with_lammpslib,
 # )
 from structuretoolkit.visualize import plot3d
-from pyiron_lammps import get_potential_by_name
 
 from typing import Optional
 from core import as_function_node
@@ -473,6 +472,14 @@ def atoms_with_vac_marker(row, marker="H", uid_key="uid", marker_uid=-1):
 # ## Interstitials
 # %%
 def voronoi_interstitial_positions_from_row(row, element):
+    try:
+        from pymatgen.analysis.defects.generators import VoronoiInterstitialGenerator
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError(
+            "Voronoi interstitial generation requires the pymatgen defects add-on: "
+            "pip install pymatgen-analysis-defects"
+        ) from exc
+
     at = row["atoms"]
     pmg = ase_to_pymatgen(at)
     gen = VoronoiInterstitialGenerator()  # <-- no symprec

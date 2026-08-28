@@ -232,6 +232,58 @@ def AddDefectConcentrationColumns(
     return df
 
 
+@as_function_node("chemical_potentials")
+def BinaryChemicalPotentialSweep(
+    mu_cation: float,
+    mu_compound_per_fu: float,
+    cation: str,
+    anion: str,
+    n_points: int = 80,
+    delta_mu_range: float = 3.0,
+) -> dict:
+    """
+    Build a coupled (μ_cation, μ_anion) sweep for a binary compound phase diagram.
+
+    Uses the **stoichiometric constraint** for a 1:1 binary compound AB:
+
+    .. math::
+
+        \\mu_A + \\mu_B = E_{AB}^{\\text{fu}}
+
+    The cation chemical potential sweeps from its cation-rich limit
+    (``mu_cation``, the energy per atom of the elemental cation reference)
+    down by ``delta_mu_range`` eV.  The anion potential is derived at each
+    point via the constraint.
+
+    The returned dictionary uses the supplied ``cation`` and ``anion`` strings
+    as keys, so switching from GaN to AlN requires only changing those
+    parameters — no hardcoded element strings appear in this node.
+
+    **Required inputs**
+    - ``mu_cation``:         Cation chemical potential at the cation-rich limit
+                             (energy per atom of the elemental cation bulk, eV).
+    - ``mu_compound_per_fu``: Total energy of the compound per formula unit (eV).
+                             Typically ``EnergyPerFormulaUnit(E_total, n_atoms, 2)``.
+    - ``cation``:            Element symbol of the cation (e.g. ``"Ga"``).
+    - ``anion``:             Element symbol of the anion  (e.g. ``"N"``).
+    - ``n_points``:          Number of points in the sweep (default 80).
+    - ``delta_mu_range``:    Width of the chemical-potential window (eV; default 3.0).
+
+    **Typical use-cases**
+    * Generate the x-axis for a GaN or AlN (0001) surface phase diagram.
+    * Pass the output directly to :func:`ComputeDefectFormationEnergy`.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        ``{cation: mu_cation_array, anion: mu_anion_array}`` — both arrays
+        have length ``n_points``.
+    """
+    mu_cation_arr = np.linspace(mu_cation - delta_mu_range, mu_cation, n_points)
+    mu_anion_arr = mu_compound_per_fu - mu_cation_arr
+    return {cation: mu_cation_arr, anion: mu_anion_arr}
+
+
 @as_function_node
 def ComputeChemicalPotentials(
     df: pd.DataFrame,

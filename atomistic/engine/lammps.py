@@ -39,20 +39,216 @@ class LammpsIOBundle:
     resource_path: Optional[str] = None
 
 
-@as_function_node
-def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
+def _has_potential_files(filenames) -> bool:
+    """Whether a potential entry ships at least one real parameter file.
 
+    OpenKIM entries in the LAMMPS potential catalogue carry ``Filename == ['']``
+    because the model comes from the KIM API rather than from a file on disk.
+    ``pyiron_lammps.potential.update_potential_paths`` cannot cope with that: the
+    blank name becomes an empty key in its substitution dict, and
+    ``line.replace("", resource_path)`` then splices the resource path in between
+    *every character* of the ``pair_style`` and ``pair_coeff`` lines, e.g.::
+
+        >>> "pair_style kim".replace("", "/RES/")
+        '/RES/p/RES/a/RES/i/RES/r/RES/_/RES/s/RES/t/RES/y/RES/l/RES/e/RES/ ...'
+
+    The damage is done inside ``get_potential_by_name``, so callers never see an
+    intact ``Config`` to check.  ``Filename`` is left alone, which makes it the
+    only reliable way to spot an affected entry.
+    """
+    return bool(filenames) and all(str(f).strip() for f in filenames)
+
+
+def _basenames_collide(filenames) -> bool:
+    """Whether one parameter-file name is a substring of another.
+
+    The same blind ``str.replace`` loop described in :func:`_has_potential_files`
+    walks the file names in order, so once it has expanded ``library-Al.meam``
+    into an absolute path, the later pass for ``Al.meam`` matches *inside* that
+    path and rewrites it again::
+
+        pair_coeff * * /…/library-/…/Al.meam
+
+    The result points at a file that does not exist.  MEAM potentials whose
+    library file embeds the element file name — ``library-Al.meam`` + ``Al.meam``,
+    ``library.AlCu.meam`` + ``AlCu.meam`` — trip this.
+    """
     import os
-    from lammpsparser.potential import view_potentials
 
-    if resource_path is None:
-        resource_path = os.path.join(os.environ["CONDA_PREFIX"], "share", "iprpy")
-
-    potentials = list(
-        view_potentials(structure, resource_path=resource_path)["Name"].values
+    names = [os.path.basename(str(f)) for f in filenames]
+    return any(
+        a != b and a in b for i, a in enumerate(names) for b in names[i + 1 :] + names[:i]
     )
 
+
+def _potential_rejection_reason(filenames) -> Optional[str]:
+    """Why this potential cannot yield valid LAMMPS input, or None if it can."""
+    if not _has_potential_files(filenames):
+        return (
+            "it ships no parameter file.  This is an OpenKIM entry, which needs a "
+            "model installed through the KIM API rather than a file from the "
+            "potential catalogue"
+        )
+    if _basenames_collide(filenames):
+        return (
+            "one of its parameter file names is a substring of another "
+            f"({list(filenames)}), which corrupts the generated pair_coeff path"
+        )
+    return None
+
+
+def get_usable_potential_by_name(
+    potential_name: str, resource_path: Optional[str] = None
+):
+    """Look up a potential by name, rejecting ones that cannot produce valid input.
+
+    Same return value as ``pyiron_lammps.potential.get_potential_by_name`` (a row
+    of the potential dataframe), but raises instead of handing back a silently
+    corrupted ``Config``.  See :func:`_has_potential_files` and
+    :func:`_basenames_collide` for the two ways that happens.
+    """
+    from pyiron_lammps.potential import get_potential_by_name, get_potential_dataframe
+
+    try:
+        potential = get_potential_by_name(
+            potential_name=potential_name, resource_path=resource_path
+        )
+    except (IndexError, KeyError):
+        # get_potential_by_name does .iloc[0] on the filtered DataFrame without
+        # checking whether it is empty first, so an unknown name raises IndexError.
+        from pyiron_lammps.potential import LammpsPotentialFile, get_resource_path_from_conda
+        rp = resource_path or get_resource_path_from_conda()
+        all_names = LammpsPotentialFile(resource_path=rp).list()["Name"]
+        keyword = potential_name.split("--")[1] if "--" in potential_name else potential_name
+        candidates = all_names[all_names.str.contains(keyword, case=False, na=False)].tolist()[:5]
+        hint = f"  Closest matches: {candidates}" if candidates else ""
+        raise ValueError(
+            f"Potential {potential_name!r} not found in the catalog.{hint}\n"
+            "Use ListPotentials(structure) to see what is available."
+        ) from None
+    reason = _potential_rejection_reason(potential["Filename"])
+    if reason is not None:
+        raise ValueError(
+            f"potential {potential_name!r} cannot be used to build LAMMPS input: "
+            f"{reason}.  Use `ListPotentials` to see the potentials that do work "
+            "here."
+        )
+    return potential
+
+
+@as_function_node
+def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
+    """List the potentials available for *structure* that can actually be run.
+
+    Entries whose ``Config`` comes back corrupted from the catalogue are filtered
+    out — see :func:`_has_potential_files` (OpenKIM entries with no parameter
+    file) and :func:`_basenames_collide` (MEAM libraries that shadow their own
+    element file).  Offering them would hand callers a name that is guaranteed to
+    fail, and the failure mode is a mangled LAMMPS deck rather than a clear
+    error, which is far worse than the name simply not being listed.
+    """
+
+    from pyiron_lammps.potential import (
+        get_resource_path_from_conda,
+        view_potentials,
+    )
+
+    if resource_path is None:
+        resource_path = get_resource_path_from_conda()
+
+    df = view_potentials(structure, resource_path=resource_path)
+    potentials = [
+        name
+        for name, filenames in zip(df["Name"], df["Filename"])
+        if _potential_rejection_reason(filenames) is None
+    ]
+
     return potentials
+
+
+def _pair_style_of(config_lines) -> str:
+    """Extract the ``pair_style`` family from a potential's Config lines."""
+    for line in config_lines:
+        s = line.strip()
+        if s.startswith("pair_style"):
+            return s.split()[1].lower()
+    return ""
+
+
+@as_function_node
+def GetPotential(
+    structure: Atoms,
+    resource_path: Optional[str] = None,
+    type_filter: Literal[
+        "all", "eam", "meam", "adp", "tersoff", "bop", "comb", "agni", "pinn"
+    ] = "all",
+    name_filter: str = "",
+    index: int = 0,
+):
+    """Return a single potential name for *structure*.
+
+    Combines the filtering of :func:`ListPotentials` with direct index selection,
+    so no intermediate selection node is needed.
+
+    Parameters
+    ----------
+    type_filter:
+        Restrict candidates to a particular potential family.  Matched against
+        the ``pair_style`` keyword via a prefix check, so ``"eam"`` covers
+        ``eam``, ``eam/alloy`` and ``eam/fs``; ``"comb"`` covers ``comb3``;
+        etc.  ``"all"`` (default) applies no filter.  For single-element LAMMPS
+        calculations with calphy, prefer ``"eam/alloy"`` over plain ``"eam"``:
+        the eam/alloy format maps all atom types in one ``pair_coeff`` line,
+        which calphy requires.  Plain ``"eam"`` (funcfl) entries carry one line
+        per element and cannot be used by calphy's reversible-scaling routine.
+    name_filter:
+        Case-insensitive substring search on the potential name.  All
+        space-separated terms must appear in the name.  Examples:
+
+        - ``"Mishin"``       → all Mishin potentials
+        - ``"Mishin 99"``    → requires both ``"Mishin"`` and ``"99"``, matching
+                               ``1999--Mishin-Y--Al--LAMMPS--ipr1``
+        - ``"eam/alloy"``    → names containing that pair_style string
+        - ``""`` (default)   → no name filter; all type_filter matches included
+
+        Use ``ListPotentials`` to see the full catalogue and pick a name.
+    index:
+        Position in the filtered list to return (default ``0`` — the first
+        match).  When ``name_filter`` targets a specific publication the list
+        usually has one entry and ``index=0`` is correct; without a filter
+        ``index`` selects from potentially many candidates.
+    """
+
+    from pyiron_lammps.potential import (
+        get_resource_path_from_conda,
+        view_potentials,
+    )
+
+    if resource_path is None:
+        resource_path = get_resource_path_from_conda()
+
+    df = view_potentials(structure, resource_path=resource_path)
+    filter_terms = name_filter.lower().split() if name_filter.strip() else []
+    candidates = [
+        name
+        for name, filenames, config in zip(df["Name"], df["Filename"], df["Config"])
+        if _potential_rejection_reason(filenames) is None
+        and (type_filter == "all" or _pair_style_of(config).startswith(type_filter))
+        and all(term in name.lower() for term in filter_terms)
+    ]
+
+    if not candidates:
+        parts = [f"type_filter={type_filter!r}"]
+        if name_filter.strip():
+            parts.append(f"name_filter={name_filter!r}")
+        raise ValueError(
+            f"No usable potential found for {', '.join(parts)}. "
+            "Use ListPotentials to see what is available."
+        )
+
+    potentials = candidates
+    potential_name = potentials[index]
+    return potentials, potential_name
 
 
 @as_function_node

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Union, List, Iterable, Set
+from typing import Optional, Union, List, Set
 
 from ase import Atoms
 
@@ -499,6 +499,97 @@ def LayerShift(
 
 
 @as_function_node("structure")
+def AddSurfaceAdatom(
+    slab: Atoms,
+    element: str,
+    n_adatoms: int = 1,
+    adatom_height: float = 2.0,
+) -> Atoms:
+    """
+    Append one or two adatoms of ``element`` above the topmost surface layer.
+
+    Each adatom is placed at a hollow-like site above the surface centroid.
+    For ``n_adatoms=1`` the atom is offset by ⅓ of the x and y cell vectors
+    (T4-like hollow site).  For ``n_adatoms=2`` a second atom is placed at
+    ½ × (x+y) to seed a bilayer reconstruction.
+
+    **Required inputs**
+    - ``slab``:         Input slab (ASE ``Atoms``).
+    - ``element``:      Chemical symbol of the adatom species (e.g. ``"Ga"``).
+    - ``n_adatoms``:    Number of adatoms to append (1 or 2; default 1).
+    - ``adatom_height``: Height above the topmost atom (Å; default 2.0).
+
+    **Typical use-cases**
+    * Generate ``+1 cation`` and ``+2 cation (bilayer)`` surface configurations
+      for a binary-nitride surface-phase-diagram workflow.
+    * Add a test adatom for adsorption energy calculations.
+
+    Returns
+    -------
+    ``ase.atoms.Atoms`` — copy of the slab with adatom(s) appended.
+    """
+    import numpy as np
+    from ase import Atom
+
+    s = slab.copy()
+    pos = s.get_positions()
+    z_max = pos[:, 2].max()
+    top_mask = pos[:, 2] > z_max - 0.5
+    x0 = float(pos[top_mask, 0].mean()) if top_mask.any() else 0.0
+    y0 = float(pos[top_mask, 1].mean()) if top_mask.any() else 0.0
+    cell = s.get_cell()
+    offsets = [
+        (cell[0, 0] * 0.33, cell[1, 1] * 0.33),
+        (cell[0, 0] * 0.50, cell[1, 1] * 0.50),
+    ]
+    for i in range(int(n_adatoms)):
+        dx, dy = offsets[i % len(offsets)]
+        s.append(Atom(element, position=(x0 + dx, y0 + dy, z_max + adatom_height + i * 0.6)))
+    return s
+
+
+@as_function_node("structure")
+def RemoveTopSurfaceAtom(slab: Atoms, element: str) -> Atoms:
+    """
+    Remove the topmost atom of species ``element`` from a surface slab.
+
+    This creates a surface vacancy for the specified species.  Raises
+    ``ValueError`` if no atom of that species is present.
+
+    **Required inputs**
+    - ``slab``:    Input slab (ASE ``Atoms``).
+    - ``element``: Chemical symbol of the species to remove (e.g. ``"Ga"``).
+
+    **Typical use-cases**
+    * Generate a ``−1 cation vacancy`` surface configuration for a binary-nitride
+      surface-phase-diagram workflow.
+
+    Returns
+    -------
+    ``ase.atoms.Atoms`` — copy of the slab with the topmost ``element`` atom removed.
+
+    Raises
+    ------
+    ValueError
+        If no atom of species ``element`` exists in the slab.
+    """
+    import numpy as np
+
+    s = slab.copy()
+    symbols = np.array(s.get_chemical_symbols())
+    z = s.get_positions()[:, 2]
+    mask = symbols == element
+    if not mask.any():
+        raise ValueError(
+            f"No atom of species '{element}' found in slab. "
+            f"Present species: {sorted(set(symbols.tolist()))}."
+        )
+    idx = int(np.where(mask)[0][np.argmax(z[mask])])
+    del s[idx]
+    return s
+
+
+@as_function_node("structure")
 def Stack(
     bottom: Atoms,
     top: Atoms,
@@ -531,3 +622,138 @@ def Stack(
     from ase.build import stack as ase_stack
 
     return ase_stack(bottom, top, axis=axis, distance=distance, reorder=reorder)
+
+
+# ---------------------------------------------------------------------------
+# Random perturbations — used to generate training sets for fitted potentials
+# ---------------------------------------------------------------------------
+
+
+def rattle(structure: Atoms, sigma: float) -> Atoms:
+    """Randomly displace positions with gaussian noise.
+
+    Operates INPLACE."""
+    structure.rattle(stdev=sigma)
+    return structure
+
+
+def stretch(structure: Atoms, hydro: float, shear: float) -> Atoms:
+    """Randomly stretch cell with uniform noise.
+
+    Operates INPLACE."""
+    import numpy as np
+
+    strain = shear * (2 * np.random.rand(3, 3) - 1)
+    strain = 0.5 * (strain + strain.T)  # symmetrize
+    np.fill_diagonal(strain, 1 + hydro * (2 * np.random.rand(3) - 1))
+    structure.set_cell(structure.cell.array @ strain, scale_atoms=True)
+    return structure
+
+
+@as_function_node
+def Rattle(structure, seed: int = 42, stdev: float = 0.1):
+    """
+    Randomly displace the atoms in the structure.
+
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        The structure to perturb.
+    seed : int, optional
+        Random seed for the random number generator.
+    stdev : float, optional
+        Standard deviation of the gaussian displacement in Å.
+    """
+    structure = _data_to_ase(structure).copy()
+    structure.rattle(seed=seed, stdev=stdev)
+    return structure
+
+
+@as_function_node
+def RattleAndStrech(structure: Atoms, sigma: float, samples: int) -> list[Atoms]:
+    """Draw *samples* structures, each both rattled and randomly stretched."""
+    structure = _data_to_ase(structure)
+    structures = []
+    # no point in rattling single atoms
+    if len(structure) > 1:
+        for _ in range(samples):
+            structures.append(
+                stretch(rattle(structure.copy(), sigma), hydro=0.05, shear=0.005)
+            )
+    return structures
+
+
+@as_function_node
+def RattleLoop(structures: list[Atoms], sigma: float, samples: int) -> list[Atoms]:
+    """Apply :func:`RattleAndStrech` to every structure in *structures*."""
+    rattled_structures = []
+    for structure in structures:
+        rattled_structures += RattleAndStrech(structure, sigma, samples).pull()
+    return rattled_structures
+
+
+@as_function_node
+def Stretch(
+    structure: Atoms,
+    hydro: float,
+    shear: float,
+    samples: int,
+    hydro_shear_ratio: float = 0.7,
+) -> list[Atoms]:
+    """Draw *samples* randomly strained copies of *structure*.
+
+    Each sample is predominantly hydrostatic with probability
+    *hydro_shear_ratio*, and predominantly shear otherwise.
+    """
+    import numpy as np
+
+    structure = _data_to_ase(structure)
+    structures = []
+    for _ in range(samples):
+        if np.random.rand() < hydro_shear_ratio:
+            ihydro, ishear = hydro, 0.05
+        else:
+            ihydro, ishear = 0.05, shear
+        structures.append(stretch(structure.copy(), hydro=ihydro, shear=ishear))
+    return structures
+
+
+@as_function_node
+def StretchLoop(
+    structures: list[Atoms],
+    hydro: float,
+    shear: float,
+    samples: int,
+    hydro_shear_ratio: float = 0.7,
+) -> list[Atoms]:
+    """Apply :func:`Stretch` to every structure in *structures*."""
+    stretched_structures = []
+    for structure in structures:
+        stretched_structures += Stretch(
+            structure, hydro, shear, samples, hydro_shear_ratio
+        ).pull()
+    return stretched_structures
+
+
+@as_function_node("structures")
+def GenerateStrainedStructures(structure, strain_lst) -> list[Atoms]:
+    """Scale *structure* to each volumetric strain in *strain_lst*.
+
+    Each entry of *strain_lst* is a **volume** factor, so the cell vectors are
+    scaled by its cube root and the atoms scale along with them.  Useful as the
+    composable front half of an energy-volume curve.
+
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        The reference structure.
+    strain_lst : list or np.ndarray
+        Volume factors, e.g. ``Linspace(x_min=0.9, x_max=1.1, num_points=7)``.
+    """
+    structure = _data_to_ase(structure)
+    structures = []
+    for strain in strain_lst:
+        strained = structure.copy()
+        strained.set_cell(strained.cell * strain ** (1 / 3), scale_atoms=True)
+        structures.append(strained)
+    return structures

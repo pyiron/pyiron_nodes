@@ -14,7 +14,8 @@ def GetMeltingT(
     liquid_fe__potential,
     cubic=False,
     pressure=0,
-    temperature_stop=600,
+    temperature=700,
+    temperature_stop=1200,
     repeat_scalar=1,
     stdev=0.1,
     store=True,
@@ -22,20 +23,22 @@ def GetMeltingT(
 ):
     from pyiron_nodes.atomistic.structure.build import Bulk
     from pyiron_nodes.atomistic.structure.transform import Repeat
-    from pyiron_nodes.dpg2026.atomistic.calculator.calphy import (
+    from pyiron_nodes.atomistic.property.calphy import (
         FindMeltingTemperature,
         InputClass,
         LiquidFreeEnergyWithTemp,
         SolidFreeEnergyWithTemp,
     )
-    from pyiron_nodes.dpg2026.atomistic.engine.lammps import ListPotentials
-    from pyiron_nodes.dpg2026.atomistic.structure.transform import Rattle
+    from pyiron_nodes.atomistic.engine.lammps import ListPotentials
+    from pyiron_nodes.atomistic.structure.transform import Rattle
     from core import Workflow
 
     inner_wf = Workflow("GetMeltingT")
     inner_wf.Bulk = Bulk(name=name, cubic=cubic)
     inner_wf.InputClass = InputClass(
-        pressure=pressure, temperature_stop=temperature_stop
+        pressure=pressure,
+        temperature=temperature,
+        temperature_stop=temperature_stop,
     )
     inner_wf.Repeat = Repeat(structure=inner_wf.Bulk, repeat_scalar=repeat_scalar)
     inner_wf.ListPotentials = ListPotentials(structure=inner_wf.Bulk)
@@ -67,12 +70,13 @@ wf.GetMeltingT = GetMeltingT(
     name="Al",
     cubic=True,
     pressure=5,
-    temperature_stop=500,
+    temperature=700,
+    temperature_stop=1200,
     repeat_scalar=5,
     stdev=0.5,
-    potential="1995--Angelo-J-E--Ni-Al-H--LAMMPS--ipr1",
+    potential="1999--Mishin-Y--Al--LAMMPS--ipr1",
     store=False,
-    liquid_fe__potential="1995--Angelo-J-E--Ni-Al-H--LAMMPS--ipr1",
+    liquid_fe__potential="1999--Mishin-Y--Al--LAMMPS--ipr1",
     liquid_fe__store=False,
 )
 

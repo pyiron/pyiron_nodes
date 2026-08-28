@@ -11,8 +11,8 @@ from pyiron_nodes.atomistic.thermodynamics.defect_phases import (
     AddDefectConcentrationColumns,
     ComputeDefectFormationEnergy,
 )
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import GenericOptimizerSettings, Relax
-from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
+from pyiron_nodes.atomistic.calculator.ase import GenericOptimizerSettings, Relax
+from pyiron_nodes.atomistic.engine.ase import GRACE
 
 
 @as_function_node("structure")
@@ -143,7 +143,7 @@ def RelaxStructuresDataFrame(
     store: bool = True,
 ) -> pd.DataFrame:
     from pyiron_nodes.atomistic.structure._atoms import to_ase
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax, GenericOptimizerSettings
+    from pyiron_nodes.atomistic.calculator.ase import Relax, GenericOptimizerSettings
     if opt_parameters is None:
         opt_parameters = GenericOptimizerSettings()
     relaxed, energies = [], []
@@ -524,7 +524,7 @@ def View3DStructure(
 @group_node("mu")
 def compute_reference_chemical_potential(structure, engine, optimizer_settings):
     from core import Workflow, as_function_node
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
+    from pyiron_nodes.atomistic.calculator.ase import Relax
 
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
@@ -545,7 +545,7 @@ def compute_reference_chemical_potential(structure, engine, optimizer_settings):
 def compute_gan_bulk_energy_per_fu(structure, engine, optimizer_settings):
     """Relax GaN bulk and return total energy per formula unit (GaN pair)."""
     from core import Workflow, as_function_node
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
+    from pyiron_nodes.atomistic.calculator.ase import Relax
 
     @as_function_node("mu_gan_fu")
     def _energy_per_fu(calc_result):
@@ -590,7 +590,7 @@ def compute_surface_formation_energies(relaxed_df, mu_ga_sweep, mu_gan_fu):
 # ── Workflow ──────────────────────────────────────────────────────────────────
 wf = Workflow("gan_surface_phase_diagram")
 
-wf.grace_engine = Grace(model='GRACE-2L-OAM')
+wf.grace_engine = GRACE(model='GRACE-2L-OAM')
 wf.optimizer_settings = GenericOptimizerSettings(max_steps=500, force_tolerance=0.001)
 
 wf.bulk_ga  = BulkGa()

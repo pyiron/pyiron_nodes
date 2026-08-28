@@ -615,6 +615,12 @@ def Filter(x: np.ndarray, index_vec: np.ndarray):
     return result
 
 
+@as_function_node("or")
+def Or(x, y):
+    """Element-wise / boolean ``x | y``, e.g. to combine two masks."""
+    return x | y
+
+
 @as_function_node
 def Sleep(seconds: float = 1.0, a: float = 0) -> None:
     """Sleep for a specified number of seconds.

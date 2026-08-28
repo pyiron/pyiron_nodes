@@ -9,8 +9,8 @@ from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.build_gb import GrainBoundaryOptions, BuildGrainBoundary
 from pyiron_nodes.atomistic.structure.view import PlotCNA
 from pyiron_nodes.atomistic.thermodynamics.defect_phases import SelectStableStructures
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import GenericOptimizerSettings, Relax
-from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
+from pyiron_nodes.atomistic.calculator.ase import GenericOptimizerSettings, Relax
+from pyiron_nodes.atomistic.engine.ase import GRACE
 
 
 # ── Local node definitions ──────────────────────────────────────────────────
@@ -121,7 +121,7 @@ def RelaxStructuresDataFrame(
     Returns df extended with 'structure' (OutputAtoms) and 'energy' (eV).
     """
     from pyiron_nodes.atomistic.structure._atoms import to_ase
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax, GenericOptimizerSettings
+    from pyiron_nodes.atomistic.calculator.ase import Relax, GenericOptimizerSettings
 
     if opt_parameters is None:
         opt_parameters = GenericOptimizerSettings()
@@ -444,7 +444,7 @@ def View3DStructure(
 def compute_reference_chemical_potential(structure, engine, optimizer_settings):
     """Relax a bulk reference and return its energy per atom (eV/atom)."""
     from core import Workflow, as_function_node
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
+    from pyiron_nodes.atomistic.calculator.ase import Relax
 
     @as_function_node("mu")
     def _energy_per_atom(calc_result):
@@ -511,7 +511,7 @@ def compute_defect_formation_energies(
 wf = Workflow("ni_nb_gb_defect_phase_diagram")
 
 # Engine and optimizer
-wf.grace_engine = Grace(model='GRACE-2L-OAM')
+wf.grace_engine = GRACE(model='GRACE-2L-OAM')
 wf.optimizer_settings = GenericOptimizerSettings(max_steps=500, force_tolerance=0.001)
 
 # ── Grain boundary structure (Ni Σ5 FCC) ────────────────────────────────────

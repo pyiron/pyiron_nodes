@@ -3,12 +3,21 @@ from core import as_function_node
 
 @as_function_node
 def ConvertLoadToStress(df, area):
+    """Convert a tensile-test load column into engineering stress.
+
+    Args:
+        df: DataFrame with a 'Load' column in kN and an
+            'Extensometer elongation' column in percent.
+        area: specimen cross section in mm^2.
+
+    Returns:
+        stress (numpy.ndarray): engineering stress in MPa.
+        strain (numpy.ndarray): engineering strain in percent, offset-corrected
+            so that the first point is zero.
     """
-    Read in csv file, convert load to stress
-    """
-    kN_to_N = 0.001  # convert kiloNewton to Newton
-    mm2_to_m2 = 1e-6  # convert square millimeters to square meters
-    df["Stress"] = df["Load"] * kN_to_N / (float(area) * mm2_to_m2)
+    kN_to_N = 1e3  # kiloNewton -> Newton
+    # 1 N/mm^2 == 1 MPa, so N / mm^2 is already MPa; no further scaling needed.
+    df["Stress"] = df["Load"] * kN_to_N / float(area)
     # although it says extensometer elongation, the values are in percent!
     strain = df["Extensometer elongation"].values.flatten()
     # subtract the offset from the dataset
@@ -19,6 +28,16 @@ def ConvertLoadToStress(df, area):
 
 @as_function_node
 def CalculateYoungsModulus(stress, strain, strain_cutoff=0.2):
+    """Fit the elastic slope of a stress-strain curve up to ``strain_cutoff``.
+
+    Args:
+        stress: engineering stress in MPa.
+        strain: engineering strain in percent.
+        strain_cutoff: upper end of the fit range, in percent.
+
+    Returns:
+        youngs_modulus (float): Young's modulus in GPa.
+    """
     import numpy as np
 
     percent_to_fraction = 100  # convert
@@ -30,7 +49,8 @@ def CalculateYoungsModulus(stress, strain, strain_cutoff=0.2):
 
 
 @as_function_node("fig")
-def Plot(stress, strain, format="-"):
+def PlotStressStrain(stress, strain, format="-"):
+    """Plot a stress-strain curve (stress in MPa vs. strain in percent)."""
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots()

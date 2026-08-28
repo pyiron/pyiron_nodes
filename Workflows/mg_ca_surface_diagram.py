@@ -1,9 +1,9 @@
 from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
 )
-from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
+from pyiron_nodes.atomistic.engine.ase import GRACE
 from core import Workflow
 from core import group_node
 from core import as_function_node
@@ -128,7 +128,7 @@ def mg_surface(size="1 1 1", vacuum=1.0):
 
 @group_node("mu")
 def mu_mg(structure, engine, optimizer_settings=None):
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
+    from pyiron_nodes.atomistic.calculator.ase import Relax
     from core import Workflow
     from core import as_function_node
 
@@ -155,7 +155,7 @@ def mu_mg(structure, engine, optimizer_settings=None):
 
 @group_node("mu")
 def mu_ca_ref(structure, engine, optimizer_settings=None):
-    from pyiron_nodes.dpg2026.atomistic.calculator.optimize import Relax
+    from pyiron_nodes.atomistic.calculator.ase import Relax
     from core import Workflow
     from core import as_function_node
 
@@ -212,7 +212,7 @@ wf.bulk_ca = Bulk(name="Ca", crystalstructure="fcc", a=5.59)
 
 wf.bulk_mg = Bulk(name="Mg", crystalstructure="hcp", a=3.21, c=5.21, orthorhombic=True)
 
-wf.grace_engine = Grace(model="GRACE-2L-OAM")
+wf.grace_engine = GRACE(model="GRACE-2L-OAM")
 
 wf.mg_surface = mg_surface(size="2 2 6", vacuum=10.0)
 

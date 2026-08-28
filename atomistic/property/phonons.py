@@ -12,6 +12,7 @@ from core import (
     group_node,
     as_out_dataclass_node,
 )
+from core.data_fields import DataArray, EmptyArrayField
 
 
 @as_function_node("phonopy")
@@ -197,8 +198,6 @@ def HasImaginaryModes(eigenvalues, tolerance: float = 1e-10) -> bool:
 
 @as_out_dataclass_node
 class ThermalProperties:
-    from pyiron_core.pyiron_workflow.data_fields import DataArray, EmptyArrayField
-
     temperatures: DataArray = EmptyArrayField()
     free_energy: DataArray = EmptyArrayField()
     entropy: DataArray = EmptyArrayField()

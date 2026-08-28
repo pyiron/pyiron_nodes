@@ -1,6 +1,6 @@
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 from pyiron_nodes.atomistic.structure.view import Animate
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
 )
@@ -13,7 +13,7 @@ from core import group_node
 @group_node("structure")
 def Bulk(name, cubic=False, repeat_scalar=1):
     from pyiron_nodes.atomistic.structure.build import Bulk
-    from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+    from pyiron_nodes.atomistic.structure.transform import Repeat
     from core import Workflow
 
     inner_wf = Workflow("Bulk")

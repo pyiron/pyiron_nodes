@@ -1,5 +1,5 @@
 from pyiron_nodes.atomistic.engine.ase import GRACE
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
 )

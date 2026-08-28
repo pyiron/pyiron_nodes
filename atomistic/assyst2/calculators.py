@@ -139,8 +139,13 @@ class M3gnetConfig(AseCalculatorConfig):
 
     def get_calculator(self, use_symmetry=True):
         from matgl import load_model
-        from matgl.ext.ase import M3GNetCalculator
 
-        return M3GNetCalculator(
+        try:
+            # matgl >= 1.1 renamed M3GNetCalculator to the model-agnostic PESCalculator
+            from matgl.ext.ase import PESCalculator
+        except ImportError:  # pragma: no cover - older matgl
+            from matgl.ext.ase import M3GNetCalculator as PESCalculator
+
+        return PESCalculator(
             load_model(self.model), compute_stress=True, stress_weight=GPA2EVA3
         )

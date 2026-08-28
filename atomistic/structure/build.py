@@ -184,6 +184,95 @@ def CubicBulkCell(
 
 
 @as_function_node("structure")
+def BinaryWurtziteBulk(
+    cation: str,
+    anion: str,
+    a: float = 3.19,
+    c_over_a: float = 1.627,
+) -> Atoms:
+    """
+    Build a binary wurtzite bulk unit cell (e.g. GaN, AlN, ZnO).
+
+    **Scientific purpose**
+    Create the primitive wurtzite unit cell for a binary compound AB from its
+    lattice parameters.  Used as the starting point for slab construction and
+    as the stoichiometric reference for chemical-potential calculations.
+
+    **Required inputs**
+    - ``cation``: Chemical symbol of the cation species (e.g. ``"Ga"``).
+    - ``anion``:  Chemical symbol of the anion  species (e.g. ``"N"``).
+    - ``a``:      In-plane lattice constant (Å).  GaN ≈ 3.19, AlN ≈ 3.11.
+    - ``c_over_a``: c/a ratio.  GaN ≈ 1.627, AlN ≈ 1.601.
+
+    **Typical use-cases**
+    * Reference bulk cell for compound chemical potential μ_AB.
+    * Input to :func:`BinaryWurtziteSlab` for surface-phase-diagram workflows.
+    * Energy-volume curves for binary nitrides with GRACE or LAMMPS.
+
+    Returns
+    -------
+    ``ase.atoms.Atoms`` — the 4-atom wurtzite unit cell.
+    """
+    from ase.build import bulk as ase_bulk
+
+    return ase_bulk(cation + anion, crystalstructure="wurtzite", a=a, c=a * c_over_a)
+
+
+@as_function_node("structure")
+def BinaryWurtziteSlab(
+    cation: str,
+    anion: str,
+    a: float = 3.19,
+    c_over_a: float = 1.627,
+    n_layers: int = 4,
+    repeat: int = 2,
+    vacuum: float = 12.0,
+    fix_bottom_fraction: float = 0.5,
+) -> Atoms:
+    """
+    Build a (0001) wurtzite slab for surface-phase-diagram calculations.
+
+    The slab is cut from the bulk unit cell along (0,0,1), repeated laterally
+    ``repeat`` × ``repeat`` times, and optionally fixed at the bottom via
+    ``ase.constraints.FixAtoms`` to mimic bulk-like boundary conditions.
+
+    **Required inputs**
+    - ``cation``, ``anion``: Element symbols (e.g. ``"Ga"``, ``"N"``).
+    - ``a``, ``c_over_a``:   Lattice constants (Å, dimensionless).
+    - ``n_layers``:           Number of wurtzite bilayers (default 4).
+    - ``repeat``:             In-plane supercell repetition along x and y
+                              (default 2 → 2×2 surface cell).
+    - ``vacuum``:             Vacuum thickness (Å) added above the slab (default 12).
+    - ``fix_bottom_fraction``: Fraction of slab height (from the bottom) whose
+                              atoms are fixed during relaxation (default 0.5).
+                              Set to 0 to disable bottom fixing.
+
+    **Typical use-cases**
+    * Starting geometry for :func:`~pyiron_nodes.atomistic.property.surface.BinarySlabConfigurations`.
+    * Building a clean (0001) surface for adsorption or surface-energy calculations.
+
+    Returns
+    -------
+    ``ase.atoms.Atoms`` — the slab with optional ``FixAtoms`` constraint.
+    """
+    import numpy as np
+    from ase.build import bulk as ase_bulk
+    from ase.build import surface as ase_surface
+    from ase.constraints import FixAtoms as AseFixAtoms
+
+    bulk = ase_bulk(cation + anion, crystalstructure="wurtzite", a=a, c=a * c_over_a)
+    slab = ase_surface(bulk, (0, 0, 1), n_layers, vacuum=vacuum)
+    if repeat > 1:
+        slab = slab.repeat([repeat, repeat, 1])
+    if fix_bottom_fraction > 0:
+        z_min = slab.positions[:, 2].min()
+        z_max = slab.positions[:, 2].max()
+        z_cut = z_min + fix_bottom_fraction * (z_max - z_min)
+        slab.set_constraint(AseFixAtoms(mask=slab.positions[:, 2] <= z_cut))
+    return slab
+
+
+@as_function_node("structure")
 def Surface(
     element: str,
     surface_type: Literal[

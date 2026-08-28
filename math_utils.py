@@ -18,6 +18,20 @@ def Linspace(
     num_points: int = 50,
     endpoint: bool = True,
 ):
+    """Generate an evenly spaced array of values between ``x_min`` and ``x_max``.
+
+    Generic: use it for a 1d mesh, a series of lattice constants, temperatures,
+    or any other set of quantities a workflow needs to iterate over.
+
+    Args:
+        x_min (float): start of the interval.
+        x_max (float): end of the interval.
+        num_points (int): number of values to generate.
+        endpoint (bool): whether ``x_max`` is included.
+
+    Returns:
+        linspace (numpy.ndarray): the generated values.
+    """
     return np.linspace(x_min, x_max, num_points, endpoint=endpoint)
 
 
@@ -27,7 +41,6 @@ def Arange(
     stop: int = 10,
     step: int = 1,
 ):
-    print("test3")
     return np.arange(start, stop, step)
 
 
@@ -98,6 +111,15 @@ def npMultiply(x: list | np.ndarray | float | int, y: list | np.ndarray | float 
 
 @as_function_node("multiply")
 def Multiply(x: any, y: any):
+    """Multiply two values and return the product, using ``x * y``.
+
+    Args:
+        x: first factor.
+        y: second factor.
+
+    Returns:
+        multiply: the product of ``x`` and ``y``.
+    """
     return x * y
 
 
