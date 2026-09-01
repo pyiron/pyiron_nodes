@@ -14,6 +14,7 @@ def WaterPotential(
     neon_charge: float = 0.0,
     epsilon: float = 0.102,
     sigma: float = 3.188,
+    quasi_2d: bool = False,
 ):
     import pandas
 
@@ -58,6 +59,7 @@ def WaterPotential(
                     "angle_style harmonic\n",
                     "angle_coeff 1 55 104.52\n",
                     "kspace_style pppm 1.0e-5   # final npt relaxation\n",
+                    *(["kspace_modify slab 3.0\n"] if quasi_2d else []),
                     "\n",
                 ]
             ],
@@ -99,6 +101,7 @@ def IonPotential(
     neon_charge: float = 0.0,
     epsilon: float = 0.102,
     sigma: float = 3.188,
+    quasi_2d: bool = False,
 ) -> pd.DataFrame:
     """
     Generate a LAMMPS input configuration for a TIP3P water model containing
@@ -205,6 +208,7 @@ def IonPotential(
         "angle_style harmonic\n",
         "angle_coeff 1 55 104.52\n",
         "kspace_style pppm 1.0e-5   # final npt relaxation\n",
+        *(["kspace_modify slab 3.0\n"] if quasi_2d else []),
         "\n",
     ]
 
@@ -233,54 +237,70 @@ def IonPotential(
         }
     }
 
-    return water_potential, bond_dict
+    charges = {
+        "metal": metal,
+        "metal_charge": metal_charge,
+        "cation": cation,
+        "cation_charge": cation_charge,
+        "anion": anion,
+        "anion_charge": anion_charge,
+        "neon_charge": neon_charge,
+        "O_charge": -0.830,
+        "H_charge": 0.415,
+        "quasi_2d": quasi_2d,
+    }
+
+    return water_potential, bond_dict, charges
 
 
-@as_function_node("Ion_density")
-def element_density(trajectory, initial_structure, initial_step: int = 0):
-    """
-    Animate a series of atomic structures.
+# @as_function_node("Ion_density")
+# def element_density(trajectory, initial_structure, initial_step: int = 0):
+#     """
+#     Animate a series of atomic structures.
 
-    Parameters
-    ----------
-    trajectory : Trajectory‑like object
-        An object that provides ``positions`` (e.g. a pyiron
-        ``Trajectory`` or any object with a ``positions`` attribute).
-    initial_structure : Structure‑like object
-        The reference structure that defines the atomic species,
-        lattice vectors, etc.
-    Returns
+#     Parameters
+#     ----------
+#     trajectory : Trajectory‑like object
+#         An object that provides ``positions`` (e.g. a pyiron
+#         ``Trajectory`` or any object with a ``positions`` attribute).
+#     initial_structure : Structure‑like object
+#         The reference structure that defines the atomic species,
+#         lattice vectors, etc.
+#     Returns
 
-    """
-    import numpy as np
+#     """
+#     import numpy as np
 
-    electrolyte = initial_structure.copy()
+#     electrolyte = initial_structure.copy()
 
-    ind_O = electrolyte.select_index("O")
-    ind_H = electrolyte.select_index("H")
-    ind_Ne = electrolyte.select_index("Ne")
-    ind_Al = electrolyte.select_index("Al")
-    ind_Na = electrolyte.select_index("Na")
-    ind_F = electrolyte.select_index("F")
+#     ind_O = electrolyte.select_index("O")
+#     ind_H = electrolyte.select_index("H")
+#     ind_Ne = electrolyte.select_index("Ne")
+#     ind_Al = electrolyte.select_index("Al")
+#     ind_Na = electrolyte.select_index("Na")
+#     ind_F = electrolyte.select_index("F")
 
-    slab_bot = np.max(electrolyte.positions[ind_Al, 2])
-    slab_top = np.max(electrolyte.positions[ind_Ne, 2])
+#     slab_bot = np.max(electrolyte.positions[ind_Al, 2])
+#     slab_top = np.max(electrolyte.positions[ind_Ne, 2])
 
-    positions = trajectory.positions[initial_step:]
+#     positions = trajectory.positions[initial_step:]
 
-    Data = {}
+#     Data = {}
 
-    for element, ind_el in zip(["Na", "F", "O", "H"], [ind_Na, ind_F, ind_O, ind_H]):
-        Data[element] = []
+#     for element, ind_el in zip(["Na", "F", "O", "H"], [ind_Na, ind_F, ind_O, ind_H]):
+#         Data[element] = []
 
-        z_el = np.array([snapshot[ind_el, 2] for snapshot in positions])
-        z_d = z_el - slab_bot
-        deltares = 0.2
-        binedges = np.arange(0, (slab_top - slab_bot), deltares)  #
-        hist, bin_edges = np.histogram(z_d, bins=binedges)
+#         z_el = np.array([snapshot[ind_el, 2] for snapshot in positions])
+#         z_d = z_el - slab_bot
+#         deltares = 0.2
+#         binedges = np.arange(0, (slab_top - slab_bot), deltares)  #
+#         hist, bin_edges = np.histogram(z_d, bins=binedges)
 
-        Data[element] = bin_edges[:-1], hist / np.shape(positions)[0]
-    return Data
+#         Data[element] = bin_edges[:-1], hist / np.shape(positions)[0]
+#     return Data
+
+
+
 
 
 def Ion_density(trajectory, initial_structure):

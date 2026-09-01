@@ -491,7 +491,7 @@ def PlotFreeEnergySurface(free_energy, grid_centers, al_bulk):
 # ── ASE MD ───────────────────────────────────────────────────────────────────
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def RunASEMD(structure, engine, md_input, store: bool = False):
     """Run NVT MD with a Langevin thermostat via ASE.
 
@@ -630,7 +630,7 @@ def LammpsAseEngine(potential, resource_path=None, cores: int = 1):
     return engine
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def RunNEB(
     initial_state,
     final_state,

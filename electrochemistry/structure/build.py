@@ -4,6 +4,46 @@ from ase.atoms import Atoms
 from core import as_function_node
 
 
+@as_function_node
+def ConfigurePBC(
+    structure: Atoms,
+    charges: dict,
+    slab_factor: float = 3.0,
+    bottom_margin: float = 2.0,
+) -> Atoms:
+    """
+    Set the z boundary condition to match the potential's ``quasi_2d`` setting.
+
+    PPPM slab mode needs ``boundary p p f`` (derived from ``pbc``, written before
+    ``read_data``) together with ``kspace_modify slab`` (set in the potential
+    Config).  ``quasi_2d`` is read from the potential's ``charges`` dict so the
+    two always agree.
+
+    For the quasi-2D case the cell is also padded along z: atoms are lifted off
+    the fixed z=0 boundary by ``bottom_margin`` and the box is grown to
+    ``slab_factor`` times the filled thickness.  Without this the slab
+    correction is invalid and atoms touching the boundary are deleted by LAMMPS.
+    """
+    import numpy as np
+
+    structure = structure.copy()
+    quasi_2d = charges["quasi_2d"]
+
+    if quasi_2d:
+        z = structure.positions[:, 2]
+        thickness = z.max() - z.min()
+        structure.positions[:, 2] += bottom_margin - z.min()
+
+        cell = structure.cell.array.copy()
+        cell[2, 2] = max(
+            slab_factor * thickness, thickness + 2 * bottom_margin
+        )
+        structure.set_cell(cell, scale_atoms=False)
+
+    structure.pbc = [True, True, not quasi_2d]
+    return structure
+
+
 @as_function_node("water")
 def build_water(n_mols: int = 10) -> Atoms:
     """
@@ -73,6 +113,7 @@ def add_water_film(
     water_width: float = 10.0,
     hydrophobic_gap: float = 3.0,
     density: float = 1.0e-24,
+    seed: int = 42,
 ) -> Atoms:
     """
     Append a thin slab of liquid water on top of an existing electrode structure.
@@ -129,6 +170,33 @@ def add_water_film(
     H2O = molecule("H2O", cell=cell / cell_repeat)
     H2O.set_pbc(True)
     H2O = H2O.repeat(cell_repeat)
+
+    # Give every molecule a random orientation about its own oxygen.  Repeating
+    # a single molecule leaves them all pointing the same way, so neighbouring
+    # hydrogens face each other at ~1.8 A.  In TIP3P hydrogen carries a charge
+    # but no LJ radius, so nothing keeps them apart and the initial structure
+    # starts at a large positive electrostatic energy.
+    def _random_rotation(rng):
+        u1, u2, u3 = rng.random(3)
+        x = np.sqrt(1 - u1) * np.sin(2 * np.pi * u2)
+        y = np.sqrt(1 - u1) * np.cos(2 * np.pi * u2)
+        z = np.sqrt(u1) * np.sin(2 * np.pi * u3)
+        w = np.sqrt(u1) * np.cos(2 * np.pi * u3)
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    rng = np.random.default_rng(seed)
+    for mol in range(len(H2O) // 3):
+        block = slice(3 * mol, 3 * mol + 3)
+        positions = H2O.positions[block]
+        oxygen = positions[0]
+        H2O.positions[block] = oxygen + (positions - oxygen) @ _random_rotation(rng).T
+
     H2O.positions[:, 2] += zmin + hydrophobic_gap
     H2O.set_cell(electrode.cell)
 

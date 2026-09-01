@@ -757,3 +757,47 @@ def GenerateStrainedStructures(structure, strain_lst) -> list[Atoms]:
         strained.set_cell(strained.cell * strain ** (1 / 3), scale_atoms=True)
         structures.append(strained)
     return structures
+
+
+@as_function_node
+def DeleteElements(
+    structure: Atoms,
+    elements: str,
+    bond_dict: Optional[dict] = None,
+):
+    """
+    Delete all atoms of the specified element(s) from a structure.
+
+    Parameters
+    ----------
+    structure : Atoms
+        Input structure.
+    elements : str
+        Comma- or space-separated chemical symbols to remove (e.g. ``"Ne"``
+        or ``"Ne, Al"``).
+    bond_dict : dict, optional
+        Bond/angle topology dict (as returned by IonPotential).  Entries whose
+        center element or ``neighbor_type`` is in ``elements`` are removed.
+        Returns ``None`` when all entries are filtered out.
+    """
+    import numpy as np
+
+    to_delete = {e.strip() for e in elements.replace(",", " ").split() if e.strip()}
+    structure = structure.copy()
+    symbols = np.array(structure.get_chemical_symbols())
+    mask = np.isin(symbols, list(to_delete))
+    del structure[np.where(mask)[0]]
+
+    if bond_dict is not None:
+        bond_dict = {
+            center: specs
+            for center, specs in bond_dict.items()
+            if center not in to_delete
+            and all(
+                spec.get("neighbor_type") not in to_delete for spec in specs.values()
+            )
+        }
+        if not bond_dict:
+            bond_dict = None
+
+    return structure, bond_dict

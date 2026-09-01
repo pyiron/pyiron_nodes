@@ -14,7 +14,45 @@ def SingleNodeExecutor(max_workers: int = 1):
 def FluxClusterExecutor(cache_directory: str = "./cache"):
     from executorlib import FluxClusterExecutor as Executor
 
-    return Executor(cache_directory=cache_directory)
+    executor = Executor(cache_directory=cache_directory)
+    _make_stoppable(executor, cache_directory, None, "flux")
+    return executor
+
+
+def _make_stoppable(executor, cache_directory, config_directory, backend):
+    """Teach aiflow's Stop button how to cancel jobs on a cluster executor.
+
+    A queued or running job is not a child process, so there is nothing to
+    signal — it has to be cancelled through the scheduler.  ``executorlib``
+    already knows how: ``terminate_tasks_in_cache`` reads the queue id each task
+    recorded in the cache directory and deletes the job through pysqa
+    (``scancel`` for SLURM).  Registering it here rather than in ``core`` keeps
+    every scheduler import on this side of the boundary.
+
+    Note that this cancels **every** job in *cache_directory*, not only the node
+    being stopped: executorlib exposes no future-to-queue-id mapping.  In
+    practice the cache directory belongs to one executor in one workflow, which
+    is the run being stopped anyway.
+
+    Failing to register is not fatal — Stop then reports that the node cannot be
+    interrupted, which is what happened before this existed.
+    """
+    try:
+        from core import attach_stopper
+        from executorlib.task_scheduler.file.spawner_pysqa import (
+            terminate_tasks_in_cache,
+        )
+    except ImportError:
+        return
+
+    attach_stopper(
+        executor,
+        lambda: terminate_tasks_in_cache(
+            cache_directory=cache_directory,
+            config_directory=config_directory,
+            backend=backend,
+        ),
+    )
 
 
 @as_function_node("Executor")
@@ -29,6 +67,35 @@ def ProcessPoolExecutor(max_workers: int = 1):
     from concurrent.futures import ProcessPoolExecutor as Executor
 
     return Executor(max_workers=max_workers)
+
+
+@as_function_node("Executor")
+def ForkExecutor(poll_interval: float = 0.1):
+    """Make one node stoppable, by running it in a process that can be killed.
+
+    Usually there is no need for this node: tick **Run isolated (stoppable)** in
+    a node's ``Ports ▾`` menu and it gets the same treatment with nothing to
+    wire.  Use this when you want to set ``poll_interval`` explicitly.
+
+    Wire this into the ``executor`` port of a node that does long, uninterruptible
+    work in the interpreter — ``RunASEMD``, a ``calphy`` free-energy leg, a long
+    relaxation.  Pressing Stop cancels those only *between* nodes otherwise,
+    because Python cannot interrupt a call in progress; with this executor the
+    node itself is killed and reported as Cancelled.
+
+    Unlike ``ProcessPoolExecutor`` this forks, so unpicklable inputs — a loaded
+    GRACE or MACE calculator — do not have to be sent to the worker, and the
+    model is not reloaded per call.  The node's *return value* still has to be
+    picklable, which arrays and dataclasses are.  POSIX only.
+
+    Parameters
+    ----------
+    poll_interval : float, optional
+        How often, in seconds, to check whether the run has been stopped.
+    """
+    from core import ForkExecutor as Executor
+
+    return Executor(poll_interval=poll_interval)
 
 
 # SLURM version - same interface, just swap the executor
@@ -104,7 +171,7 @@ def SlurmExecutor(
     if advanced.slurm_cmd_args:
         resource_dict["slurm_cmd_args"] = advanced.slurm_cmd_args
 
-    return SlurmClusterExecutor(
+    executor = SlurmClusterExecutor(
         cache_directory=cache_directory,
         resource_dict=resource_dict,
         pysqa_config_directory=advanced.pysqa_config_directory,
@@ -116,6 +183,12 @@ def SlurmExecutor(
         plot_dependency_graph=advanced.plot_dependency_graph,
         plot_dependency_graph_filename=advanced.plot_dependency_graph_filename,
     )
+    # Pressing Stop scancels the jobs in `cache_directory` — see _make_stoppable
+    # for why that is the whole directory rather than just this node's job.
+    _make_stoppable(
+        executor, cache_directory, advanced.pysqa_config_directory, "slurm"
+    )
+    return executor
 
 
 @as_function_node("Executor")

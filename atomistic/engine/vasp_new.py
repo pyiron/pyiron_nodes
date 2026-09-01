@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -14,7 +13,7 @@ from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.vasp.inputs import Incar, Kpoints
 from pymatgen.io.vasp.outputs import Vasprun
 
-from core import as_function_node
+from core import as_function_node, run_external
 from pyiron_nodes.atomistic.calculator.data import InputCalcDFT, OutputCalcStatic
 
 # ── POTCAR config ─────────────────────────────────────────────────────────────
@@ -265,14 +264,13 @@ def RunVaspCalculation(
         stdout = input_resources.working_directory
         return input_resources, stdout
 
-    result = subprocess.run(
+    # run_external kills the whole process group when the run is stopped; see
+    # the note in atomistic/engine/lammps.py.
+    result = run_external(
         vasp_command,
         cwd=input_resources.working_directory,
-        shell=True,
-        universal_newlines=True,
         env=os.environ.copy(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        label=f"VASP ({vasp_command})",
     )
 
     if result.returncode != 0:

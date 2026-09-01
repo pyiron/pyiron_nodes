@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 from dataclasses import asdict
 from typing import Optional, Literal
 
@@ -13,7 +12,7 @@ from lammpsparser.structure import LammpsStructure
 
 from pyiron_nodes.atomistic.calculator.data import InputCalcMD
 
-from core import as_function_node
+from core import as_function_node, run_external
 
 import pandas as pd
 
@@ -37,6 +36,8 @@ class LammpsIOBundle:
     write_restart_filename: Optional[str] = None
     units: str = "metal"
     resource_path: Optional[str] = None
+    has_bonds: bool = True
+    has_electrode_force: bool = False
 
 
 def _has_potential_files(filenames) -> bool:
@@ -329,7 +330,7 @@ def CreateLammpsStructure(
         structure_string = write_lammps_data_full(
             structure=structure,
             specorder=potential_elements,
-            bond_dict=bond_dict,
+            bond_dict=bond_dict if bond_dict is not None else {},
             potential=potential,
         )
 
@@ -343,6 +344,7 @@ def CreateLammpsStructure(
         structure_string = lammps_str._string_input
 
     io_bundle.lammps_structure_string = structure_string
+    io_bundle.has_bonds = bool(bond_dict)
 
     return io_bundle
 
@@ -402,6 +404,14 @@ def CreateLammpsMDInput(
         else:
             lmp_str_lst.append(l)
 
+    # Strip bond/angle coefficient lines when the structure has no bonds.
+    if not io_bundle.has_bonds:
+        _bond_angle_prefixes = ("bond_style", "bond_coeff", "angle_style", "angle_coeff")
+        potential_lst = [
+            l for l in potential_lst
+            if not any(l.strip().startswith(p) for p in _bond_angle_prefixes)
+        ]
+
     # Handle potential: write to file if DataFrame, else inline
     if isinstance(io_bundle.potential, pd.DataFrame):
         lmp_str_lst += [f"include {io_bundle.lammps_potential_filename}\n"]
@@ -431,6 +441,41 @@ def CreateLammpsMDInput(
             structure=io_bundle.structure, calc_md=True
         ).items()
     ]
+
+    # If any atoms are frozen, add per-species group/group computes so the force
+    # from the mobile phase on each electrode species is written to a separate
+    # electrode_force_{Species}.txt file.
+    # compute group/group evaluates interactions before fix setforce zeroes them.
+    from ase.constraints import FixAtoms as _FixAtoms
+    _fixed_indices = []
+    for _c in io_bundle.structure.constraints:
+        if isinstance(_c, _FixAtoms):
+            _fixed_indices.extend(_c.get_indices().tolist())
+    if _fixed_indices:
+        _symbols = io_bundle.structure.get_chemical_symbols()
+        # Build per-species index lists for all fixed atoms
+        _species_groups: dict = {}
+        for _i in _fixed_indices:
+            _species_groups.setdefault(_symbols[_i], []).append(_i)
+        # Single mobile group: everything that is not frozen
+        _all_fixed_ids = " ".join(str(i + 1) for i in sorted(_fixed_indices))
+        lmp_str_lst += [
+            f"group frozen_all id {_all_fixed_ids}",
+            "group mobile_el subtract all frozen_all",
+        ]
+        for _el, _el_indices in _species_groups.items():
+            _el_lower = _el.lower()
+            _ids_str = " ".join(str(i + 1) for i in sorted(_el_indices))
+            lmp_str_lst += [
+                f"group frozen_{_el_lower} id {_ids_str}",
+                f"compute f_{_el_lower} frozen_{_el_lower} group/group mobile_el",
+                (
+                    f"fix out_{_el_lower} all ave/time 1 1 ${{dumptime}}"
+                    f" c_f_{_el_lower}[1] c_f_{_el_lower}[2] c_f_{_el_lower}[3]"
+                    f' file electrode_force_{_el}.txt title1 "# step fx fy fz"'
+                ),
+            ]
+        io_bundle.has_electrode_force = True
 
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
@@ -492,14 +537,16 @@ def RunLammpsCalculation(
                 )
                 + f" -in {io_bundle.lammps_input_filename}"
             )
-        result = subprocess.run(
+        # run_external, not subprocess.run: `shell=True` means the direct
+        # child is /bin/sh and the MPI ranks are its children, so pressing Stop
+        # has to kill the whole process group or lmp_mpi runs on regardless.
+        # Raises GraphCancelled if it does, which reports this node as
+        # Cancelled rather than Failed.
+        result = run_external(
             lmp_command,
             cwd=io_bundle.working_directory,
-            shell=True,
-            universal_newlines=True,
             env=os.environ.copy(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            label=f"LAMMPS ({lmp_command})",
         )
         if result.returncode != 0:
             error_path = os.path.join(io_bundle.working_directory, "error.msg")
@@ -559,6 +606,34 @@ def ParseLammpsOutput(
     out.species = io_bundle.structure.get_chemical_symbols()
 
     return out
+
+
+@as_function_node
+def ParseElectrodeForce(io_bundle: LammpsIOBundle):
+    """Read per-species electrode_force_{Species}.txt files produced by fix ave/time.
+
+    Returns a dict keyed by chemical symbol, each value a dict with keys
+    'steps', 'fx', 'fy', 'fz' (float arrays, eV/Å, LAMMPS metal units).
+    Returns an empty dict if no electrode force files are found.
+    """
+    import glob
+    import os
+    import numpy as np
+
+    electrode_forces = {}
+    pattern = os.path.join(io_bundle.working_directory, "electrode_force_*.txt")
+    for path in sorted(glob.glob(pattern)):
+        species = os.path.basename(path)[len("electrode_force_"):-len(".txt")]
+        data = np.loadtxt(path, comments="#")
+        if data.ndim == 1:
+            data = data[np.newaxis, :]
+        electrode_forces[species] = {
+            "steps": data[:, 0].astype(int),
+            "fx": data[:, 1],
+            "fy": data[:, 2],
+            "fz": data[:, 3],
+        }
+    return electrode_forces
 
 
 # temporary here, should be included in LammpsStructure?
@@ -730,17 +805,20 @@ def write_lammps_data_full(
         )
     lines.append("")
 
-    # Bonds
-    lines.append("Bonds\n")
-    for b_id, (i, j, btype) in enumerate(bond_list, start=1):
-        lines.append(f"{b_id:6d} {btype:4d} {i+1:6d} {j+1:6d}")
-    lines.append("")
+    # Bonds — omit the section entirely when there are none; LAMMPS rejects an
+    # empty Bonds section even when the header says "0 bonds".
+    if bond_list:
+        lines.append("Bonds\n")
+        for b_id, (i, j, btype) in enumerate(bond_list, start=1):
+            lines.append(f"{b_id:6d} {btype:4d} {i+1:6d} {j+1:6d}")
+        lines.append("")
 
     # Angles
-    lines.append("Angles\n")
-    for a_id, (i, j, k, atype) in enumerate(angle_list, start=1):
-        lines.append(f"{a_id:6d} {atype:4d} {i+1:6d} {j+1:6d} {k+1:6d}")
-    lines.append("")
+    if angle_list:
+        lines.append("Angles\n")
+        for a_id, (i, j, k, atype) in enumerate(angle_list, start=1):
+            lines.append(f"{a_id:6d} {atype:4d} {i+1:6d} {j+1:6d} {k+1:6d}")
+        lines.append("")
 
     return "\n".join(lines)  # ← caller decides what to do with it
 

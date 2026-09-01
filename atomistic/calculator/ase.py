@@ -150,7 +150,7 @@ def Relax(
     from ase.optimize import LBFGS
 
     if opt_parameters is None:
-        opt_parameters = GenericOptimizerSettings()
+        opt_parameters = GenericOptimizerSettings._original_dataclass()
     mode = RelaxMode(opt_mode.lower())
 
     structure = _resolve_atoms(structure).copy()
@@ -270,7 +270,7 @@ def StaticEnergy(
     return energy
 
 
-@as_function_node("out")
+@as_function_node("out", isolate=True)
 def Minimize(
     structure=None,
     engine=None,

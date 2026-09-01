@@ -2,7 +2,7 @@ import os
 import subprocess
 from ase.build import bulk
 from ase.io import write
-from core import as_function_node, Node
+from core import as_function_node, Node, run_external
 
 
 def _write_input(input_dict, working_directory="."):
@@ -59,11 +59,17 @@ def calculate_qe(
         input_dict=input_dict,
         working_directory=working_directory,
     )
-    subprocess.check_output(
-        "mpirun -np 1 pw.x -in input.pwi > output.pwo",
-        cwd=working_directory,
-        shell=True,
+    # run_external kills the whole process group when the run is stopped; see
+    # the note in atomistic/engine/lammps.py.  check_output's raise-on-failure
+    # is kept explicitly, since run_external does not check the return code.
+    _qe_command = "mpirun -np 1 pw.x -in input.pwi > output.pwo"
+    _result = run_external(
+        _qe_command, cwd=working_directory, label=f"Quantum ESPRESSO ({_qe_command})"
     )
+    if _result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            _result.returncode, _qe_command, _result.stdout, _result.stderr
+        )
     result_dict = _collect_output(working_directory=working_directory)
     energy, volume = result_dict["energy"], result_dict["volume"]
     return energy, volume

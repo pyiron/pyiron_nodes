@@ -94,6 +94,15 @@ class OutputCalcMD:
     species: DataArray = EmptyArrayField()
 
 
+@as_out_dataclass_node
+class SimSetupBundle:
+    structure: object = None        # ase.atoms.Atoms
+    water_potential: object = None  # pd.DataFrame (potential config)
+    bond_dict: object = None        # dict | None
+    charges: object = None          # dict of per-species charges
+    electrode_forces: object = None # dict keyed by species (from ParseElectrodeForce), or None
+
+
 @as_inp_dataclass_node
 class InputCalcMD:
     temperature: float = (

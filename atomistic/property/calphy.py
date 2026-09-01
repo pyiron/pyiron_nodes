@@ -771,7 +771,7 @@ def _collect_diagnostics(
     return CalphyDiagnostics.pure_dataclass(**kwargs)
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def SolidFreeEnergy(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True) -> float:
     """
     Calculate the free energy of a solid phase.
@@ -810,7 +810,7 @@ def SolidFreeEnergy(inp, structure: Atoms, potential: str, working_directory: st
     return free_energy, diagnostics
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def LiquidFreeEnergy(
     inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True
 ) -> float:
@@ -853,7 +853,7 @@ def LiquidFreeEnergy(
     return free_energy, diagnostics
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def SolidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True):
     """
     Calculate the free energy of a solid phase as a function of temperature.
@@ -887,7 +887,7 @@ def SolidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_direc
     return free_energy, temperature, diagnostics
 
 
-@as_function_node
+@as_function_node(isolate=True)
 def LiquidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True):
     """
     Calculate the free energy of a liquid phase as a function of temperature.

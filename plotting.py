@@ -9,7 +9,7 @@ from typing import Optional, Literal
 import numpy as np
 import pandas as pd
 
-from core import as_function_node, as_inp_dataclass_node
+from core import as_function_node, as_inp_dataclass_node, PortList
 
 
 @as_inp_dataclass_node
@@ -104,55 +104,65 @@ def PlotDataFrame(
 
 
 @as_function_node("fig")
-def MergePlots(fig1, fig2):
-    """
-    Merge two Matplotlib Figure objects by overlaying their plot data onto a single figure.
-    Supports line plots and scatter plots from the first Axes of each input figure.
-    Returns a new Figure containing the combined data.
+def MergePlots(figures: PortList = PortList(["fig1", "fig2"])):
+    """Overlay an arbitrary number of Matplotlib figures onto one axes.
+
+    Each input port's figure is drawn in a distinct categorical color so the
+    source of every line is immediately identifiable.  Add or remove input
+    ports with the + / × buttons on the node.  A legend is always shown.
     """
     from matplotlib import pyplot as plt
     import matplotlib.collections as mcoll
 
-    # Create a new figure and axis.
+    # Categorical palette — colorblind-distinguishable, light-background
+    COLORS = [
+        "#3B82F6", "#EF4444", "#10B981", "#F59E0B",
+        "#8B5CF6", "#EC4899", "#14B8A6", "#F97316",
+    ]
+    LINESTYLES = ["-", "--", "-.", ":"]
+
     fig, ax = plt.subplots()
 
-    def _copy_axes(source_ax):
-        # Copy line plots
+    def _copy_axes(source_ax, color, linestyle_cycle):
         for line in source_ax.get_lines():
             x = line.get_xdata()
             y = line.get_ydata()
             label = line.get_label()
-            ax.plot(x, y, label=label, color=line.get_color(), marker=line.get_marker())
-        # Copy scatter plots (PathCollection)
+            ls = next(linestyle_cycle)
+            ax.plot(
+                x, y,
+                color=color,
+                linestyle=ls,
+                linewidth=line.get_linewidth(),
+                marker=line.get_marker(),
+                alpha=line.get_alpha() if line.get_alpha() is not None else 1.0,
+                label=None if label.startswith("_") else label,
+            )
         for col in source_ax.collections:
             if isinstance(col, mcoll.PathCollection):
                 offsets = col.get_offsets()
                 if offsets.size == 0:
                     continue
-                x = offsets[:, 0]
-                y = offsets[:, 1]
                 label = col.get_label()
-                ax.scatter(x, y, label=label, color=col.get_facecolor()[0])
+                ax.scatter(
+                    offsets[:, 0], offsets[:, 1],
+                    color=color,
+                    label=None if label.startswith("_") else label,
+                )
 
-    merged_handles = []
-    merged_labels = []
+    from itertools import cycle
 
-    if fig1 is not None:
-        _copy_axes(fig1.axes[0])
-        h, l = fig1.axes[0].get_legend_handles_labels()
-        merged_handles.extend(h)
-        merged_labels.extend(l)
+    for color, fig_in in zip(COLORS, figures.values()):
+        if fig_in is None:
+            continue
+        _copy_axes(fig_in.axes[0], color, cycle(LINESTYLES))
 
-    if fig2 is not None:
-        _copy_axes(fig2.axes[0])
-        h, l = fig2.axes[0].get_legend_handles_labels()
-        merged_handles.extend(h)
-        merged_labels.extend(l)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles=handles, labels=labels, frameon=False)
 
-    if merged_handles:
-        ax.legend(handles=merged_handles, labels=merged_labels)
-    else:
-        ax.legend()
+    ax.yaxis.grid(True, color="#E5E7EB", linewidth=0.6, zorder=0)
+    ax.set_axisbelow(True)
     return fig
 
 
