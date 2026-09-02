@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import iterate
@@ -8,8 +9,6 @@ from pyiron_nodes.atomistic.calculator.ase import (
 )
 from pyiron_nodes.math_utils import Linspace
 from pyiron_nodes.plotting import PlotDataFrameXY
-from core import Workflow
-from core import group_node
 
 wf = Workflow("optimize_loop")
 

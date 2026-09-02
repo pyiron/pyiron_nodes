@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.engine.lammps import ListPotentials, CreateLammpsStructure
 from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
@@ -11,9 +12,7 @@ from pyiron_nodes.atomistic.diffusion import (
     PlotNEBPath,
     RunNEB,
 )
-from pyiron_nodes.plotting import Plot
 from pyiron_nodes.controls import pick_element
-from core import Workflow
 
 wf = Workflow("h_diffusion_neb_lammps")
 

@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.atomistic.property.calphy import (
@@ -11,8 +12,6 @@ from pyiron_nodes.atomistic.property.calphy import (
 )
 from pyiron_nodes.atomistic.engine.lammps import ListPotentials
 from pyiron_nodes.atomistic.structure.transform import Rattle
-from core import Workflow
-from core import group_node
 
 wf = Workflow("calph_melt")
 

@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
@@ -6,7 +7,6 @@ from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
-from core import Workflow
 
 wf = Workflow("h_diffusion_in_fcc_al")
 

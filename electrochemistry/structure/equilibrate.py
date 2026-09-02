@@ -8,7 +8,7 @@ ANION = "F"
 
 
 @as_function_node
-def WaterPotential(
+def TIP3PSlabPotential(
     metal: str = "Al",
     metal_charge: float = 0.0,
     neon_charge: float = 0.0,
@@ -18,7 +18,7 @@ def WaterPotential(
 ):
     import pandas
 
-    water_potential = pandas.DataFrame(
+    slab_potential = pandas.DataFrame(
         {
             "Name": ["H2O_tip3p"],
             "Filename": [[]],
@@ -52,8 +52,12 @@ def WaterPotential(
                     "pair_style lj/cut/coul/long 10.0\n",
                     "pair_coeff * * 0.000 0.000 \n",
                     "pair_coeff 2 2 0.102 3.188 \n",
+                    "pair_coeff 3 3 0.350 2.62  \n",
+                    "pair_coeff 4 4 0.010 3.000 \n",
                     "pair_coeff 2 3 {:.4} {:.4} \n".format(epsilon, sigma),
                     "pair_coeff 2 4 {:.4} {:.4} \n".format(epsilon, sigma),
+                    "pair_coeff 1 3 0.010 1.60 \n",
+                    "pair_coeff 1 4 0.010 1.60 \n",
                     "bond_style  harmonic\n",
                     "bond_coeff  1 450 0.9572\n",
                     "angle_style harmonic\n",
@@ -81,7 +85,7 @@ def WaterPotential(
         }
     }
 
-    return water_potential, bond_dict
+    return slab_potential, bond_dict
 
 
 @as_function_node
@@ -212,7 +216,7 @@ def IonPotential(
         "\n",
     ]
 
-    water_potential = pd.DataFrame(
+    slab_potential = pd.DataFrame(
         {
             "Name": ["H2O_tip3p"],
             "Filename": [[]],
@@ -237,20 +241,7 @@ def IonPotential(
         }
     }
 
-    charges = {
-        "metal": metal,
-        "metal_charge": metal_charge,
-        "cation": cation,
-        "cation_charge": cation_charge,
-        "anion": anion,
-        "anion_charge": anion_charge,
-        "neon_charge": neon_charge,
-        "O_charge": -0.830,
-        "H_charge": 0.415,
-        "quasi_2d": quasi_2d,
-    }
-
-    return water_potential, bond_dict, charges
+    return slab_potential, bond_dict
 
 
 # @as_function_node("Ion_density")

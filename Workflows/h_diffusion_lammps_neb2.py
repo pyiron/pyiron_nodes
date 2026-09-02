@@ -1,3 +1,4 @@
+from core import Workflow
 from pyiron_nodes.atomistic.diffusion import (
     AddInterstitialH,
     LammpsAseEngine,
@@ -12,8 +13,6 @@ from pyiron_nodes.atomistic.calculator.ase import (
     Relax,
 )
 from pyiron_nodes.atomistic.structure.transform import Repeat
-from core import Workflow
-from core import group_node
 
 wf = Workflow("h_diffusion_lammps_neb2")
 

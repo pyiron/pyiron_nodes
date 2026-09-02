@@ -1,0 +1,1 @@
+[![codecov](https://codecov.io/gh/pyiron/pyiron_nodes/graph/badge.svg?token=95M3R0Z5KF)](https://codecov.io/gh/pyiron/pyiron_nodes)
