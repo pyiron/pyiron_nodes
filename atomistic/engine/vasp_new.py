@@ -170,6 +170,17 @@ def _ordered_elements(atoms: Atoms) -> list[str]:
             elements.append(sym)
     return elements
 
+def _grouped_atoms(atoms: Atoms) -> Atoms:
+    """Reorder atoms into contiguous blocks, preserving first-appearance order.
+
+    Guarantees POSCAR (written with sort_structure=False) will have exactly
+    one block per species, matching `_ordered_elements` / `_get_potcar_paths`.
+    """
+    symbols = atoms.get_chemical_symbols()
+    order = _ordered_elements(atoms)
+    idx = [i for el in order for i, s in enumerate(symbols) if s == el]
+    return atoms[idx]
+
 
 def _get_potcar_paths(atoms: Atoms, functional: str, lib_path: str) -> list[str]:
     """POTCAR file paths for a structure, one per species, in POSCAR order.
@@ -801,8 +812,12 @@ def CreateVaspInputResources(
     io_bundle.working_directory = workdir
     os.makedirs(workdir, exist_ok=True)
 
+    #Group atoms by species to ensure the order of POTCAR matches POSCAR
+    unordered_atoms = io_bundle.structure.copy()
+    grouped_atoms = _grouped_atoms(unordered_atoms)
+
     # POSCAR
-    pmg_structure = AseAtomsAdaptor.get_structure(io_bundle.structure)
+    pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
     pmg_structure.to(fmt="poscar", filename=os.path.join(workdir, "POSCAR"))
 
     # INCAR
@@ -1008,6 +1023,9 @@ def ParseVaspOutput(
         out = _md_from_output(output, trajectory, os.path.join(workdir, "vasprun.xml"))
     elif calc is not None and calc.minimization is not None:
         out = OutputCalcMinimize.pure_dataclass()
+        out.cells = np.asarray(output["generic"]["cells"])
+        out.species = trajectory[0].get_chemical_symbols()
+        out.positions = np.asarray(output["generic"]["positions"])
         out.initial = _static_from_output(output, 0, trajectory[0])
         out.final = _static_from_output(output, -1, last_structure)
         out.is_converged = converged
@@ -1017,7 +1035,6 @@ def ParseVaspOutput(
 
     return (
         out,
-        trajectory,
         last_structure,
         total_energy,
         magnetic_moments,
