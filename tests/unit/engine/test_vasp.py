@@ -71,6 +71,7 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
     _ordered_elements,
     _output_parser_class,
     _parse_velocities,
+    _render_vasp_input_files,
     _SkippedVolumetricData,
     _static_from_output,
     _trajectory_from_output,
@@ -351,14 +352,27 @@ class TestMergeVaspInput(unittest.TestCase):
 
 class TestCreateVaspInputResources(unittest.TestCase):
     def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.root = self._tmp.name
+        # fake POTCAR library so we don't need the real potential files
+        self.potcar_lib = os.path.join(self.root, "potentials")
+        self.symbol = "Fe_dummy"
+        os.makedirs(os.path.join(self.potcar_lib, self.symbol))
+        self.potcar_content = "DUMMY POTCAR for Fe\n"
+        with open(os.path.join(self.potcar_lib, self.symbol, "POTCAR"), "w") as f:
+            f.write(self.potcar_content)
         self.structure = bulk("Fe", cubic=True)  # 2 Fe atoms
+
+    def tearDown(self):
+        self._tmp.cleanup()
 
     def _create(self, working_directory=None, scf=None, **kw):
         return CreateVaspInputResources._original_func(
             structure=self.structure,
             calc=VaspInput(scf=scf or make_scf()),
-            potcar_lib_path="/some/potcar/lib",
+            potcar_lib_path=self.potcar_lib,
             working_directory=working_directory,
+            potcar_symbols=[self.symbol],
             **kw,
         )
 
@@ -372,19 +386,42 @@ class TestCreateVaspInputResources(unittest.TestCase):
         int(io_bundle.working_directory, 16)  # valid hex
 
     def test_no_files_or_directories_are_created(self):
-        # file writing happens later, in RunVaspCalculation
-        with TemporaryDirectory() as tmp:
-            workdir = os.path.join(tmp, "run")
-            self._create(working_directory=workdir)
-            self.assertFalse(os.path.exists(workdir))
+        # only the content strings are rendered here — RunVaspCalculation
+        # is the one that writes them to disk
+        workdir = os.path.join(self.root, "run")
+        self._create(working_directory=workdir)
+        self.assertFalse(os.path.exists(workdir))
+
+    def test_renders_all_four_file_contents(self):
+        io_bundle = self._create()
+        self.assertIsInstance(io_bundle.poscar_content, str)
+        self.assertIsInstance(io_bundle.incar_content, str)
+        self.assertIsInstance(io_bundle.potcar_content, str)
+        self.assertIsInstance(io_bundle.kpoints_content, str)
+
+    def test_incar_content_roundtrips(self):
+        io_bundle = self._create(scf=make_scf(energy_cutoff=350.0))
+        incar = Incar.from_str(io_bundle.incar_content)
+        self.assertEqual(incar["ENCUT"], 350.0)
+        self.assertEqual(incar["IBRION"], -1)
+
+    def test_kpoints_content_has_the_mesh(self):
+        io_bundle = self._create(scf=make_scf(kpoints="6 6 6"))
+        self.assertIn("6 6 6", io_bundle.kpoints_content)
+
+    def test_potcar_content_is_concatenation(self):
+        io_bundle = self._create()
+        self.assertEqual(io_bundle.potcar_content, self.potcar_content)
+
+    def test_bad_kpoints_string_raises(self):
+        with self.assertRaises(ValueError):
+            self._create(scf=make_scf(kpoints="4 4"))
 
     def test_bundle_carries_through_the_given_settings(self):
-        io_bundle = self._create(
-            working_directory="/some/run/dir", potcar_symbols=["Fe_dummy"]
-        )
+        io_bundle = self._create(working_directory="/some/run/dir")
         self.assertIs(io_bundle.structure, self.structure)
-        self.assertEqual(io_bundle.potcar_lib_path, "/some/potcar/lib")
-        self.assertEqual(io_bundle.potcar_symbols, ["Fe_dummy"])
+        self.assertEqual(io_bundle.potcar_lib_path, self.potcar_lib)
+        self.assertEqual(io_bundle.potcar_symbols, [self.symbol])
 
 
 # ── hashing / potcar lookup ────────────────────────────────────────────────────
@@ -443,13 +480,17 @@ class TestRunVaspCalculation(unittest.TestCase):
         self._tmp.cleanup()
 
     def _bundle(self, scf=None):
-        return VaspInputResources(
+        # RunVaspCalculation only dumps content that was already rendered
+        # (normally by CreateVaspInputResources) onto the bundle.
+        io_bundle = VaspInputResources(
             structure=self.structure,
             calc=VaspInput(scf=scf or make_scf()),
             potcar_lib_path=self.potcar_lib,
             working_directory=self.workdir,
             potcar_symbols=[self.symbol],
         )
+        _render_vasp_input_files(io_bundle)
+        return io_bundle
 
     def test_debug_does_not_launch_vasp(self):
         io_bundle, stdout = RunVaspCalculation._original_func(self.io, debug=True)
@@ -479,11 +520,6 @@ class TestRunVaspCalculation(unittest.TestCase):
         RunVaspCalculation._original_func(self.io, debug=True)
         with open(os.path.join(self.workdir, "POTCAR")) as f:
             self.assertEqual(f.read(), self.potcar_content)
-
-    def test_bad_kpoints_string_raises(self):
-        io_bundle = self._bundle(scf=make_scf(kpoints="4 4"))
-        with self.assertRaises(ValueError):
-            RunVaspCalculation._original_func(io_bundle, debug=True)
 
     def test_nonzero_exit_raises_and_writes_error_msg(self):
         with self.assertRaises(RuntimeError):

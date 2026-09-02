@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -152,6 +151,12 @@ class VaspInputResources:
     working_directory: Optional[str] = None
     potcar_symbols: Optional[list[str]] = None  # override default CSV symbol selection
     extra_incar: Optional[dict] = None  # additional INCAR tags beyond VaspInput
+    # rendered file content, filled in by CreateVaspInputResources and written to
+    # disk by RunVaspCalculation
+    poscar_content: Optional[str] = None
+    incar_content: Optional[str] = None
+    potcar_content: Optional[str] = None
+    kpoints_content: Optional[str] = None
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -753,9 +758,11 @@ def MergeVaspInput(
     return calc
 
 
-def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
-    """Write POSCAR, INCAR, POTCAR and KPOINTS into ``io_bundle.working_directory``.
+def _render_vasp_input_files(io_bundle: "VaspInputResources") -> None:
+    """Render POSCAR/INCAR/POTCAR/KPOINTS content and store it on ``io_bundle``.
 
+    Fills ``poscar_content``, ``incar_content``, ``potcar_content`` and
+    ``kpoints_content``. No disk I/O other than reading the POTCAR library.
     POTCAR is the per-species pseudopotentials concatenated in POSCAR order,
     looked up from the bundled CSV under ``potcar_lib_path`` unless
     ``potcar_symbols`` names the folders explicitly. KPOINTS is a Gamma-centred
@@ -766,22 +773,19 @@ def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
     ValueError
         If ``scf.kpoints`` is not three integers.
     """
-    workdir = io_bundle.working_directory
-    os.makedirs(workdir, exist_ok=True)
-
     # Group atoms by species to ensure the order of POTCAR matches POSCAR
     unordered_atoms = io_bundle.structure.copy()
     grouped_atoms = _grouped_atoms(unordered_atoms)
 
     # POSCAR
     pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
-    pmg_structure.to(fmt="poscar", filename=os.path.join(workdir, "POSCAR"))
+    io_bundle.poscar_content = pmg_structure.to(fmt="poscar")
 
     # INCAR
     incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
-    incar.write_file(os.path.join(workdir, "INCAR"))
+    io_bundle.incar_content = str(incar)
 
-    # POTCAR — look up paths from CSV, concatenate files into workdir/POTCAR
+    # POTCAR — look up paths from CSV, concatenate files in POSCAR order
     potcar_paths = (
         [
             os.path.join(io_bundle.potcar_lib_path, s, "POTCAR")
@@ -794,20 +798,36 @@ def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
             io_bundle.potcar_lib_path,
         )
     )
-    with open(os.path.join(workdir, "POTCAR"), "wb") as wfd:
-        for p in potcar_paths:
-            with open(p, "rb") as fd:
-                shutil.copyfileobj(fd, wfd)
+    potcar_parts = []
+    for p in potcar_paths:
+        with open(p, "r") as fd:
+            potcar_parts.append(fd.read())
+    io_bundle.potcar_content = "".join(potcar_parts)
 
     # KPOINTS — Gamma-centred mesh parsed from the "kx ky kz" string on InputSCF
-    kpoints_path = os.path.join(workdir, "KPOINTS")
     mesh = [int(k) for k in io_bundle.calc.scf.kpoints.split()]
     if len(mesh) != 3:
         raise ValueError(
             f'scf.kpoints must be three integers like "4 4 4", got: '
             f"{io_bundle.calc.scf.kpoints!r}"
         )
-    Kpoints.gamma_automatic(mesh).write_file(kpoints_path)
+    io_bundle.kpoints_content = str(Kpoints.gamma_automatic(mesh))
+
+
+def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
+    """Dump the rendered file content onto disk in ``io_bundle.working_directory``."""
+    workdir = io_bundle.working_directory
+    os.makedirs(workdir, exist_ok=True)
+
+    files = {
+        "POSCAR": io_bundle.poscar_content,
+        "INCAR": io_bundle.incar_content,
+        "POTCAR": io_bundle.potcar_content,
+        "KPOINTS": io_bundle.kpoints_content,
+    }
+    for name, content in files.items():
+        with open(os.path.join(workdir, name), "w") as f:
+            f.write(content)
 
 
 @as_function_node
@@ -818,13 +838,15 @@ def CreateVaspInputResources(
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
 ) -> VaspInputResources:
-    """Resolve the working directory and return the resource bundle.
+    """Resolve the working directory and render the VASP input file content.
 
-    The input files themselves (POSCAR, INCAR, POTCAR, KPOINTS) are written
-    later, by ``RunVaspCalculation``. This node only decides where they will
-    go: ``working_directory`` is used as-is when given, otherwise a hash of
-    the calculation is used instead (see ``_generate_hash``), so two
-    identical calculations map to the same directory.
+    Renders POSCAR/INCAR/POTCAR/KPOINTS as strings (see
+    ``_render_vasp_input_files``) and stores them on the returned bundle —
+    nothing is written to disk here. ``RunVaspCalculation`` dumps that content
+    into the actual files just before launching VASP. ``working_directory`` is
+    used as-is when given, otherwise a hash of the calculation is used instead
+    (see ``_generate_hash``), so two identical calculations map to the same
+    directory.
 
     Parameters
     ----------
@@ -842,7 +864,13 @@ def CreateVaspInputResources(
     Returns
     -------
     VaspInputResources
-        The bundle (with ``working_directory`` resolved) that the run node takes.
+        The bundle (with ``working_directory`` resolved and file content
+        rendered) that the run node takes.
+
+    Raises
+    ------
+    ValueError
+        If ``scf.kpoints`` is not three integers.
     """
     io_bundle = VaspInputResources(
         structure=structure,
@@ -856,6 +884,8 @@ def CreateVaspInputResources(
     if io_bundle.working_directory is None:
         io_bundle.working_directory = _generate_hash(io_bundle)
 
+    _render_vasp_input_files(io_bundle)
+
     return io_bundle
 
 
@@ -867,18 +897,21 @@ def RunVaspCalculation(
     threads_per_core: int = 1,
     debug: bool = False,
 ):
-    """Write the VASP input files and run VASP in the bundle's working directory.
+    """Dump the rendered VASP input files and run VASP in the working directory.
 
-    Writes POSCAR, INCAR, POTCAR and KPOINTS into ``io_bundle.working_directory``
-    (see ``_write_vasp_input_files``), then executes ``vasp_command`` (or
-    ``bash <run_script_path> <threads_per_core>`` when ``run_script_path`` points
-    at an existing file) with the working directory as CWD. A non-zero exit
-    writes stdout+stderr to ``error.msg`` and raises ``RuntimeError``.
+    Writes POSCAR/INCAR/POTCAR/KPOINTS into ``io_bundle.working_directory`` from
+    the content ``CreateVaspInputResources`` already rendered onto the bundle
+    (``poscar_content`` etc — see ``_write_vasp_input_files``), then executes
+    ``vasp_command`` (or ``bash <run_script_path> <threads_per_core>`` when
+    ``run_script_path`` points at an existing file) with the working directory
+    as CWD. A non-zero exit writes stdout+stderr to ``error.msg`` and raises
+    ``RuntimeError``.
 
     Parameters
     ----------
     io_bundle
-        The resource bundle from ``CreateVaspInputResources``.
+        The resource bundle from ``CreateVaspInputResources``, with its file
+        content already rendered.
     vasp_command
         Shell command that launches VASP; empty falls back to a
         ``module load vasp && mpiexec`` line built from ``threads_per_core``.
@@ -896,11 +929,6 @@ def RunVaspCalculation(
     (io_bundle, stdout)
         The same bundle (for chaining into ``ParseVaspOutput``) and the run's
         stdout (the working directory in ``debug`` mode).
-
-    Raises
-    ------
-    ValueError
-        If ``scf.kpoints`` is not three integers.
     """
     _write_vasp_input_files(io_bundle)
 

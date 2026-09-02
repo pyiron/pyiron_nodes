@@ -26,14 +26,15 @@ wf.minimization = InputMinimizationVASP(max_ionic_steps=50)
 # combine the input pieces into one VaspInput
 wf.calc = MergeVaspInput(scf=wf.scf, minimization=wf.minimization)
 
-# resolve the working directory the input files will be written into
+# resolve the working directory and render POSCAR / INCAR / POTCAR / KPOINTS
+# content as strings (nothing is written to disk yet)
 wf.CreateVaspInputResources = CreateVaspInputResources(
     structure=wf.Bulk,
     calc=wf.calc,
     working_directory="./vasp_bulk_relax_run",
 )
 
-# write POSCAR / INCAR / POTCAR / KPOINTS and run VASP
+# write the rendered files to disk and run VASP
 # (set debug=True to skip the launch and just return the working dir)
 wf.RunVaspCalculation = RunVaspCalculation(
     io_bundle=wf.CreateVaspInputResources, debug=False
