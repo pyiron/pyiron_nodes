@@ -27,10 +27,10 @@ from typing import Literal, Optional
 from core import as_function_node
 from pyiron_nodes.atomistic.structure._atoms import OutputAtoms, _ase_to_data
 
-
 # =====================================================================
 # Internal CSL / geometry engine (private helpers)
 # =====================================================================
+
 
 def _cubic_lattice(a: float = 1.0) -> np.ndarray:
     return a * np.eye(3)
@@ -54,24 +54,24 @@ def _bcc_primitive_lattice(a: float = 1.0) -> np.ndarray:
 
 
 _STRUCTURE_BASES = {
-    'sc':      [(0, 0, 0)],
-    'bcc':     [(0, 0, 0)],                       # 1-atom BCC primitive cell
-    'fcc':     [(0, 0, 0)],                       # 1-atom FCC primitive cell
-    'hcp':     [(0, 0, 0), (1 / 3, 2 / 3, 1 / 2)],
-    'diamond': [(0, 0, 0), (0.25, 0.25, 0.25)],  # 2-atom FCC primitive cell;
-                                                  # Lm_prim @ [1/4,1/4,1/4] = a*(1/4,1/4,1/4) ✓
+    "sc": [(0, 0, 0)],
+    "bcc": [(0, 0, 0)],  # 1-atom BCC primitive cell
+    "fcc": [(0, 0, 0)],  # 1-atom FCC primitive cell
+    "hcp": [(0, 0, 0), (1 / 3, 2 / 3, 1 / 2)],
+    "diamond": [(0, 0, 0), (0.25, 0.25, 0.25)],  # 2-atom FCC primitive cell;
+    # Lm_prim @ [1/4,1/4,1/4] = a*(1/4,1/4,1/4) ✓
 }
-_CUBIC_STRUCTURES = {'sc', 'bcc', 'fcc', 'diamond'}
-_HEX_STRUCTURES = {'hcp'}
+_CUBIC_STRUCTURES = {"sc", "bcc", "fcc", "diamond"}
+_HEX_STRUCTURES = {"hcp"}
 
 
 def _rotation_matrix(axis, angle_deg: float) -> np.ndarray:
     axis = np.asarray(axis, dtype=float)
     axis = axis / np.linalg.norm(axis)
     theta = np.radians(angle_deg)
-    K = np.array([[0, -axis[2], axis[1]],
-                  [axis[2], 0, -axis[0]],
-                  [-axis[1], axis[0], 0]])
+    K = np.array(
+        [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
+    )
     return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
 
 
@@ -81,7 +81,10 @@ def _hex_dir_to_cart(Lm: np.ndarray, u, v, w) -> np.ndarray:
 
 # ── CSL search ────────────────────────────────────────────────────────
 
-def _csl_from_rotation(Lm, R, target_sigma=None, max_search=None, tol=1e-4, pool_size=100):
+
+def _csl_from_rotation(
+    Lm, R, target_sigma=None, max_search=None, tol=1e-4, pool_size=100
+):
     M = np.linalg.inv(Lm) @ R @ Lm
     if max_search is None:
         max_search = 40 if target_sigma is None else int(3 * np.sqrt(target_sigma)) + 6
@@ -143,8 +146,8 @@ def _cubic_sigma_search(target_sigma: int, max_index: int = 8) -> list:
         axis = tuple(x // g2 for x in bcd)
         key = (round(angle, 4), axis)
         if key not in results:
-            results[key] = {'sigma': sigma, 'angle_deg': round(angle, 4), 'axis': axis}
-    return sorted(results.values(), key=lambda r: (r['axis'], r['angle_deg']))
+            results[key] = {"sigma": sigma, "angle_deg": round(angle, 4), "axis": axis}
+    return sorted(results.values(), key=lambda r: (r["axis"], r["angle_deg"]))
 
 
 def _hexagonal_caxis_sigma_search(target_sigma: int, max_hk: int = 40) -> list:
@@ -167,9 +170,12 @@ def _hexagonal_caxis_sigma_search(target_sigma: int, max_hk: int = 40) -> list:
                 continue
             key = round(angle, 4)
             if key not in results:
-                results[key] = {'sigma': sigma, 'angle_deg': round(angle, 4),
-                                 'axis': (0, 0, 0, 1)}
-    return sorted(results.values(), key=lambda r: r['angle_deg'])
+                results[key] = {
+                    "sigma": sigma,
+                    "angle_deg": round(angle, 4),
+                    "axis": (0, 0, 0, 1),
+                }
+    return sorted(results.values(), key=lambda r: r["angle_deg"])
 
 
 def _rational_residual(M, q):
@@ -177,10 +183,18 @@ def _rational_residual(M, q):
     return np.max(np.abs(qM - np.round(qM)))
 
 
-def _general_axis_sigma_search(Lm, axis, target_sigma, angle_step=0.05,
-                                coarse_tol=0.06, max_denom=None, verify_tol=1e-4) -> list:
+def _general_axis_sigma_search(
+    Lm,
+    axis,
+    target_sigma,
+    angle_step=0.05,
+    coarse_tol=0.06,
+    max_denom=None,
+    verify_tol=1e-4,
+) -> list:
     try:
         from scipy.optimize import minimize_scalar
+
         have_scipy = True
     except ImportError:
         have_scipy = False
@@ -220,8 +234,9 @@ def _general_axis_sigma_search(Lm, axis, target_sigma, angle_step=0.05,
     for seed in seeds:
         lo, hi = max(seed - 3 * angle_step, 1e-6), seed + 3 * angle_step
         if have_scipy:
-            res = minimize_scalar(residual_fn, bounds=(lo, hi), method='bounded',
-                                   options={'xatol': 1e-7})
+            res = minimize_scalar(
+                residual_fn, bounds=(lo, hi), method="bounded", options={"xatol": 1e-7}
+            )
             refined = res.x
         else:
             for _ in range(60):
@@ -234,17 +249,24 @@ def _general_axis_sigma_search(Lm, axis, target_sigma, angle_step=0.05,
             refined = (lo + hi) / 2
 
         R = _rotation_matrix(axis, refined)
-        sigma, basis = _csl_from_rotation(Lm, R, target_sigma=target_sigma, tol=verify_tol)
+        sigma, basis = _csl_from_rotation(
+            Lm, R, target_sigma=target_sigma, tol=verify_tol
+        )
         if sigma == target_sigma:
             key = round(refined, 3)
             if key not in found:
-                found[key] = {'sigma': sigma, 'angle_deg': round(refined, 4),
-                              'axis': tuple(np.round(axis, 4)), 'basis': basis}
+                found[key] = {
+                    "sigma": sigma,
+                    "angle_deg": round(refined, 4),
+                    "axis": tuple(np.round(axis, 4)),
+                    "basis": basis,
+                }
 
-    return sorted(found.values(), key=lambda r: r['angle_deg'])
+    return sorted(found.values(), key=lambda r: r["angle_deg"])
 
 
 # ── Geometry / supercell helpers ──────────────────────────────────────
+
 
 def _short_inplane_vectors(csl_cart_rows, normal, max_coeff=6, tol=1e-6):
     normal = normal / np.linalg.norm(normal)
@@ -275,9 +297,12 @@ def _short_stacking_vector(Lm, normal, in_plane_vecs, max_coeff=6, tol=1e-6):
         proj = np.dot(v, normal)
         if abs(proj) < tol:
             continue
-        score = (v @ v) / proj ** 2
-        if best is None or score < best_score - 1e-10 or (
-                abs(score - best_score) < 1e-10 and v @ v < best @ best - 1e-10):
+        score = (v @ v) / proj**2
+        if (
+            best is None
+            or score < best_score - 1e-10
+            or (abs(score - best_score) < 1e-10 and v @ v < best @ best - 1e-10)
+        ):
             best, best_score = v, score
     v1, v2 = in_plane_vecs
     A = np.array([v1, v2]).T
@@ -293,8 +318,9 @@ def _short_stacking_vector(Lm, normal, in_plane_vecs, max_coeff=6, tol=1e-6):
 
 def _lattice_points_in_box(Lm, basis_frac, box_vectors, tol=1e-6):
     inv_lat = np.linalg.inv(Lm)
-    corners = np.array([box_vectors @ np.array(bc, dtype=float)
-                         for bc in product([0, 1], repeat=3)])
+    corners = np.array(
+        [box_vectors @ np.array(bc, dtype=float) for bc in product([0, 1], repeat=3)]
+    )
     frac_corners = (inv_lat @ corners.T).T
     lo = np.floor(frac_corners.min(axis=0)).astype(int) - 2
     hi = np.ceil(frac_corners.max(axis=0)).astype(int) + 2
@@ -313,8 +339,9 @@ def _lattice_points_in_box(Lm, basis_frac, box_vectors, tol=1e-6):
     return np.array(positions)
 
 
-def _estimate_supercell(Lm, atoms_per_cell, R, basis, gb_normal,
-                         min_slab_thickness=15.0):
+def _estimate_supercell(
+    Lm, atoms_per_cell, R, basis, gb_normal, min_slab_thickness=15.0
+):
     csl_cart_rows = basis @ Lm.T
     inplane = _short_inplane_vectors(csl_cart_rows, gb_normal)
     if inplane is None:
@@ -334,18 +361,22 @@ def _estimate_supercell(Lm, atoms_per_cell, R, basis, gb_normal,
     n_atoms_1 = round(vol1 * atoms_per_cell / vol_prim)
     n_atoms_2 = round(vol2 * atoms_per_cell / vol_prim)
     return {
-        'inplane_area': area,
-        'thickness_grain1': n1 * proj1,
-        'thickness_grain2': n2 * proj2,
-        'n1': n1, 'n2': n2, 'c1': c1, 'c2': c2, 'v1': v1, 'v2': v2,
-        'total_atoms_estimate': int(n_atoms_1 + n_atoms_2),
+        "inplane_area": area,
+        "thickness_grain1": n1 * proj1,
+        "thickness_grain2": n2 * proj2,
+        "n1": n1,
+        "n2": n2,
+        "c1": c1,
+        "c2": c2,
+        "v1": v1,
+        "v2": v2,
+        "total_atoms_estimate": int(n_atoms_1 + n_atoms_2),
     }
 
 
 def _default_gb_planes(Lm, axis_cart):
-    normals = [('twist', axis_cart)]
-    ref_dirs = [Lm[:, 0], Lm[:, 1], Lm[:, 2],
-                Lm[:, 0] + Lm[:, 1], Lm[:, 0] - Lm[:, 1]]
+    normals = [("twist", axis_cart)]
+    ref_dirs = [Lm[:, 0], Lm[:, 1], Lm[:, 2], Lm[:, 0] + Lm[:, 1], Lm[:, 0] - Lm[:, 1]]
     seen = set()
     for d in ref_dirs:
         n = np.cross(axis_cart, d)
@@ -356,13 +387,14 @@ def _default_gb_planes(Lm, axis_cart):
         if key in seen or tuple(np.round(-n_hat, 3)) in seen:
             continue
         seen.add(key)
-        normals.append(('tilt', n))
+        normals.append(("tilt", n))
     return normals
 
 
 # =====================================================================
 # Public function nodes
 # =====================================================================
+
 
 @as_function_node("options")
 def GrainBoundaryOptions(
@@ -414,9 +446,9 @@ def GrainBoundaryOptions(
     """
     structure = crystalstructure.lower()
     if structure in _CUBIC_STRUCTURES:
-        if structure == 'sc':
+        if structure == "sc":
             Lm = _cubic_lattice(a)
-        elif structure in ('fcc', 'diamond'):
+        elif structure in ("fcc", "diamond"):
             Lm = _fcc_primitive_lattice(a)
         else:  # bcc
             Lm = _bcc_primitive_lattice(a)
@@ -430,9 +462,10 @@ def GrainBoundaryOptions(
         raw = _hexagonal_caxis_sigma_search(sigma)
         for uvw in [(1, 0, 0), (1, 1, 0), (2, -1, 0), (1, 0, 1), (1, 1, 1)]:
             axis_cart = _hex_dir_to_cart(Lm, *uvw)
-            for f in _general_axis_sigma_search(Lm, axis_cart, sigma,
-                                                 angle_step=angle_step):
-                f['axis'] = uvw
+            for f in _general_axis_sigma_search(
+                Lm, axis_cart, sigma, angle_step=angle_step
+            ):
+                f["axis"] = uvw
                 raw.append(f)
     else:
         raise ValueError(
@@ -442,7 +475,7 @@ def GrainBoundaryOptions(
 
     options = []
     for item in raw:
-        axis_label, angle = item['axis'], item['angle_deg']
+        axis_label, angle = item["axis"], item["angle_deg"]
         if structure in _HEX_STRUCTURES and axis_label == (0, 0, 0, 1):
             axis_cart = np.array([0.0, 0.0, 1.0])
         elif structure in _HEX_STRUCTURES:
@@ -457,28 +490,31 @@ def GrainBoundaryOptions(
 
         axis_norm = axis_cart / np.linalg.norm(axis_cart)
         for plane_type, normal in _default_gb_planes(Lm, axis_norm):
-            info = _estimate_supercell(Lm, atoms_per_cell, R, basis,
-                                        normal, min_slab_thickness)
+            info = _estimate_supercell(
+                Lm, atoms_per_cell, R, basis, normal, min_slab_thickness
+            )
             if info is None:
                 continue
-            options.append({
-                'sigma': sigma,
-                'crystalstructure': structure,
-                'axis': axis_label,
-                'angle_deg': angle,
-                'boundary_type': plane_type,
-                'gb_normal': normal / np.linalg.norm(normal),
-                'R': R,
-                'basis': basis,
-                'Lm': Lm,
-                'atoms_per_cell': atoms_per_cell,
-                'basis_frac': _STRUCTURE_BASES[structure],
-                **info,
-            })
+            options.append(
+                {
+                    "sigma": sigma,
+                    "crystalstructure": structure,
+                    "axis": axis_label,
+                    "angle_deg": angle,
+                    "boundary_type": plane_type,
+                    "gb_normal": normal / np.linalg.norm(normal),
+                    "R": R,
+                    "basis": basis,
+                    "Lm": Lm,
+                    "atoms_per_cell": atoms_per_cell,
+                    "basis_frac": _STRUCTURE_BASES[structure],
+                    **info,
+                }
+            )
 
     import pandas as pd
 
-    df = pd.DataFrame(sorted(options, key=lambda o: o['total_atoms_estimate']))
+    df = pd.DataFrame(sorted(options, key=lambda o: o["total_atoms_estimate"]))
     df = df.reset_index(drop=True)
     return df
 
@@ -527,11 +563,11 @@ def BuildGrainBoundary(
     from ase import Atoms
 
     option = options.iloc[index]
-    Lm = option['Lm']
-    R = option['R']
-    basis = option['basis']
-    normal = option['gb_normal']
-    basis_frac = option['basis_frac']
+    Lm = option["Lm"]
+    R = option["R"]
+    basis = option["basis"]
+    normal = option["gb_normal"]
+    basis_frac = option["basis_frac"]
 
     # Symmetric convention: split the misorientation equally between the two grains.
     # Extract rotation axis from R (real eigenvector with eigenvalue ≈ 1), then
@@ -539,10 +575,10 @@ def BuildGrainBoundary(
     vals, vecs = np.linalg.eig(R)
     axis_cart = vecs[:, np.argmin(np.abs(vals - 1.0))].real
     axis_cart = axis_cart / np.linalg.norm(axis_cart)
-    R_sym = _rotation_matrix(axis_cart, -option['angle_deg'] / 2)
+    R_sym = _rotation_matrix(axis_cart, -option["angle_deg"] / 2)
 
     Lm1 = R_sym @ Lm
-    Lm2 = R_sym @ R @ Lm          # = R(+θ/2) @ Lm
+    Lm2 = R_sym @ R @ Lm  # = R(+θ/2) @ Lm
 
     csl_cart_rows = (R_sym @ (basis @ Lm.T).T).T
     normal = R_sym @ normal
@@ -584,16 +620,18 @@ def BuildGrainBoundary(
     for i in range(len(cart)):
         if not keep[i]:
             continue
-        d = (np.linalg.norm(cart[i + 1:] - cart[i], axis=1)
-             if i + 1 < len(cart) else np.array([]))
+        d = (
+            np.linalg.norm(cart[i + 1 :] - cart[i], axis=1)
+            if i + 1 < len(cart)
+            else np.array([])
+        )
         close = np.where(d < merge_tol)[0] + (i + 1)
         keep[close] = False
     cart = cart[keep]
 
     cell_rows = cell_cols.T
     pbc = (True, True, vacuum == 0)
-    atoms = Atoms(symbols=[symbol] * len(cart), positions=cart,
-                  cell=cell_rows, pbc=pbc)
+    atoms = Atoms(symbols=[symbol] * len(cart), positions=cart, cell=cell_rows, pbc=pbc)
 
     # Rotate to upper-triangular standard form: a along x, b in xy-plane.
     # Required by nglview (and most visualisers) to display the unit-cell box.
@@ -602,7 +640,7 @@ def BuildGrainBoundary(
     _e3 = np.cross(_c[0], _c[1])
     _e3 = _e3 / np.linalg.norm(_e3)
     _e2 = np.cross(_e3, _e1)
-    _Q = np.array([_e1, _e2, _e3])          # rotation: row vectors = new axes
+    _Q = np.array([_e1, _e2, _e3])  # rotation: row vectors = new axes
     atoms.set_cell(_c @ _Q.T)
     atoms.set_positions(atoms.positions @ _Q.T, apply_constraint=False)
 

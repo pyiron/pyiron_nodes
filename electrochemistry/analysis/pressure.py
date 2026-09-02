@@ -2,7 +2,9 @@ from core import as_function_node
 
 
 @as_function_node
-def ElectrodePressure(initial_structure, electrode_forces: dict, electrode: str = "Al", n_skip: int = 0):
+def ElectrodePressure(
+    initial_structure, electrode_forces: dict, electrode: str = "Al", n_skip: int = 0
+):
     """Convert the z-force on one electrode species (eV/Å) to pressure in Pa.
 
     Parameters

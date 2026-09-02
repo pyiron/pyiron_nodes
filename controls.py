@@ -10,7 +10,6 @@ import pandas as pd
 from core import Node, as_function_node
 from core.node import _node_wants_storage
 
-
 # ---------------------------------------------------------------------------
 # Per-iteration content-addressed storage for higher-order nodes
 # ---------------------------------------------------------------------------
@@ -57,9 +56,10 @@ def _restore_instance(node, db, storage_path) -> bool:
         output_dir = pathlib.Path(record.output_path).parent
         if _pdb.restore_node_outputs(node, output_dir):
             return True
-    if storage_path is not None and (
-        pathlib.Path(storage_path) / f"{node_hash}.hdf5"
-    ).exists():
+    if (
+        storage_path is not None
+        and (pathlib.Path(storage_path) / f"{node_hash}.hdf5").exists()
+    ):
         return _pdb.restore_node_outputs(node, storage_path)
     return False
 
@@ -339,9 +339,11 @@ def _expand_df_columns(data_dict: dict):
 
             parts = []
             if scalar_cols:
-                parts.append(pd.DataFrame(
-                    {col: [vals[i]] * n_inner for col, vals in scalar_cols.items()}
-                ))
+                parts.append(
+                    pd.DataFrame(
+                        {col: [vals[i]] * n_inner for col, vals in scalar_cols.items()}
+                    )
+                )
             parts.extend(p.reset_index(drop=True) for p in inner_parts)
             frames.append(pd.concat(parts, axis=1))
 
@@ -468,8 +470,7 @@ def IterToDataFrame(
         # Node returns a sequence that matches the declared output labels
         for idx, label in enumerate(output_labels):
             data_dict[label] = [
-                out[idx] if e is None else np.nan
-                for out, e in zip(out_lst, err_lst)
+                out[idx] if e is None else np.nan for out, e in zip(out_lst, err_lst)
             ]
 
     else:
@@ -495,7 +496,7 @@ def IterToDataFrame(
     # ------------------------------------------------------------------
     expanded = _expand_df_columns(data_dict)
     if isinstance(expanded, pd.DataFrame):
-        return expanded   # multi-row expansion already produced a DataFrame
+        return expanded  # multi-row expansion already produced a DataFrame
     data_dict = expanded
 
     # ------------------------------------------------------------------

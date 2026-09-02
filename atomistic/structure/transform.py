@@ -718,7 +718,9 @@ def AddSurfaceAdatom(
     ]
     for i in range(int(n_adatoms)):
         dx, dy = offsets[i % len(offsets)]
-        s.append(Atom(element, position=(x0 + dx, y0 + dy, z_max + adatom_height + i * 0.6)))
+        s.append(
+            Atom(element, position=(x0 + dx, y0 + dy, z_max + adatom_height + i * 0.6))
+        )
     return s
 
 

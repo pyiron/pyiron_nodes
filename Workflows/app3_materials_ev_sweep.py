@@ -27,7 +27,6 @@ import numpy as np
 from core import Workflow, as_function_node
 from pyiron_nodes.controls import IterToDataFrame
 
-
 # fcc coordination shells: (multiplicity, neighbour distance in units of a)
 _FCC_SHELLS = [
     (12, np.sqrt(1 / 2)),
@@ -51,7 +50,7 @@ def fcc_energy(a: float = 3.6, D: float = 0.35, alpha: float = 1.6, r0: float = 
         return D * (x * x - 2.0 * x)
 
     e = 0.5 * sum(mult * morse(dist * a) for mult, dist in _FCC_SHELLS)
-    volume = a ** 3 / 4.0  # volume per atom (4 atoms per conventional fcc cell)
+    volume = a**3 / 4.0  # volume per atom (4 atoms per conventional fcc cell)
     return float(a), float(volume), float(e)
 
 
@@ -61,9 +60,7 @@ def ev_sweep(a_values=None):
         a_values = list(np.linspace(3.0, 4.0, 21))
     wf = Workflow("ev_sweep")
     wf.template = fcc_energy(D=0.35, alpha=1.6, r0=2.55)
-    wf.sweep = IterToDataFrame(
-        node=wf.template, input_label="a", values=a_values
-    )
+    wf.sweep = IterToDataFrame(node=wf.template, input_label="a", values=a_values)
     return wf.run()
 
 

@@ -291,9 +291,6 @@ def IonPotential(
 #     return Data
 
 
-
-
-
 def Ion_density(trajectory, initial_structure):
     """
     Animate a series of atomic structures.

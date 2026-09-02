@@ -76,8 +76,8 @@ def PlotWaterDensity(
 
     # density [g/cm³]:  counts × M_water / (N_A × V_bin)
     # V_bin [cm³] = A_ang2 [Å²] × dz [Å] × 1e-24  (1 Å³ = 1e-24 cm³)
-    M_water = 18.015          # g/mol
-    N_A = 6.02214076e23       # mol⁻¹
+    M_water = 18.015  # g/mol
+    N_A = 6.02214076e23  # mol⁻¹
     density = counts * M_water / (N_A * A_ang2 * dz * 1e-24)
 
     fig, ax = plt.subplots()
@@ -86,7 +86,9 @@ def PlotWaterDensity(
     ax.plot(z, density, color="#3B82F6", linewidth=2, label="water")
 
     # Experimental reference — neutral, dashed, recessive
-    ax.axhline(1.0, color="#6B7280", linewidth=1.2, linestyle="--", label="bulk (1 g cm⁻³)")
+    ax.axhline(
+        1.0, color="#6B7280", linewidth=1.2, linestyle="--", label="bulk (1 g cm⁻³)"
+    )
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -116,11 +118,11 @@ def PlotChargeDensity(
 
     ion_map = {
         charges["cation"]: charges["cation_charge"],
-        charges["anion"]:  charges["anion_charge"],
+        charges["anion"]: charges["anion_charge"],
     }
     electrode_map = {
-        metal:  charges["metal_charge"],
-        "Ne":   charges["neon_charge"],
+        metal: charges["metal_charge"],
+        "Ne": charges["neon_charge"],
     }
     water_map = {
         "O": charges["O_charge"],
@@ -152,11 +154,11 @@ def PlotChargeDensity(
     if len(all_map) > 1:
         z_ref = np.array(Data[next(iter(Data))][0])
         total = sum(
-            q * np.array(Data[el][1])
-            for el, q in all_map.items()
-            if el in Data
+            q * np.array(Data[el][1]) for el, q in all_map.items() if el in Data
         )
-        ax.plot(z_ref, total, color="black", linewidth=1.5, linestyle="--", label="total")
+        ax.plot(
+            z_ref, total, color="black", linewidth=1.5, linestyle="--", label="total"
+        )
 
     ax.axhline(0, color="gray", linewidth=0.5, linestyle=":")
     ax.set_xlabel(xlabel)
@@ -177,7 +179,7 @@ def PlotIonTrajectory(
 
     comp_idx = {"x": 0, "y": 1, "z": 2}[component]
     species_array = np.asarray(trajectory.species)
-    positions = np.asarray(trajectory.positions)   # (n_frames, n_atoms, 3)
+    positions = np.asarray(trajectory.positions)  # (n_frames, n_atoms, 3)
     steps = np.arange(positions.shape[0])
 
     colors = ["#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899"]
@@ -187,10 +189,16 @@ def PlotIonTrajectory(
         idx = np.where(species_array == sp)[0]
         if len(idx) == 0:
             continue
-        ion_pos = positions[:, idx, comp_idx]   # (n_frames, n_ions)
+        ion_pos = positions[:, idx, comp_idx]  # (n_frames, n_ions)
         for i in range(ion_pos.shape[1]):
-            ax.plot(steps, ion_pos[:, i], linewidth=0.6, linestyle="--",
-                    color=color, alpha=0.35)
+            ax.plot(
+                steps,
+                ion_pos[:, i],
+                linewidth=0.6,
+                linestyle="--",
+                color=color,
+                alpha=0.35,
+            )
         mean_pos = ion_pos.mean(axis=1)
         ax.plot(steps, mean_pos, linewidth=1.8, color=color, label=sp)
 
@@ -228,11 +236,21 @@ def PlotEnergyConvergence(
     fig, ax = plt.subplots()
 
     if plot_total:
-        ax.plot(steps, _prepare(trajectory.energies_tot),
-                color="#3B82F6", linewidth=1.5, label="total")
+        ax.plot(
+            steps,
+            _prepare(trajectory.energies_tot),
+            color="#3B82F6",
+            linewidth=1.5,
+            label="total",
+        )
     if plot_potential:
-        ax.plot(steps, _prepare(trajectory.energies_pot),
-                color="#EF4444", linewidth=1.5, label="potential")
+        ax.plot(
+            steps,
+            _prepare(trajectory.energies_pot),
+            color="#EF4444",
+            linewidth=1.5,
+            label="potential",
+        )
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -263,11 +281,11 @@ def PlotElectrostaticPotential(
     metal = charges["metal"]
     charge_map = {
         charges["cation"]: charges["cation_charge"],
-        charges["anion"]:  charges["anion_charge"],
-        "O":               charges["O_charge"],
-        "H":               charges["H_charge"],
-        metal:             charges["metal_charge"],
-        "Ne":              charges["neon_charge"],
+        charges["anion"]: charges["anion_charge"],
+        "O": charges["O_charge"],
+        "H": charges["H_charge"],
+        metal: charges["metal_charge"],
+        "Ne": charges["neon_charge"],
     }
     rho_e = sum(
         charge * np.array(Data[el][1])

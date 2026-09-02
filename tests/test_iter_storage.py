@@ -3,6 +3,7 @@
 Exercises the real ``controls.py`` code path with an in-memory database double,
 so no Postgres/Neo4j backend is required.
 """
+
 import pathlib
 import tempfile
 

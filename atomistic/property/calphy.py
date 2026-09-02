@@ -1,7 +1,12 @@
 import contextlib
 import warnings
 from dataclasses import dataclass, asdict, replace
-from core import as_inp_dataclass_node, as_function_node, as_out_dataclass_node, group_node
+from core import (
+    as_inp_dataclass_node,
+    as_function_node,
+    as_out_dataclass_node,
+    group_node,
+)
 from core.data_fields import EmptyArrayField
 import random
 import string
@@ -404,7 +409,9 @@ def _prepare_potential_and_structure(potential, structure, working_directory="."
     return pair_style, pair_coeff, elements, masses, file_name
 
 
-def _prepare_input(inp, potential, structure, mode="fe", reference_phase="solid", working_directory="."):
+def _prepare_input(
+    inp, potential, structure, mode="fe", reference_phase="solid", working_directory="."
+):
     from calphy.input import Calculation
 
     pair_style, pair_coeff, elements, masses, file_name = (
@@ -619,11 +626,7 @@ def _read_calphy_warnings(simfolder):
     if not os.path.isfile(log):
         return []
     with open(log) as fh:
-        return [
-            line.split("WARNING", 1)[1].strip()
-            for line in fh
-            if "WARNING" in line
-        ]
+        return [line.split("WARNING", 1)[1].strip() for line in fh if "WARNING" in line]
 
 
 def _run_routine(routine, job, simfolder):
@@ -727,9 +730,9 @@ def _collect_diagnostics(
             einstein_crystal=float(results.get("einstein_crystal", 0.0) or 0.0),
             com_correction=float(results.get("com_correction", 0.0) or 0.0),
             pv=float(job.pv),
-            spring_constants=list(np.atleast_1d(job.k).astype(float))
-            if job.k is not None
-            else [],
+            spring_constants=(
+                list(np.atleast_1d(job.k).astype(float)) if job.k is not None else []
+            ),
             vol_atom=float(job.vol / natoms) if natoms else 0.0,
             density=float(job.rho) if job.rho is not None else 0.0,
             natoms=natoms,
@@ -740,9 +743,11 @@ def _collect_diagnostics(
             kwargs.update(
                 temperature=list(np.asarray(temperature, dtype=float)),
                 free_energy=list(np.asarray(free_energy, dtype=float)),
-                free_energy_error=list(np.asarray(fe_error, dtype=float))
-                if fe_error is not None
-                else [],
+                free_energy_error=(
+                    list(np.asarray(fe_error, dtype=float))
+                    if fe_error is not None
+                    else []
+                ),
             )
             t_rs, fe_fwd, fe_bwd, e_diss = _rs_forward_backward(
                 simfolder,
@@ -772,7 +777,13 @@ def _collect_diagnostics(
 
 
 @as_function_node(isolate=True)
-def SolidFreeEnergy(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True) -> float:
+def SolidFreeEnergy(
+    inp,
+    structure: Atoms,
+    potential: str,
+    working_directory: str = "calphy_workdir",
+    store: bool = True,
+) -> float:
     """
     Calculate the free energy of a solid phase.
 
@@ -799,7 +810,14 @@ def SolidFreeEnergy(inp, structure: Atoms, potential: str, working_directory: st
     from calphy.solid import Solid
     from calphy.routines import routine_fe
 
-    calc = _prepare_input(inp, potential, structure, mode="fe", reference_phase="solid", working_directory=working_directory)
+    calc = _prepare_input(
+        inp,
+        potential,
+        structure,
+        mode="fe",
+        reference_phase="solid",
+        working_directory=working_directory,
+    )
     with _in_workdir(working_directory):
         simfolder = _create_simfolder(calc)
         job = Solid(calculation=calc, simfolder=simfolder)
@@ -812,7 +830,11 @@ def SolidFreeEnergy(inp, structure: Atoms, potential: str, working_directory: st
 
 @as_function_node(isolate=True)
 def LiquidFreeEnergy(
-    inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True
+    inp,
+    structure: Atoms,
+    potential: str,
+    working_directory: str = "calphy_workdir",
+    store: bool = True,
 ) -> float:
     """
     Calculate the free energy of a liquid phase.
@@ -841,7 +863,12 @@ def LiquidFreeEnergy(
     from calphy.routines import routine_fe
 
     calc = _prepare_input(
-        inp, potential, structure, mode="fe", reference_phase="liquid", working_directory=working_directory
+        inp,
+        potential,
+        structure,
+        mode="fe",
+        reference_phase="liquid",
+        working_directory=working_directory,
     )
     with _in_workdir(working_directory):
         simfolder = _create_simfolder(calc)
@@ -854,7 +881,13 @@ def LiquidFreeEnergy(
 
 
 @as_function_node(isolate=True)
-def SolidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True):
+def SolidFreeEnergyWithTemp(
+    inp,
+    structure: Atoms,
+    potential: str,
+    working_directory: str = "calphy_workdir",
+    store: bool = True,
+):
     """
     Calculate the free energy of a solid phase as a function of temperature.
 
@@ -888,7 +921,13 @@ def SolidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_direc
 
 
 @as_function_node(isolate=True)
-def LiquidFreeEnergyWithTemp(inp, structure: Atoms, potential: str, working_directory: str = "calphy_workdir", store: bool = True):
+def LiquidFreeEnergyWithTemp(
+    inp,
+    structure: Atoms,
+    potential: str,
+    working_directory: str = "calphy_workdir",
+    store: bool = True,
+):
     """
     Calculate the free energy of a liquid phase as a function of temperature.
 
@@ -945,7 +984,11 @@ def CalphyDiagnosticsTable(diagnostics: CalphyDiagnostics) -> pd.DataFrame:
         ("max switching hysteresis", d.rs_max_dissipation, "eV/atom"),
         ("volume per atom", d.vol_atom, "A^3"),
         ("density", d.density, "1/A^3"),
-        ("spring constants", ", ".join(f"{k:.4g}" for k in d.spring_constants), "eV/A^2"),
+        (
+            "spring constants",
+            ", ".join(f"{k:.4g}" for k in d.spring_constants),
+            "eV/A^2",
+        ),
         ("atoms", d.natoms, ""),
         ("switching runs", d.n_iterations, ""),
         ("simulation folder", d.simfolder, ""),
@@ -1642,9 +1685,11 @@ def CalphyMeltingTemperatureSearch(
             rows.append(
                 {
                     **row,
-                    "outcome": "solid melted"
-                    if observed is None
-                    else f"solid melted @ {observed:.0f} K",
+                    "outcome": (
+                        "solid melted"
+                        if observed is None
+                        else f"solid melted @ {observed:.0f} K"
+                    ),
                 }
             )
             centre = _next_centre(hint, t_lower, t_upper, width, backoff)
@@ -1701,9 +1746,11 @@ def CalphyMeltingTemperatureSearch(
         rows.append(
             {
                 **row,
-                "outcome": "liquid stable throughout"
-                if liquid_is_stable
-                else "solid stable throughout",
+                "outcome": (
+                    "liquid stable throughout"
+                    if liquid_is_stable
+                    else "solid stable throughout"
+                ),
                 "T_melt": round(predicted, 1),
             }
         )
@@ -2338,7 +2385,9 @@ def _melting_from_trajectory(
     from ase.io import read
 
     if direction not in ("forward", "backward"):
-        raise ValueError(f"direction must be 'forward' or 'backward', got {direction!r}")
+        raise ValueError(
+            f"direction must be 'forward' or 'backward', got {direction!r}"
+        )
 
     input_file = os.path.join(simfolder, "input_file.yaml")
     if not os.path.isfile(input_file):

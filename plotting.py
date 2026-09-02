@@ -116,8 +116,14 @@ def MergePlots(figures: PortList = PortList(["fig1", "fig2"])):
 
     # Categorical palette — colorblind-distinguishable, light-background
     COLORS = [
-        "#3B82F6", "#EF4444", "#10B981", "#F59E0B",
-        "#8B5CF6", "#EC4899", "#14B8A6", "#F97316",
+        "#3B82F6",
+        "#EF4444",
+        "#10B981",
+        "#F59E0B",
+        "#8B5CF6",
+        "#EC4899",
+        "#14B8A6",
+        "#F97316",
     ]
     LINESTYLES = ["-", "--", "-.", ":"]
 
@@ -130,7 +136,8 @@ def MergePlots(figures: PortList = PortList(["fig1", "fig2"])):
             label = line.get_label()
             ls = next(linestyle_cycle)
             ax.plot(
-                x, y,
+                x,
+                y,
                 color=color,
                 linestyle=ls,
                 linewidth=line.get_linewidth(),
@@ -145,7 +152,8 @@ def MergePlots(figures: PortList = PortList(["fig1", "fig2"])):
                     continue
                 label = col.get_label()
                 ax.scatter(
-                    offsets[:, 0], offsets[:, 1],
+                    offsets[:, 0],
+                    offsets[:, 1],
                     color=color,
                     label=None if label.startswith("_") else label,
                 )

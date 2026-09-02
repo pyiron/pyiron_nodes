@@ -35,9 +35,7 @@ def ConfigurePBC(
         structure.positions[:, 2] += bottom_margin - z.min()
 
         cell = structure.cell.array.copy()
-        cell[2, 2] = max(
-            slab_factor * thickness, thickness + 2 * bottom_margin
-        )
+        cell[2, 2] = max(slab_factor * thickness, thickness + 2 * bottom_margin)
         structure.set_cell(cell, scale_atoms=False)
 
     structure.pbc = [True, True, not quasi_2d]

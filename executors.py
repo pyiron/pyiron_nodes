@@ -185,9 +185,7 @@ def SlurmExecutor(
     )
     # Pressing Stop scancels the jobs in `cache_directory` — see _make_stoppable
     # for why that is the whole directory rather than just this node's job.
-    _make_stoppable(
-        executor, cache_directory, advanced.pysqa_config_directory, "slurm"
-    )
+    _make_stoppable(executor, cache_directory, advanced.pysqa_config_directory, "slurm")
     return executor
 
 

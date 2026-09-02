@@ -61,7 +61,7 @@ def fcc_energy(a: float = 3.6, D: float = 0.35, alpha: float = 1.6, r0: float = 
         return D * (x * x - 2.0 * x)
 
     energy = 0.5 * sum(mult * morse(dist * a) for mult, dist in shells)
-    volume = a ** 3 / 4.0
+    volume = a**3 / 4.0
     return float(a), float(volume), float(energy)
 
 

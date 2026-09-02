@@ -17,7 +17,10 @@ from core import Workflow
 from pyiron_nodes.atomistic.calculator.ase import Minimize
 from pyiron_nodes.atomistic.calculator.output import GetEnergyLast
 from pyiron_nodes.atomistic.engine.ase import GRACE
-from pyiron_nodes.atomistic.property.surface import BinarySlabConfigurations, RelaxSlabsDataFrame
+from pyiron_nodes.atomistic.property.surface import (
+    BinarySlabConfigurations,
+    RelaxSlabsDataFrame,
+)
 from pyiron_nodes.atomistic.structure.build import Bulk, BinaryWurtziteBulk
 from pyiron_nodes.atomistic.structure.calc import EnergyPerFormulaUnit, NumberOfAtoms
 from pyiron_nodes.atomistic.thermodynamics.defect_phases import (
@@ -33,15 +36,15 @@ from pyiron_nodes.math_utils import Identity
 
 # ── Material constants — update these when switching system ──────────────────
 # GaN defaults
-COMPOUND_A = 3.19        # in-plane lattice constant of the compound (Å)
+COMPOUND_A = 3.19  # in-plane lattice constant of the compound (Å)
 COMPOUND_C_OVER_A = 1.627  # c/a ratio of the compound
-CATION_A = 4.05          # lattice constant of the elemental cation reference (Å)
-CATION_CRYSTAL = "fcc"   # crystal structure of the cation reference
+CATION_A = 4.05  # lattice constant of the elemental cation reference (Å)
+CATION_CRYSTAL = "fcc"  # crystal structure of the cation reference
 
 wf = Workflow("binary_nitride_surface_phase_diagram")
 
 # ── Element identity — single source of truth ────────────────────────────────
-wf.cation = Identity(x="Ga")   # change to "Al" for AlN, "Zn" for ZnO, etc.
+wf.cation = Identity(x="Ga")  # change to "Al" for AlN, "Zn" for ZnO, etc.
 wf.anion = Identity(x="N")
 
 # ── Engine ────────────────────────────────────────────────────────────────────

@@ -29,25 +29,23 @@ import pandas as pd
 
 from core import as_function_node, Workflow, Node
 
-
 # --------------------------------------------------------------------------- #
 #  Building-block nodes (LLM calls and code execution are ordinary nodes).      #
 #  `call_llm` is injected so the module imports without any backend present.    #
 # --------------------------------------------------------------------------- #
+
 
 @as_function_node("code")
 def GenerateCode(task: str, call_llm=None, max_tokens: int = 2000):
     """Ask the LLM to write Python code for *task*."""
     from pyiron_ai.node_store import extract_code
 
-    prompt = textwrap.dedent(
-        f"""
+    prompt = textwrap.dedent(f"""
         Write Python code to accomplish the following task.
         Return ONLY a fenced ```python code block — no explanation.
 
         Task: {task}
-        """
-    ).strip()
+        """).strip()
     code = extract_code(call_llm(prompt, max_tokens))
     return code
 
@@ -70,8 +68,7 @@ def FixCode(task: str, code: str, error: str, call_llm=None, max_tokens: int = 2
     """Ask the LLM to repair *code* given the *error* it produced."""
     from pyiron_ai.node_store import extract_code
 
-    prompt = textwrap.dedent(
-        f"""
+    prompt = textwrap.dedent(f"""
         The following Python code for the task below raised an error.
         Return ONLY a corrected fenced ```python code block.
 
@@ -79,8 +76,7 @@ def FixCode(task: str, code: str, error: str, call_llm=None, max_tokens: int = 2
         Code:
         {code}
         Error: {error}
-        """
-    ).strip()
+        """).strip()
     fixed = extract_code(call_llm(prompt, max_tokens))
     return fixed
 
@@ -89,6 +85,7 @@ def FixCode(task: str, code: str, error: str, call_llm=None, max_tokens: int = 2
 #  Higher-order agent node: drives generate -> try -> fix until success.        #
 #  The loop lives INSIDE one node; the outer graph stays a DAG.                 #
 # --------------------------------------------------------------------------- #
+
 
 @as_function_node(["success", "attempts", "code", "output"])
 def CodeAgent(task: str, call_llm=None, max_repairs: int = 3):
@@ -113,6 +110,7 @@ def run_agent(task: str, call_llm, max_repairs: int = 3):
 # --------------------------------------------------------------------------- #
 #  Figure data.                                                                 #
 # --------------------------------------------------------------------------- #
+
 
 def illustrative_success_rates():
     """Representative success rate (%) by model and number of repair cycles.

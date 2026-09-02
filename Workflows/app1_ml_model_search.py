@@ -27,10 +27,10 @@ import pandas as pd
 from core import Workflow, as_function_node, Node
 from pyiron_nodes.controls import IterToDataFrame
 
-
 # --------------------------------------------------------------------------- #
 #  Data: a noisy nonlinear target sampled once, shared by every experiment.    #
 # --------------------------------------------------------------------------- #
+
 
 def make_dataset(n=120, noise=0.15, seed=0):
     rng = np.random.default_rng(seed)
@@ -47,6 +47,7 @@ X, Y = make_dataset()
 #  Estimator nodes — all expose the same interface: fit/predict on (X, y).      #
 #  Because they share a port interface, any of them plugs into `benchmark`.     #
 # --------------------------------------------------------------------------- #
+
 
 @as_function_node("model")
 def PolynomialRidge(degree: int = 3, alpha: float = 1.0):
@@ -83,6 +84,7 @@ def KNeighbors(n_neighbors: int = 7):
 #  Swapping the plugged-in model does not change this node or the workflow.     #
 # --------------------------------------------------------------------------- #
 
+
 @as_function_node(["name", "cv_rmse", "cv_std"])
 def benchmark(estimator: Node, folds: int = 5):
     from sklearn.model_selection import cross_val_score
@@ -115,6 +117,7 @@ def model_comparison():
 #  Hyperparameter sweep with IterToDataFrame: degree -> CV RMSE, one call.      #
 # --------------------------------------------------------------------------- #
 
+
 @as_function_node(["degree", "cv_rmse"])
 def poly_cv(degree: int = 1, alpha: float = 1.0, folds: int = 5):
     from sklearn.pipeline import make_pipeline
@@ -137,9 +140,9 @@ def poly_cv(degree: int = 1, alpha: float = 1.0, folds: int = 5):
 wf = Workflow("degree_sweep")
 wf.template = poly_cv(alpha=1.0, folds=5)
 wf.sweep = IterToDataFrame(
-    node=wf.template, input_label="degree" # , values=list(degrees)
-    )
-    # return wf.run()
+    node=wf.template, input_label="degree"  # , values=list(degrees)
+)
+# return wf.run()
 
 
 # if __name__ == "__main__":

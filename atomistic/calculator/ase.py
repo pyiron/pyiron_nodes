@@ -242,7 +242,6 @@ def MapCalculatorOnStructures(
     return df
 
 
-
 @as_function_node
 def StaticEnergy(
     structure,

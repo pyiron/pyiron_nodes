@@ -112,7 +112,14 @@ def BinarySlabConfigurations(
     # +1 cation adatom at T4-like hollow
     slab_p1 = pristine.copy()
     slab_p1.append(
-        Atom(cation, position=(x0 + cell[0, 0] * 0.33, y0 + cell[1, 1] * 0.33, z_max + adatom_height))
+        Atom(
+            cation,
+            position=(
+                x0 + cell[0, 0] * 0.33,
+                y0 + cell[1, 1] * 0.33,
+                z_max + adatom_height,
+            ),
+        )
     )
     structures.append(slab_p1)
     names.append(f"{cation}_adatom")
@@ -120,7 +127,16 @@ def BinarySlabConfigurations(
     # +2 cation bilayer seed
     slab_p2 = pristine.copy()
     slab_p2.append(Atom(cation, position=(x0, y0, z_max + adatom_height)))
-    slab_p2.append(Atom(cation, position=(x0 + cell[0, 0] * 0.5, y0 + cell[1, 1] * 0.5, z_max + adatom_height + 0.6)))
+    slab_p2.append(
+        Atom(
+            cation,
+            position=(
+                x0 + cell[0, 0] * 0.5,
+                y0 + cell[1, 1] * 0.5,
+                z_max + adatom_height + 0.6,
+            ),
+        )
+    )
     structures.append(slab_p2)
     names.append(f"{cation}_bilayer")
 

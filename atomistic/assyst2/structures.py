@@ -141,8 +141,7 @@ def SpaceGroupSampling(
             )
             bar.set_description(stoich_str)
             structures += [
-                _ase_to_data(s["atoms"])
-                for s in pyxtal(spacegroups, symbols, num_ions)
+                _ase_to_data(s["atoms"]) for s in pyxtal(spacegroups, symbols, num_ions)
             ]
             if len(structures) > max_structures:
                 structures = structures[:max_structures]
@@ -222,7 +221,7 @@ def SaveStructures(structures: list[Atoms], filename: str):
     if not filename.endswith("pckl.gz"):
         filename += ".pckl.gz"
     dirname = os.path.dirname(filename)
-    if dirname:                       # a bare filename has no directory part
+    if dirname:  # a bare filename has no directory part
         os.makedirs(dirname, exist_ok=True)
     df.to_pickle(filename)
     return filename

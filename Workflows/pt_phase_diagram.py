@@ -63,7 +63,9 @@ wf = Workflow("pt_phase_diagram")
 
 wf.Bulk = Bulk(name="Al", cubic=True)
 wf.Repeat = Repeat(structure=wf.Bulk, repeat_scalar=5)
-wf.ListPotentials = ListPotentials(structure=wf.Bulk)  # informational: lists available potentials
+wf.ListPotentials = ListPotentials(
+    structure=wf.Bulk
+)  # informational: lists available potentials
 
 # Pressure range in bars (0–50 000 bar ≈ 0–5 GPa); adjust num_points and x_max as needed
 wf.Pressures = Linspace(x_min=0.0, x_max=50000.0, num_points=6)

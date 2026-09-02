@@ -15,6 +15,7 @@ Usage::
     result = wf.run()
     print(wf.report.outputs.report_path.value)
 """
+
 import json
 import logging
 import os
@@ -33,9 +34,11 @@ log = logging.getLogger(__name__)
 
 # ── §1 LLM infrastructure (self-contained; mirrors code_agent.py) ─────────────
 
+
 @dataclass
 class LLMConfig:
     """Bundle backend identifier and model name."""
+
     backend: str
     model_name: str
 
@@ -50,13 +53,19 @@ def _call_llm(prompt: str, max_tokens: int, cfg: LLMConfig = None) -> str:
 
     if c.backend == "ollama":
         from pyiron_ai.node_store import _ollama_generate
-        return _ollama_generate(model=c.model_name, prompt=prompt, max_tokens=max_tokens)
+
+        return _ollama_generate(
+            model=c.model_name, prompt=prompt, max_tokens=max_tokens
+        )
 
     if c.backend == "openai_academic":
         import keyring
         from pyiron_ai.node_store import _openai_generate
+
         content, _ = _openai_generate(
-            model=c.model_name, prompt=prompt, max_tokens=max_tokens,
+            model=c.model_name,
+            prompt=prompt,
+            max_tokens=max_tokens,
             api_key=keyring.get_password("openai", "api_key"),
             api_base=_OPENAI_API_BASE,
         )
@@ -65,12 +74,14 @@ def _call_llm(prompt: str, max_tokens: int, cfg: LLMConfig = None) -> str:
     if c.backend == "claude":
         import os as _os
         from anthropic import AnthropicFoundry
+
         client = AnthropicFoundry(
             api_key=_os.environ["ANTHROPIC_FOUNDRY_API_KEY"],
             resource=_os.environ["ANTHROPIC_FOUNDRY_RESOURCE"],
         )
         response = client.messages.create(
-            model=c.model_name, max_tokens=max_tokens,
+            model=c.model_name,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text
@@ -95,8 +106,10 @@ def ListModels(
     elif backend == "openai_academic":
         import keyring
         from pyiron_ai.node_store import _openai_generate
+
         try:
             from openai import OpenAI
+
             client = OpenAI(
                 api_key=keyring.get_password("openai", "api_key"),
                 base_url=_OPENAI_API_BASE,
@@ -113,6 +126,7 @@ def ListModels(
 
 
 # ── §2 Config dataclasses (plain data, not nodes) ─────────────────────────────
+
 
 @dataclass
 class SearchConfigData:
@@ -164,8 +178,14 @@ DOCUMENT_CLASSIFICATION_SCHEMA: dict = {
     "properties": {
         "doc_class": {
             "type": "string",
-            "enum": ["experimental", "computational", "review",
-                     "patent", "commentary", "other"],
+            "enum": [
+                "experimental",
+                "computational",
+                "review",
+                "patent",
+                "commentary",
+                "other",
+            ],
         },
         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
         "reasoning": {"type": "string"},
@@ -200,8 +220,15 @@ COMPOSITION_SYNTHESIS_SCHEMA: dict = {
         "dopant_substitution": {"type": ["string", "null"]},
         "synthesis_method": {
             "type": ["string", "null"],
-            "enum": ["ball_milling", "solid_state", "solution",
-                     "spark_plasma", "cold_press", "other", None],
+            "enum": [
+                "ball_milling",
+                "solid_state",
+                "solution",
+                "spark_plasma",
+                "cold_press",
+                "other",
+                None,
+            ],
         },
         "synthesis_temperature_C": {"type": ["number", "null"]},
         "sintering_atmosphere": {"type": ["string", "null"]},
@@ -284,11 +311,12 @@ EXPERIMENT_PLAN_SCHEMA: dict = {
 
 # JSON / LLM parsing
 
+
 def _parse_json_safe(text: str, default: Any = None) -> Any:
     """Extract and parse the first JSON object or array from *text*."""
     if not text:
         return default
-    for start_ch, end_ch in [('{', '}'), ('[', ']')]:
+    for start_ch, end_ch in [("{", "}"), ("[", "]")]:
         start = text.find(start_ch)
         if start == -1:
             continue
@@ -300,7 +328,7 @@ def _parse_json_safe(text: str, default: Any = None) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start:i + 1])
+                        return json.loads(text[start : i + 1])
                     except json.JSONDecodeError:
                         break
     try:
@@ -332,12 +360,19 @@ def _llm_structured(
 
 # Search API clients
 
+
 def _blank_doc(source_api: str) -> dict:
     return {
-        "doi": "", "title": "", "abstract": "", "authors": [],
-        "year": None, "source_api": source_api,
-        "url": "", "open_access_url": "",
-        "full_text": "", "doc_class": "unknown",
+        "doi": "",
+        "title": "",
+        "abstract": "",
+        "authors": [],
+        "year": None,
+        "source_api": source_api,
+        "url": "",
+        "open_access_url": "",
+        "full_text": "",
+        "doc_class": "unknown",
         "classification_confidence": 0.0,
     }
 
@@ -392,15 +427,17 @@ def _execute_openalex_search(spec: dict, config: SearchConfigData) -> list:
             ]
             oa = w.get("open_access") or {}
             doc = _blank_doc("openalex")
-            doc.update({
-                "doi": doi,
-                "title": (w.get("title") or "").strip(),
-                "abstract": abstract,
-                "authors": authors,
-                "year": w.get("publication_year"),
-                "url": f"https://doi.org/{doi}" if doi else "",
-                "open_access_url": oa.get("oa_url") or "",
-            })
+            doc.update(
+                {
+                    "doi": doi,
+                    "title": (w.get("title") or "").strip(),
+                    "abstract": abstract,
+                    "authors": authors,
+                    "year": w.get("publication_year"),
+                    "url": f"https://doi.org/{doi}" if doi else "",
+                    "open_access_url": oa.get("oa_url") or "",
+                }
+            )
             results.append(doc)
 
         cursor = data.get("meta", {}).get("next_cursor")
@@ -420,8 +457,7 @@ def _execute_crossref_search(spec: dict, config: SearchConfigData) -> list:
         params = {
             "query.bibliographic": keywords,
             "filter": (
-                f"from-pub-date:{config.from_date},"
-                f"until-pub-date:{config.to_date}"
+                f"from-pub-date:{config.from_date}," f"until-pub-date:{config.to_date}"
             ),
             "rows": rows,
             "offset": offset,
@@ -430,7 +466,9 @@ def _execute_crossref_search(spec: dict, config: SearchConfigData) -> list:
         try:
             resp = requests.get(
                 "https://api.crossref.org/works",
-                params=params, headers=headers, timeout=15,
+                params=params,
+                headers=headers,
+                timeout=15,
             )
             resp.raise_for_status()
             items = resp.json().get("message", {}).get("items", [])
@@ -449,24 +487,23 @@ def _execute_crossref_search(spec: dict, config: SearchConfigData) -> list:
                 if isinstance(title_raw, list) and title_raw
                 else str(title_raw)
             )
-            parts = (
-                item.get("published", {})
-                .get("date-parts", [[None]])[0]
-            )
+            parts = item.get("published", {}).get("date-parts", [[None]])[0]
             year = parts[0] if parts else None
             authors = [
                 f"{a.get('given', '')} {a.get('family', '')}".strip()
                 for a in item.get("author", [])
             ]
             doc = _blank_doc("crossref")
-            doc.update({
-                "doi": doi,
-                "title": title.strip(),
-                "abstract": item.get("abstract", ""),
-                "authors": authors,
-                "year": year,
-                "url": item.get("URL", f"https://doi.org/{doi}"),
-            })
+            doc.update(
+                {
+                    "doi": doi,
+                    "title": title.strip(),
+                    "abstract": item.get("abstract", ""),
+                    "authors": authors,
+                    "year": year,
+                    "url": item.get("URL", f"https://doi.org/{doi}"),
+                }
+            )
             results.append(doc)
 
         offset += rows
@@ -486,7 +523,8 @@ def _execute_epo_search(spec: dict, config: SearchConfigData) -> list:
         tok = requests.post(
             "https://ops.epo.org/3.2/auth/accesstoken",
             data={"grant_type": "client_credentials"},
-            auth=(key, secret), timeout=10,
+            auth=(key, secret),
+            timeout=10,
         )
         tok.raise_for_status()
         token = tok.json()["access_token"]
@@ -500,8 +538,12 @@ def _execute_epo_search(spec: dict, config: SearchConfigData) -> list:
     try:
         resp = requests.get(
             "https://ops.epo.org/3.2/rest-services/published-data/search/full-cycle",
-            params={"q": query, "Range": f"1-{min(config.max_results_per_source, 100)}"},
-            headers=headers, timeout=20,
+            params={
+                "q": query,
+                "Range": f"1-{min(config.max_results_per_source, 100)}",
+            },
+            headers=headers,
+            timeout=20,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -525,14 +567,16 @@ def _execute_epo_search(spec: dict, config: SearchConfigData) -> list:
         kind = doc_id.get("kind", {}).get("$", "")
         pub_num = f"{country}{number}{kind}"
         doc = _blank_doc("epo")
-        doc.update({
-            "title": pub_num,
-            "doc_class": "patent",
-            "url": (
-                f"https://worldwide.espacenet.com/patent/search"
-                f"?q=pn%3D{pub_num}"
-            ),
-        })
+        doc.update(
+            {
+                "title": pub_num,
+                "doc_class": "patent",
+                "url": (
+                    f"https://worldwide.espacenet.com/patent/search"
+                    f"?q=pn%3D{pub_num}"
+                ),
+            }
+        )
         results.append(doc)
 
     return results
@@ -540,14 +584,16 @@ def _execute_epo_search(spec: dict, config: SearchConfigData) -> list:
 
 # Full-text fetching
 
+
 def _fetch_one_full_text(doc: dict, timeout_s: int = 10) -> Optional[str]:
     """Try several open-access routes; return truncated plain text or None."""
     _MAX = 8000
 
     def _get(url: str) -> Optional[str]:
         try:
-            r = requests.get(url, timeout=timeout_s,
-                             headers={"Accept": "text/plain, text/html"})
+            r = requests.get(
+                url, timeout=timeout_s, headers={"Accept": "text/plain, text/html"}
+            )
             r.raise_for_status()
             text = re.sub(r"<[^>]+>", " ", r.text)
             text = re.sub(r"\s+", " ", text).strip()
@@ -592,9 +638,11 @@ def _fetch_one_full_text(doc: dict, timeout_s: int = 10) -> Optional[str]:
 
 # Deduplication
 
+
 def _normalize_title(title: str) -> str:
     return re.sub(
-        r"\s+", " ",
+        r"\s+",
+        " ",
         title.lower().translate(str.maketrans("", "", string.punctuation)),
     ).strip()
 
@@ -615,10 +663,12 @@ def _doi_canonical(doi: str) -> str:
 
 # Chemistry normalization
 
+
 def _normalize_formula(formula_raw: str) -> tuple:
     """Return (formula_normalized, element_dict, ok)."""
     try:
         from pymatgen.core import Composition
+
         comp = Composition(formula_raw)
         fn = comp.formula.replace(" ", "")
         el_dict = {str(el): float(amt) for el, amt in comp.items()}
@@ -630,6 +680,7 @@ def _normalize_formula(formula_raw: str) -> tuple:
 def _to_mS_per_cm(value: float, unit_raw: str) -> Optional[float]:
     try:
         from pint import UnitRegistry
+
         ureg = UnitRegistry()
         q = value * ureg(unit_raw)
         return float(q.to("millisiemens / centimeter").magnitude)
@@ -650,11 +701,13 @@ def _to_ppm(value: float, unit_raw: str) -> Optional[float]:
 
 # Domain validation
 
+
 def _validate_one_record(record: dict, criteria: TargetCriteriaData) -> tuple:
     errors: list = []
 
     if criteria.require_experimental and record.get("doc_class") not in (
-        "experimental", "patent"
+        "experimental",
+        "patent",
     ):
         errors.append("non_experimental_source")
 
@@ -688,6 +741,7 @@ def _validate_one_record(record: dict, criteria: TargetCriteriaData) -> tuple:
 
 # Comparability classification
 
+
 def _assign_conductivity_class(record: dict) -> str:
     method = record.get("measurement_method")
     temp = record.get("temperature_C")
@@ -711,6 +765,7 @@ def _assign_moisture_class(record: dict) -> str:
 
 
 # Scoring
+
 
 def _score_candidate(record: dict, criteria: TargetCriteriaData) -> float:
     cond = record.get("conductivity_mS_per_cm")
@@ -738,8 +793,7 @@ def _score_candidate(record: dict, criteria: TargetCriteriaData) -> float:
 
     verifs = record.get("field_verifications", [])
     sigma_evidence = (
-        sum(v.get("confidence", 0.5) for v in verifs) / len(verifs)
-        if verifs else 0.5
+        sum(v.get("confidence", 0.5) for v in verifs) / len(verifs) if verifs else 0.5
     )
 
     return (
@@ -754,6 +808,7 @@ def _score_candidate(record: dict, criteria: TargetCriteriaData) -> float:
 # ── §5 Node definitions ───────────────────────────────────────────────────────
 
 # --- Config nodes ---
+
 
 @as_function_node("config")
 def SearchConfig(
@@ -818,6 +873,7 @@ def BaselineMaterial(
 
 # --- Pipeline nodes ---
 
+
 @as_function_node("search_plan")
 def PlanSearches(
     search_config: SearchConfigData = None,
@@ -827,12 +883,18 @@ def PlanSearches(
 ):
     """Ask the LLM to generate a structured multi-source literature search plan."""
     _FALLBACK = [
-        {"api": "openalex",
-         "keywords": ["argyrodite sulfide electrolyte moisture stability Li6PS5Cl"]},
-        {"api": "crossref",
-         "keywords": ["Li6PS5Cl H2S air stability ionic conductivity"]},
-        {"api": "epo",
-         "keywords": ["argyrodite electrolyte coating moisture tolerance"]},
+        {
+            "api": "openalex",
+            "keywords": ["argyrodite sulfide electrolyte moisture stability Li6PS5Cl"],
+        },
+        {
+            "api": "crossref",
+            "keywords": ["Li6PS5Cl H2S air stability ionic conductivity"],
+        },
+        {
+            "api": "epo",
+            "keywords": ["argyrodite electrolyte coating moisture tolerance"],
+        },
     ]
     if search_config is None or criteria is None:
         return _FALLBACK
@@ -949,7 +1011,8 @@ def DeduplicateDocuments(
 
     log.info(
         "DeduplicateDocuments: %d → %d",
-        len(documents), len(deduplicated_documents),
+        len(documents),
+        len(deduplicated_documents),
     )
     return deduplicated_documents
 
@@ -1017,7 +1080,7 @@ def IdentifySamples(
             f"Return ONLY JSON:\n{json.dumps(SAMPLE_IDENTIFICATION_SCHEMA, indent=2)}\n\n"
             "One entry per distinct composition — not one per paper.\n"
             "Exclude Na conductors, pure oxides, and computational predictions.\n"
-            "If no argyrodite compositions: return {\"samples\": []}."
+            'If no argyrodite compositions: return {"samples": []}.'
         )
         res = _llm_structured(prompt, model, max_tokens)
         if res is None:
@@ -1071,14 +1134,16 @@ def ExtractProperties(
             "Use null for any value not explicitly stated."
         )
         synth = _llm_structured(p_synth, model, max_tokens) or {}
-        record.update({
-            "formula_as_reported": synth.get("formula_as_reported", formula),
-            "dopant_substitution": synth.get("dopant_substitution"),
-            "synthesis_method": synth.get("synthesis_method"),
-            "synthesis_temperature_C": synth.get("synthesis_temperature_C"),
-            "sintering_atmosphere": synth.get("sintering_atmosphere"),
-            "synthesis_evidence": synth.get("synthesis_evidence", ""),
-        })
+        record.update(
+            {
+                "formula_as_reported": synth.get("formula_as_reported", formula),
+                "dopant_substitution": synth.get("dopant_substitution"),
+                "synthesis_method": synth.get("synthesis_method"),
+                "synthesis_temperature_C": synth.get("synthesis_temperature_C"),
+                "sintering_atmosphere": synth.get("sintering_atmosphere"),
+                "synthesis_evidence": synth.get("synthesis_evidence", ""),
+            }
+        )
 
         # 2. Ionic conductivity
         p_cond = (
@@ -1090,15 +1155,17 @@ def ExtractProperties(
             f"If no data for '{sl}': set conductivity_mS_per_cm to null."
         )
         cond = _llm_structured(p_cond, model, max_tokens) or {}
-        record.update({
-            "conductivity_mS_per_cm": cond.get("conductivity_mS_per_cm"),
-            "conductivity_value_raw": cond.get("conductivity_value_raw", ""),
-            "conductivity_unit_raw": cond.get("conductivity_unit_raw", ""),
-            "temperature_C": cond.get("temperature_C"),
-            "measurement_method": cond.get("measurement_method"),
-            "conductivity_evidence_quote": cond.get("evidence_quote", ""),
-            "conductivity_confidence": float(cond.get("confidence", 0.0)),
-        })
+        record.update(
+            {
+                "conductivity_mS_per_cm": cond.get("conductivity_mS_per_cm"),
+                "conductivity_value_raw": cond.get("conductivity_value_raw", ""),
+                "conductivity_unit_raw": cond.get("conductivity_unit_raw", ""),
+                "temperature_C": cond.get("temperature_C"),
+                "measurement_method": cond.get("measurement_method"),
+                "conductivity_evidence_quote": cond.get("evidence_quote", ""),
+                "conductivity_confidence": float(cond.get("confidence", 0.0)),
+            }
+        )
 
         # 3. Moisture stability
         p_moist = (
@@ -1109,15 +1176,17 @@ def ExtractProperties(
             "Use null for missing fields — never estimate."
         )
         moist = _llm_structured(p_moist, model, max_tokens) or {}
-        record.update({
-            "h2s_ppm": moist.get("h2s_ppm"),
-            "h2s_unit_raw": moist.get("h2s_unit_raw", ""),
-            "rh_percent": moist.get("rh_percent"),
-            "exposure_min": moist.get("exposure_min"),
-            "moisture_test_method": moist.get("moisture_test_method"),
-            "moisture_evidence_quote": moist.get("evidence_quote", ""),
-            "moisture_confidence": float(moist.get("confidence", 0.0)),
-        })
+        record.update(
+            {
+                "h2s_ppm": moist.get("h2s_ppm"),
+                "h2s_unit_raw": moist.get("h2s_unit_raw", ""),
+                "rh_percent": moist.get("rh_percent"),
+                "exposure_min": moist.get("exposure_min"),
+                "moisture_test_method": moist.get("moisture_test_method"),
+                "moisture_evidence_quote": moist.get("evidence_quote", ""),
+                "moisture_confidence": float(moist.get("confidence", 0.0)),
+            }
+        )
 
         # 4. Electrochemical / activation energy
         p_ec = (
@@ -1127,12 +1196,14 @@ def ExtractProperties(
             "Use null for any value not reported."
         )
         ec = _llm_structured(p_ec, model, max_tokens) or {}
-        record.update({
-            "activation_energy_eV": ec.get("activation_energy_eV"),
-            "electrochemical_window_V": ec.get("electrochemical_window_V"),
-            "activation_energy_evidence": ec.get("activation_energy_evidence", ""),
-            "electrochemical_confidence": float(ec.get("confidence", 0.0)),
-        })
+        record.update(
+            {
+                "activation_energy_eV": ec.get("activation_energy_eV"),
+                "electrochemical_window_V": ec.get("electrochemical_window_V"),
+                "activation_energy_evidence": ec.get("activation_energy_evidence", ""),
+                "electrochemical_confidence": float(ec.get("confidence", 0.0)),
+            }
+        )
 
         extracted_records.append(record)
 
@@ -1211,7 +1282,8 @@ def ValidateRecords(
 
     log.info(
         "ValidateRecords: %d valid, %d invalid",
-        len(validated_records), len(invalid_records),
+        len(validated_records),
+        len(invalid_records),
     )
     return validated_records, invalid_records
 
@@ -1248,7 +1320,7 @@ def VerifyEvidence(
                 "Check whether the extracted value matches the evidence quote.\n\n"
                 f"Field: {field_name}\n"
                 f"Extracted value: {value}\n"
-                f"Evidence quote: \"{quote}\"\n\n"
+                f'Evidence quote: "{quote}"\n\n'
                 f"Return ONLY JSON:\n{json.dumps(EVIDENCE_VERIFICATION_SCHEMA, indent=2)}\n"
                 "Set verified=true ONLY if the quote unambiguously supports the value "
                 "for the specific composition described."
@@ -1280,7 +1352,8 @@ def VerifyEvidence(
 
     log.info(
         "VerifyEvidence: %d verified/partial, %d failed/unverified",
-        len(verified_records), len(unverified_records),
+        len(verified_records),
+        len(unverified_records),
     )
     return verified_records, unverified_records
 
@@ -1313,10 +1386,15 @@ def RankCandidates(
         return pd.DataFrame()
     if criteria is None:
         criteria = TargetCriteriaData(
-            min_conductivity_mS_per_cm=1.0, max_h2s_ppm=100.0,
-            min_rh_percent=20.0, min_exposure_min=30.0,
-            max_activation_energy_eV=0.35, max_synthesis_temperature_C=550.0,
-            prohibited_elements=[], penalized_elements=[], require_experimental=True,
+            min_conductivity_mS_per_cm=1.0,
+            max_h2s_ppm=100.0,
+            min_rh_percent=20.0,
+            min_exposure_min=30.0,
+            max_activation_energy_eV=0.35,
+            max_synthesis_temperature_C=550.0,
+            prohibited_elements=[],
+            penalized_elements=[],
+            require_experimental=True,
         )
 
     rows: list = []
@@ -1403,7 +1481,8 @@ def DraftExperiments(
                 "rank": rank,
                 "synthesis_route": ["Manual review required — LLM extraction failed"],
                 "characterization_steps": [
-                    "Powder XRD", "EIS at 25°C",
+                    "Powder XRD",
+                    "EIS at 25°C",
                     "H2S evolution under internal humidity protocol",
                 ],
                 "safety_review_required": True,
@@ -1454,8 +1533,16 @@ def GenerateReport(
     from_d = search_config.from_date if search_config else "N/A"
     to_d = search_config.to_date if search_config else "N/A"
     n_total = len(ranked_df)
-    n_cond = int(ranked_df.get("meets_criteria_conductivity", pd.Series(dtype=bool)).sum()) if not ranked_df.empty else 0
-    n_moist = int(ranked_df.get("meets_criteria_moisture", pd.Series(dtype=bool)).sum()) if not ranked_df.empty else 0
+    n_cond = (
+        int(ranked_df.get("meets_criteria_conductivity", pd.Series(dtype=bool)).sum())
+        if not ranked_df.empty
+        else 0
+    )
+    n_moist = (
+        int(ranked_df.get("meets_criteria_moisture", pd.Series(dtype=bool)).sum())
+        if not ranked_df.empty
+        else 0
+    )
 
     def _td(val):
         return f"<td>{val if val is not None else 'N/A'}</td>"
@@ -1519,7 +1606,8 @@ def GenerateReport(
 
     baseline_str = (
         f"{baseline.formula} (σ = {baseline.conductivity_mS_per_cm} mS/cm, internal)"
-        if baseline else "Li6PS5Cl"
+        if baseline
+        else "Li6PS5Cl"
     )
 
     html = f"""<!DOCTYPE html>
@@ -1605,6 +1693,7 @@ Scoring formula and thresholds are configurable project parameters, not embedded
     # Optional PDF via weasyprint
     try:
         import weasyprint
+
         pdf_path = report_path.replace(".html", ".pdf")
         weasyprint.HTML(string=html).write_pdf(pdf_path)
         log.info("GenerateReport: PDF → %s", pdf_path)

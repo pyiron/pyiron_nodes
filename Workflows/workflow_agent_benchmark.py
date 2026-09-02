@@ -76,7 +76,6 @@ from pyiron_ai.workflow_bench import (
 )
 from pyiron_ai import workflow_bench
 
-
 # ── Task sources ────────────────────────────────────────────────────────────
 
 
@@ -175,8 +174,19 @@ def TaskList(
 
 
 @as_function_node(
-    ["path", "session_id", "gen_seconds", "cost_usd", "num_turns",
-     "tokens_in", "tokens_cache_created", "tokens_cache_read", "tokens_out", "agent_error", "timed_out"]
+    [
+        "path",
+        "session_id",
+        "gen_seconds",
+        "cost_usd",
+        "num_turns",
+        "tokens_in",
+        "tokens_cache_created",
+        "tokens_cache_read",
+        "tokens_out",
+        "agent_error",
+        "timed_out",
+    ]
 )
 def GenerateWorkflow(
     task: str = "",
@@ -300,8 +310,18 @@ def GenerateWorkflow(
 
 
 @as_function_node(
-    ["stage", "syntax_ok", "constructs_ok", "executes_ok", "plausible_ok",
-     "roundtrip_ok", "error", "n_nodes", "n_edges", "measured_json"]
+    [
+        "stage",
+        "syntax_ok",
+        "constructs_ok",
+        "executes_ok",
+        "plausible_ok",
+        "roundtrip_ok",
+        "error",
+        "n_nodes",
+        "n_edges",
+        "measured_json",
+    ]
 )
 def ValidateWorkflow(
     path: str = "",
@@ -356,14 +376,32 @@ def ValidateWorkflow(
     expect = json.loads(expect_json) if expect_json else expect_of(task)
     v = validate_workflow_file(path, timeout_s=timeout_s, arm=arm, expect=expect)
     return (
-        v.stage, v.syntax_ok, v.constructs_ok, v.executes_ok, v.plausible_ok,
-        v.roundtrip_ok, v.error, v.n_nodes, v.n_edges, json.dumps(v.measured),
+        v.stage,
+        v.syntax_ok,
+        v.constructs_ok,
+        v.executes_ok,
+        v.plausible_ok,
+        v.roundtrip_ok,
+        v.error,
+        v.n_nodes,
+        v.n_edges,
+        json.dumps(v.measured),
     )
 
 
-@as_function_node(["session_id", "repair_seconds", "cost_usd", "num_turns",
-                   "tokens_in", "tokens_cache_created", "tokens_cache_read", "tokens_out",
-                   "agent_error"])
+@as_function_node(
+    [
+        "session_id",
+        "repair_seconds",
+        "cost_usd",
+        "num_turns",
+        "tokens_in",
+        "tokens_cache_created",
+        "tokens_cache_read",
+        "tokens_out",
+        "agent_error",
+    ]
+)
 def RepairWorkflow(
     path: str = "",
     session_id: str = "",
@@ -420,9 +458,18 @@ def RepairWorkflow(
 
 
 @as_function_node(
-    ["session_id", "variant_seconds", "cost_usd", "num_turns",
-     "tokens_in", "tokens_cache_created", "tokens_cache_read", "tokens_out",
-     "diff_loc", "agent_error"]
+    [
+        "session_id",
+        "variant_seconds",
+        "cost_usd",
+        "num_turns",
+        "tokens_in",
+        "tokens_cache_created",
+        "tokens_cache_read",
+        "tokens_out",
+        "diff_loc",
+        "agent_error",
+    ]
 )
 def VaryWorkflow(
     path: str = "",
@@ -465,7 +512,9 @@ def VaryWorkflow(
         timeout_s=agent_timeout_s,
         arm=arm,
     )
-    after = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    after = (
+        target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    )
     return (
         run.session_id or session_id,
         run.seconds,
@@ -565,7 +614,10 @@ def WorkflowAgent(
     timeout_s = max(exec_timeout_s, spec.timeout_s if spec else 0)
 
     out = BenchOutcome(
-        task=task, tier=tier_of(task), model=model, arm=arm,
+        task=task,
+        tier=tier_of(task),
+        model=model,
+        arm=arm,
         scored=bool(expect_of(task)),
     )
 
@@ -687,19 +739,21 @@ def WorkflowAgent(
         _save_snapshot(path, out.repair_cycles)
         _save_error(error, out.repair_cycles)
 
-        repair_details.append({
-            "cycle": out.repair_cycles,
-            "stage_before": prev_stage,
-            "stage_after": stage,
-            "seconds": round(fixer.outputs.repair_seconds.value, 1),
-            "cost_usd": round(repair_cost, 4),
-            "tokens_in": repair_tok_in,
-            "tokens_cache_created": repair_tok_cache_created,
-            "tokens_cache_read": repair_tok_cache_read,
-            "tokens_out": repair_tok_out,
-            "snapshot_file": f"{Path(path).stem}_attempt_{out.repair_cycles}.py",
-            "error_file": f"error_attempt_{out.repair_cycles}.txt",
-        })
+        repair_details.append(
+            {
+                "cycle": out.repair_cycles,
+                "stage_before": prev_stage,
+                "stage_after": stage,
+                "seconds": round(fixer.outputs.repair_seconds.value, 1),
+                "cost_usd": round(repair_cost, 4),
+                "tokens_in": repair_tok_in,
+                "tokens_cache_created": repair_tok_cache_created,
+                "tokens_cache_read": repair_tok_cache_read,
+                "tokens_out": repair_tok_out,
+                "snapshot_file": f"{Path(path).stem}_attempt_{out.repair_cycles}.py",
+                "error_file": f"error_attempt_{out.repair_cycles}.txt",
+            }
+        )
 
     out.repair_details_json = json.dumps(repair_details)
 
@@ -759,7 +813,10 @@ def WorkflowAgent(
         # Judged on the variant's own ranges; an empty dict means the ladder
         # stops at executes/roundtrip rather than at a range known to be wrong.
         rechecker = ValidateWorkflow(
-            path=path, timeout_s=timeout_s, arm=arm, task=task,
+            path=path,
+            timeout_s=timeout_s,
+            arm=arm,
+            task=task,
             expect_json=json.dumps(variant_expect),
         )
         rechecker.run()
@@ -911,7 +968,9 @@ def PlotBenchmark(df: pd.DataFrame = None, max_repairs: int = 3):
         ax_r.legend(frameon=False, fontsize=8)
 
     n = int(overall["n_tasks"])
-    models = ", ".join(sorted(set(df["model"]))) if df is not None and "model" in df else ""
+    models = (
+        ", ".join(sorted(set(df["model"]))) if df is not None and "model" in df else ""
+    )
     fig.suptitle(f"Agentic workflow generation — {n} runs, {models}", fontsize=10)
     fig.tight_layout()
     return fig
@@ -983,7 +1042,8 @@ wf.bench_scratch = IterToDataFrame(
 )
 
 wf.results = StackResults(
-    df_aiflow=wf.bench_aiflow, df_scratch=wf.bench_scratch,
+    df_aiflow=wf.bench_aiflow,
+    df_scratch=wf.bench_scratch,
     workdir=wf.workdir,
 )
 

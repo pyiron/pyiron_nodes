@@ -82,8 +82,12 @@ def GetDistances(
 
 @as_function_node
 def DefectEnergyPerArea(
-    energy_defect: float, energy_ref: float, structure: Atoms, vec_index: int = 2
-, unit: Literal["meV/A^2", "mJ/m^2"] = "mJ/m^2"):
+    energy_defect: float,
+    energy_ref: float,
+    structure: Atoms,
+    vec_index: int = 2,
+    unit: Literal["meV/A^2", "mJ/m^2"] = "mJ/m^2",
+):
     area = structure.cell.area(vec_index)
     delta_erg = (energy_defect - energy_ref) / area * 1000
     if unit == "mJ/m^2":

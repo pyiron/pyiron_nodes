@@ -6,12 +6,13 @@ from pyiron_nodes.controls import IterToDataFrame
 from core import Workflow
 from core import as_function_node
 
-
 # ── LLM config dataclass (plain data, not a node) ───────────────────────────
+
 
 @dataclass
 class LLMConfig:
     """Bundle backend identifier and model name for routing calls."""
+
     backend: str
     model_name: str
 
@@ -33,13 +34,19 @@ def call_llm(prompt: str, max_tokens: int, cfg: LLMConfig = None) -> str:
 
     if c.backend == "ollama":
         from pyiron_ai.node_store import _ollama_generate
-        return _ollama_generate(model=c.model_name, prompt=prompt, max_tokens=max_tokens)
+
+        return _ollama_generate(
+            model=c.model_name, prompt=prompt, max_tokens=max_tokens
+        )
 
     if c.backend == "openai_academic":
         import keyring
         from pyiron_ai.node_store import _openai_generate
+
         content, _ = _openai_generate(
-            model=c.model_name, prompt=prompt, max_tokens=max_tokens,
+            model=c.model_name,
+            prompt=prompt,
+            max_tokens=max_tokens,
             api_key=keyring.get_password("openai", "api_key"),
             api_base=OPENAI_API_BASE,
         )
@@ -48,12 +55,14 @@ def call_llm(prompt: str, max_tokens: int, cfg: LLMConfig = None) -> str:
     if c.backend == "claude":
         import os
         from anthropic import AnthropicFoundry
+
         client = AnthropicFoundry(
             api_key=os.environ["ANTHROPIC_FOUNDRY_API_KEY"],
             resource=os.environ["ANTHROPIC_FOUNDRY_RESOURCE"],
         )
         response = client.messages.create(
-            model=c.model_name, max_tokens=max_tokens,
+            model=c.model_name,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text
@@ -94,6 +103,7 @@ def ListModels(
     """
     if backend == "ollama":
         import requests
+
         r = requests.get("http://localhost:11434/api/tags", timeout=3)
         r.raise_for_status()
         models_list = [m["name"] for m in r.json().get("models", [])]
@@ -101,6 +111,7 @@ def ListModels(
     elif backend == "openai_academic":
         import keyring
         from pyiron_ai.node_store import _list_available_models
+
         models_list = _list_available_models(
             api_key=keyring.get_password("openai", "api_key"),
             api_base=OPENAI_API_BASE,
@@ -108,10 +119,14 @@ def ListModels(
 
     elif backend == "claude":
         import os
+
         _KNOWN = ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"]
         try:
             import anthropic
-            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_FOUNDRY_API_KEY"])
+
+            client = anthropic.Anthropic(
+                api_key=os.environ["ANTHROPIC_FOUNDRY_API_KEY"]
+            )
             models_list = [m.id for m in client.models.list()]
         except Exception:
             models_list = _KNOWN
@@ -237,7 +252,11 @@ def FixCode(
         Fix the code so it runs without errors and fulfils the task.
         Return ONLY the corrected Python code block.
     """).strip()
-    return extract_code(call_llm(prompt, max_tokens, cfg=model if model is not None else _DEFAULT_CONFIG))
+    return extract_code(
+        call_llm(
+            prompt, max_tokens, cfg=model if model is not None else _DEFAULT_CONFIG
+        )
+    )
 
 
 @as_function_node("tasks")
@@ -263,7 +282,9 @@ def TaskList(
     return [t for t in [task_1, task_2, task_3, task_4, task_5] if t.strip()]
 
 
-@as_function_node(["success", "code", "final_output", "attempts_taken", "elapsed", "model_name"])
+@as_function_node(
+    ["success", "code", "final_output", "attempts_taken", "elapsed", "model_name"]
+)
 def CodeAgent(
     task: str = "print the first 10 Fibonacci numbers",
     model: LLMConfig = None,
@@ -306,6 +327,7 @@ def CodeAgent(
         The model that was used.
     """
     import time
+
     t0 = time.time()
 
     gen = GenerateCode(task=task, model=model, max_tokens=max_tokens)
@@ -324,7 +346,9 @@ def CodeAgent(
         if success:
             break
 
-        fixer = FixCode(code=code, error=error, task=task, model=model, max_tokens=max_tokens)
+        fixer = FixCode(
+            code=code, error=error, task=task, model=model, max_tokens=max_tokens
+        )
         fixer.run()
         code = fixer.outputs.fixed_code.value
 

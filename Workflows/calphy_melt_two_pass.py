@@ -107,7 +107,6 @@ from core import Workflow, group_node
 
 from pyiron_nodes.atomistic.property.calphy import InputClass
 
-
 # ── Group node factories ───────────────────────────────────────────────────
 
 

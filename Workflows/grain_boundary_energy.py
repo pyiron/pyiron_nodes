@@ -3,7 +3,10 @@ from __future__ import annotations
 import numpy as np
 
 from core import Workflow, as_function_node
-from pyiron_nodes.atomistic.structure.build_gb import GrainBoundaryOptions, BuildGrainBoundary
+from pyiron_nodes.atomistic.structure.build_gb import (
+    GrainBoundaryOptions,
+    BuildGrainBoundary,
+)
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.engine.ase import EMT
 from pyiron_nodes.atomistic.calculator.ase import StaticEnergy, Minimize

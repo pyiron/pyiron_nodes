@@ -83,7 +83,9 @@ def _basenames_collide(filenames) -> bool:
 
     names = [os.path.basename(str(f)) for f in filenames]
     return any(
-        a != b and a in b for i, a in enumerate(names) for b in names[i + 1 :] + names[:i]
+        a != b and a in b
+        for i, a in enumerate(names)
+        for b in names[i + 1 :] + names[:i]
     )
 
 
@@ -122,11 +124,19 @@ def get_usable_potential_by_name(
     except (IndexError, KeyError):
         # get_potential_by_name does .iloc[0] on the filtered DataFrame without
         # checking whether it is empty first, so an unknown name raises IndexError.
-        from pyiron_lammps.potential import LammpsPotentialFile, get_resource_path_from_conda
+        from pyiron_lammps.potential import (
+            LammpsPotentialFile,
+            get_resource_path_from_conda,
+        )
+
         rp = resource_path or get_resource_path_from_conda()
         all_names = LammpsPotentialFile(resource_path=rp).list()["Name"]
-        keyword = potential_name.split("--")[1] if "--" in potential_name else potential_name
-        candidates = all_names[all_names.str.contains(keyword, case=False, na=False)].tolist()[:5]
+        keyword = (
+            potential_name.split("--")[1] if "--" in potential_name else potential_name
+        )
+        candidates = all_names[
+            all_names.str.contains(keyword, case=False, na=False)
+        ].tolist()[:5]
         hint = f"  Closest matches: {candidates}" if candidates else ""
         raise ValueError(
             f"Potential {potential_name!r} not found in the catalog.{hint}\n"
@@ -396,9 +406,15 @@ def CreateLammpsMDInput(
 
     # Strip bond/angle coefficient lines when the structure has no bonds.
     if not io_bundle.has_bonds:
-        _bond_angle_prefixes = ("bond_style", "bond_coeff", "angle_style", "angle_coeff")
+        _bond_angle_prefixes = (
+            "bond_style",
+            "bond_coeff",
+            "angle_style",
+            "angle_coeff",
+        )
         potential_lst = [
-            l for l in potential_lst
+            l
+            for l in potential_lst
             if not any(l.strip().startswith(p) for p in _bond_angle_prefixes)
         ]
 
@@ -437,6 +453,7 @@ def CreateLammpsMDInput(
     # electrode_force_{Species}.txt file.
     # compute group/group evaluates interactions before fix setforce zeroes them.
     from ase.constraints import FixAtoms as _FixAtoms
+
     _fixed_indices = []
     for _c in io_bundle.structure.constraints:
         if isinstance(_c, _FixAtoms):
@@ -800,7 +817,7 @@ def ParseElectrodeForce(io_bundle: LammpsIOBundle):
     electrode_forces = {}
     pattern = os.path.join(io_bundle.working_directory, "electrode_force_*.txt")
     for path in sorted(glob.glob(pattern)):
-        species = os.path.basename(path)[len("electrode_force_"):-len(".txt")]
+        species = os.path.basename(path)[len("electrode_force_") : -len(".txt")]
         data = np.loadtxt(path, comments="#")
         if data.ndim == 1:
             data = data[np.newaxis, :]
