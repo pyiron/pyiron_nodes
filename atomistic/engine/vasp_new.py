@@ -753,64 +753,20 @@ def MergeVaspInput(
     return calc
 
 
-@as_function_node
-def CreateVaspInputResources(
-    structure: Atoms,
-    calc: VaspInput,
-    potcar_lib_path: str = _default_potcar_lib_path,
-    working_directory: Optional[str] = None,
-    potcar_symbols: Optional[list[str]] = None,
-) -> VaspInputResources:
-    """Write the four VASP input files and return the resource bundle.
+def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
+    """Write POSCAR, INCAR, POTCAR and KPOINTS into ``io_bundle.working_directory``.
 
-    Creates ``working_directory`` (a hash of the calculation when none is given,
-    see ``_generate_hash``) and writes POSCAR, INCAR, POTCAR and KPOINTS into it.
     POTCAR is the per-species pseudopotentials concatenated in POSCAR order,
     looked up from the bundled CSV under ``potcar_lib_path`` unless
     ``potcar_symbols`` names the folders explicitly. KPOINTS is a Gamma-centred
     mesh parsed from the ``"kx ky kz"`` string on ``InputSCF``.
-
-    Parameters
-    ----------
-    structure
-        The atomic structure (ASE ``Atoms``) to write to POSCAR.
-    calc
-        Combined VASP settings from ``MergeVaspInput``.
-    potcar_lib_path
-        Base directory holding the per-element POTCAR folders.
-    working_directory
-        Where the input files are written; defaults to a content hash.
-    potcar_symbols
-        Explicit POTCAR folder names, overriding the CSV lookup.
-
-    Returns
-    -------
-    VaspInputResources
-        The bundle (with ``working_directory`` resolved) that the run node takes.
 
     Raises
     ------
     ValueError
         If ``scf.kpoints`` is not three integers.
     """
-    io_bundle = VaspInputResources(
-        structure=structure,
-        calc=calc,
-        working_directory=working_directory,
-        potcar_lib_path=potcar_lib_path,
-        potcar_symbols=potcar_symbols,
-        extra_incar=calc.extra_incar,
-    )
-
-    print("writing_input")
-    print("working dir: ", io_bundle.working_directory)
-
-    if io_bundle.working_directory is not None:
-        workdir = io_bundle.working_directory
-    else:
-        workdir = _generate_hash(io_bundle)
-        print("giving the hash name:", workdir)
-    io_bundle.working_directory = workdir
+    workdir = io_bundle.working_directory
     os.makedirs(workdir, exist_ok=True)
 
     # Group atoms by species to ensure the order of POTCAR matches POSCAR
@@ -853,6 +809,53 @@ def CreateVaspInputResources(
         )
     Kpoints.gamma_automatic(mesh).write_file(kpoints_path)
 
+
+@as_function_node
+def CreateVaspInputResources(
+    structure: Atoms,
+    calc: VaspInput,
+    potcar_lib_path: str = _default_potcar_lib_path,
+    working_directory: Optional[str] = None,
+    potcar_symbols: Optional[list[str]] = None,
+) -> VaspInputResources:
+    """Resolve the working directory and return the resource bundle.
+
+    The input files themselves (POSCAR, INCAR, POTCAR, KPOINTS) are written
+    later, by ``RunVaspCalculation``. This node only decides where they will
+    go: ``working_directory`` is used as-is when given, otherwise a hash of
+    the calculation is used instead (see ``_generate_hash``), so two
+    identical calculations map to the same directory.
+
+    Parameters
+    ----------
+    structure
+        The atomic structure (ASE ``Atoms``) that will be written to POSCAR.
+    calc
+        Combined VASP settings from ``MergeVaspInput``.
+    potcar_lib_path
+        Base directory holding the per-element POTCAR folders.
+    working_directory
+        Where the input files will be written; defaults to a content hash.
+    potcar_symbols
+        Explicit POTCAR folder names, overriding the CSV lookup.
+
+    Returns
+    -------
+    VaspInputResources
+        The bundle (with ``working_directory`` resolved) that the run node takes.
+    """
+    io_bundle = VaspInputResources(
+        structure=structure,
+        calc=calc,
+        working_directory=working_directory,
+        potcar_lib_path=potcar_lib_path,
+        potcar_symbols=potcar_symbols,
+        extra_incar=calc.extra_incar,
+    )
+
+    if io_bundle.working_directory is None:
+        io_bundle.working_directory = _generate_hash(io_bundle)
+
     return io_bundle
 
 
@@ -864,13 +867,13 @@ def RunVaspCalculation(
     threads_per_core: int = 1,
     debug: bool = False,
 ):
-    """Run VASP in the bundle's working directory.
+    """Write the VASP input files and run VASP in the bundle's working directory.
 
-    Executes ``vasp_command`` (or ``bash <run_script_path> <threads_per_core>``
-    when ``run_script_path`` points at an existing file) with the working
-    directory as CWD, so it picks up the POSCAR/INCAR/POTCAR/KPOINTS written by
-    ``CreateVaspInputResources``. A non-zero exit writes stdout+stderr to
-    ``error.msg`` and raises ``RuntimeError``.
+    Writes POSCAR, INCAR, POTCAR and KPOINTS into ``io_bundle.working_directory``
+    (see ``_write_vasp_input_files``), then executes ``vasp_command`` (or
+    ``bash <run_script_path> <threads_per_core>`` when ``run_script_path`` points
+    at an existing file) with the working directory as CWD. A non-zero exit
+    writes stdout+stderr to ``error.msg`` and raises ``RuntimeError``.
 
     Parameters
     ----------
@@ -884,15 +887,23 @@ def RunVaspCalculation(
     threads_per_core
         MPI rank count passed to the fallback command / launcher script.
     debug
-        If ``True``, skip the launch and just return the working directory as
-        stdout — useful for wiring up a workflow without running VASP.
+        If ``True``, write the input files but skip the launch, returning the
+        working directory as stdout — useful for wiring up a workflow without
+        running VASP.
 
     Returns
     -------
     (io_bundle, stdout)
         The same bundle (for chaining into ``ParseVaspOutput``) and the run's
         stdout (the working directory in ``debug`` mode).
+
+    Raises
+    ------
+    ValueError
+        If ``scf.kpoints`` is not three integers.
     """
+    _write_vasp_input_files(io_bundle)
+
     if not vasp_command:
         vasp_command = f"module load vasp && mpiexec -n {threads_per_core} vasp_std"
 
