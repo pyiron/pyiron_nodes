@@ -170,6 +170,7 @@ def _ordered_elements(atoms: Atoms) -> list[str]:
             elements.append(sym)
     return elements
 
+
 def _grouped_atoms(atoms: Atoms) -> Atoms:
     """Reorder atoms into contiguous blocks, preserving first-appearance order.
 
@@ -812,7 +813,7 @@ def CreateVaspInputResources(
     io_bundle.working_directory = workdir
     os.makedirs(workdir, exist_ok=True)
 
-    #Group atoms by species to ensure the order of POTCAR matches POSCAR
+    # Group atoms by species to ensure the order of POTCAR matches POSCAR
     unordered_atoms = io_bundle.structure.copy()
     grouped_atoms = _grouped_atoms(unordered_atoms)
 
