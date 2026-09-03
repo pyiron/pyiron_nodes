@@ -11,10 +11,10 @@ from typing import Union
 def CreateDB(
     user: str = USERNAME,
     password: str = "none",
-    host: str = "localhost",    
+    host: str = "localhost",
     port: int = 5432,
     database: str = USERNAME,
-    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",    
+    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",
 ):
     import pyiron_database
 
