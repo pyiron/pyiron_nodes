@@ -257,11 +257,11 @@ def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
 
 
 @as_function_node
-def add_ion_pair(
+def AddIonPair(
     structure: Atoms,
     anion: str = "Na",
     cation: str = "Cl",
-    number: int = 0,
+    no_of_pairs: int = 0,
     seed: int = 1234,
 ) -> Atoms:
     """
@@ -309,18 +309,18 @@ def add_ion_pair(
     # ind_O = electrolyte.select_index("O")
     ind_O = [atom.index for atom in electrolyte if atom.symbol == "O"]
 
-    # Randomly choose ``number`` distinct oxygen indices
+    # Randomly choose ``no_of_pairs`` distinct oxygen indices
     rng = np.random.default_rng(seed)
-    picked = np.sort(rng.choice(ind_O, int(number), replace=False)).tolist()
+    picked = np.sort(rng.choice(ind_O, int(no_of_pairs), replace=False)).tolist()
 
     # Replace the first half with the anion and the second half with the cation
-    half = number // 2
+    half = no_of_pairs // 2
 
     # get all chemical symbols as a list and modify it
     symbols = electrolyte.get_chemical_symbols()
     for i in picked[:half]:
         symbols[i] = anion
-    for i in picked[half:number]:
+    for i in picked[half:no_of_pairs]:
         symbols[i] = cation
 
     # set the modified symbols back

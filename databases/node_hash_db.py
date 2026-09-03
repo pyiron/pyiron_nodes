@@ -10,11 +10,11 @@ from typing import Union
 @as_function_node
 def CreateDB(
     user: str = USERNAME,
-    password: Union[str, None] = None,
-    host: str = "130.183.217.189",
+    password: str = "none",
+    host: str = "localhost",    
     port: int = 5432,
-    database: str = "pyiron",
-    table_name: str = "pyiron_nodes_table",
+    database: str = USERNAME,
+    table_name: Literal["test_nodes_cmmc", "nodes_cmmc"] = "test_nodes_cmmc",    
 ):
     import pyiron_database
 

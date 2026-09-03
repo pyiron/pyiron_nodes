@@ -307,9 +307,9 @@ def FixAtoms(
         fix_by_species = atom.symbol in species_set
         fix_by_index = i in index_set
         fix_by_z = (
-            fix_z_coordinate is not None
-            and fix_z_coordinate != ""
-            and abs(atom.position[2] - fix_z_coordinate) <= fix_z_tolerance
+            fix_at_z is not None
+            and fix_at_z != ""
+            and abs(atom.position[2] - fix_at_z) <= fix_at_z_tol
         )
         mask.append(fix_by_species or fix_by_index or fix_by_z)
 
