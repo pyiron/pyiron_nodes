@@ -598,7 +598,9 @@ def OptimizeWorkflow(
     from pathlib import Path
 
     target = Path(path)
-    before = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    before = (
+        target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    )
     prompt = OPTIMIZE_PROMPT.format(guide_opt=WORKFLOW_OPT_GUIDE)
 
     t0 = time.time()
@@ -613,7 +615,9 @@ def OptimizeWorkflow(
         lib_dir=lib_dir or None,
         effort=effort or None,
     )
-    after = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    after = (
+        target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    )
     diff = workflow_bench.count_edit(before, after)
 
     checker = ValidateWorkflow(
@@ -927,9 +931,11 @@ def WorkflowAgent(
         out.cost_usd += optimizer.outputs.cost_usd.value
         if out.optimize_ok:
             shutil.copy2(path, Path(path).with_name(f"{Path(path).stem}_optimized.py"))
-        say(f"optimize → {out.optimize_stage} (diff {out.optimize_diff_loc} LOC, "
+        say(
+            f"optimize → {out.optimize_stage} (diff {out.optimize_diff_loc} LOC, "
             f"C1: {out.c1_violations}→{out.c1_violations_after}, "
-            f"C2: {out.c2_violations}→{out.c2_violations_after})")
+            f"C2: {out.c2_violations}→{out.c2_violations_after})"
+        )
     # ── the follow-up edit: what does it cost to change your mind? ───────────
     variant, variant_expect = workflow_bench.variant_of(task)
     if run_variant and variant and stage == "complete":

@@ -388,7 +388,9 @@ def PlotBulkElectricField(
     charges = context["charges"]
 
     species_array = np.asarray(trajectory.species)
-    positions = np.asarray(trajectory.positions)[initial_step:]   # (n_frames, n_atoms, 3)
+    positions = np.asarray(trajectory.positions)[
+        initial_step:
+    ]  # (n_frames, n_atoms, 3)
     steps = np.asarray(trajectory.steps)[initial_step:]
     n_frames = positions.shape[0]
 
@@ -420,9 +422,9 @@ def PlotBulkElectricField(
     z_hi = z_bot + bulk_fraction_hi * z_extent
     bulk_mask = (bin_centers >= z_lo) & (bin_centers <= z_hi)
 
-    epsilon_0 = 8.854187817e-12   # F/m
-    e_charge = 1.602176634e-19    # C
-    ang_to_m = 1e-10              # Å → m
+    epsilon_0 = 8.854187817e-12  # F/m
+    e_charge = 1.602176634e-19  # C
+    ang_to_m = 1e-10  # Å → m
 
     # Accumulate charge density: rho_all[t, z_bin] in e/Å³
     rho_all = np.zeros((n_frames, n_bins))
@@ -430,32 +432,33 @@ def PlotBulkElectricField(
         idx = np.where(species_array == el)[0]
         if len(idx) == 0 or q == 0.0:
             continue
-        z_el = positions[:, idx, 2]                                   # (n_frames, n_el)
+        z_el = positions[:, idx, 2]  # (n_frames, n_el)
         bin_idx = np.clip(
             np.searchsorted(bin_edges[1:], z_el), 0, n_bins - 1
-        )                                                             # (n_frames, n_el)
-        frame_idx = np.broadcast_to(
-            np.arange(n_frames)[:, None], z_el.shape
-        )
+        )  # (n_frames, n_el)
+        frame_idx = np.broadcast_to(np.arange(n_frames)[:, None], z_el.shape)
         np.add.at(rho_all.ravel(), (frame_idx * n_bins + bin_idx).ravel(), q / V_bin)
 
     # Poisson integration: E(z, t) in V/Å
-    rho_c = rho_all * e_charge / ang_to_m**3                          # C/m³
+    rho_c = rho_all * e_charge / ang_to_m**3  # C/m³
     dz_m = dz * ang_to_m
-    E_z = np.cumsum(rho_c * dz_m, axis=1) / epsilon_0                # V/m, shape (n_frames, n_bins)
-    E_z_per_ang = E_z * ang_to_m                                      # V/Å
+    E_z = np.cumsum(rho_c * dz_m, axis=1) / epsilon_0  # V/m, shape (n_frames, n_bins)
+    E_z_per_ang = E_z * ang_to_m  # V/Å
 
-    E_bulk_series = np.mean(E_z_per_ang[:, bulk_mask], axis=1)        # (n_frames,)
+    E_bulk_series = np.mean(E_z_per_ang[:, bulk_mask], axis=1)  # (n_frames,)
 
     if smooth and n_frames > 20:
         from scipy.ndimage import uniform_filter1d
+
         window = max(3, n_frames // 20)
         E_smooth = uniform_filter1d(E_bulk_series, size=window)
     else:
         E_smooth = None
 
     fig, ax = plt.subplots()
-    ax.plot(steps, E_bulk_series, color="#9CA3AF", linewidth=0.8, alpha=0.5, label="raw")
+    ax.plot(
+        steps, E_bulk_series, color="#9CA3AF", linewidth=0.8, alpha=0.5, label="raw"
+    )
     if E_smooth is not None:
         ax.plot(steps, E_smooth, color="#3B82F6", linewidth=2.0, label="smoothed")
     ax.axhline(0.0, color="#6B7280", linewidth=1.0, linestyle="--")
