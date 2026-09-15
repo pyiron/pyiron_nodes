@@ -269,7 +269,23 @@ def StaticEnergy(
     return energy
 
 
-@as_function_node("out", isolate=True)
+def _stop_if_cancelled(label: str) -> None:
+    """Abort an ASE optimiser loop when the run has been stopped.
+
+    Attached as an observer, this is what makes a relaxation stoppable *without*
+    isolating it in a forked process — which matters because the calculators
+    these nodes are used with (GRACE, and anything else built on TensorFlow)
+    cannot be forked at all.  ``Dynamics.call_observers`` does not catch, so
+    raising here comes straight back out of ``dyn.run``; ``Graph.run`` reports
+    :class:`GraphCancelled` as *Cancelled* rather than *Failed*.
+    """
+    from core.cancellation import GraphCancelled, is_cancelled
+
+    if is_cancelled():
+        raise GraphCancelled(label)
+
+
+@as_function_node("out")
 def Minimize(
     structure=None,
     engine=None,
@@ -294,6 +310,11 @@ def Minimize(
     Returns
     -------
     OutputCalcStaticList dataclass instance
+
+    Notes
+    -----
+    Stoppable in-process: a Stop is honoured between BFGS steps, so this node
+    does not need *Run isolated* and works with engines that cannot be forked.
     """
     from ase.io.trajectory import Trajectory
     from ase.optimize import BFGS
@@ -322,6 +343,9 @@ def Minimize(
         log_file = "-"
 
     dyn = BFGS(initial, logfile=log_file, trajectory="minimize.traj")
+    # Checked between BFGS steps, which for a relaxation is the granularity
+    # that matters: one step is one force call.
+    dyn.attach(_stop_if_cancelled, interval=1, label="Minimize")
     dyn.run(fmax=fmax)
 
     traj = Trajectory("minimize.traj")

@@ -60,7 +60,9 @@ from pyiron_ai.workflow_bench import (
     AGENT_BUDGET_USD,
     AGENT_TIMEOUT_S,
     ARM_ARTIFACT,
+    OPTIMIZE_PROMPT,
     PYIRON_NODES_ROOT,
+    WORKFLOW_OPT_GUIDE,
     BenchOutcome,
     build_node_library_mirror,
     expect_of,
@@ -186,6 +188,7 @@ def TaskList(
         "tokens_out",
         "agent_error",
         "timed_out",
+        "model_id",
     ]
 )
 def GenerateWorkflow(
@@ -197,6 +200,7 @@ def GenerateWorkflow(
     agent_timeout_s: int = AGENT_TIMEOUT_S,
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
+    effort: str = "",
 ):
     """Have Claude Code write one solution for *task*, in the given *arm*.
 
@@ -273,6 +277,7 @@ def GenerateWorkflow(
             timeout_s=agent_timeout_s,
             arm=arm,
             lib_dir=lib_dir or None,
+            effort=effort or None,
         )
 
     def hit_wall(r):
@@ -306,6 +311,7 @@ def GenerateWorkflow(
         tokens_out,
         run.error if run.is_error else "",
         hit_wall(run),
+        run.model_id,
     )
 
 
@@ -321,6 +327,8 @@ def GenerateWorkflow(
         "n_nodes",
         "n_edges",
         "measured_json",
+        "c1_violations",
+        "c2_violations",
     ]
 )
 def ValidateWorkflow(
@@ -386,6 +394,8 @@ def ValidateWorkflow(
         v.n_nodes,
         v.n_edges,
         json.dumps(v.measured),
+        v.c1_violations,
+        v.c2_violations,
     )
 
 
@@ -412,6 +422,7 @@ def RepairWorkflow(
     agent_timeout_s: int = AGENT_TIMEOUT_S,
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
+    effort: str = "",
 ):
     """Hand a validation failure back to the agent that wrote the code.
 
@@ -443,6 +454,7 @@ def RepairWorkflow(
         timeout_s=agent_timeout_s,
         arm=arm,
         lib_dir=lib_dir or None,
+        effort=effort or None,
     )
     return (
         run.session_id or session_id,
@@ -480,6 +492,7 @@ def VaryWorkflow(
     max_budget_usd: float = AGENT_BUDGET_USD,
     agent_timeout_s: int = AGENT_TIMEOUT_S,
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
+    effort: str = "",
 ):
     """Ask the agent for one follow-up change to a solution that already works.
 
@@ -511,6 +524,7 @@ def VaryWorkflow(
         max_budget_usd=max_budget_usd,
         timeout_s=agent_timeout_s,
         arm=arm,
+        effort=effort or None,
     )
     after = (
         target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
@@ -525,6 +539,104 @@ def VaryWorkflow(
         run.tokens_cache_read,
         run.tokens_out,
         workflow_bench.count_edit(before, after),
+        run.error if run.is_error else "",
+    )
+
+
+@as_function_node(
+    [
+        "stage",
+        "constructs_ok",
+        "executes_ok",
+        "roundtrip_ok",
+        "error",
+        "n_nodes",
+        "n_edges",
+        "c1_violations",
+        "c2_violations",
+        "diff_loc",
+        "cost_usd",
+        "seconds",
+        "agent_error",
+    ]
+)
+def OptimizeWorkflow(
+    path: str = "",
+    session_id: str = "",
+    model: str = "sonnet",
+    max_budget_usd: float = AGENT_BUDGET_USD,
+    agent_timeout_s: int = AGENT_TIMEOUT_S,
+    arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
+    lib_dir: str = "",
+    effort: str = "",
+):
+    """Apply workflow_optimization_guide.md in one LLM turn, then re-validate.
+
+    Sends a single repair-style prompt to the agent that wrote the workflow,
+    instructing it to read the optimization guide and apply the C1/C2 structural
+    rules and Strategies A-D.  Re-runs the full validation ladder on the edited
+    file and returns the before/after graph quality metrics.
+
+    Only called from ``WorkflowAgent`` when ``run_optimize=True`` and the task
+    already reached ``complete`` — it improves a working workflow, not a broken one.
+
+    Returns
+    -------
+    stage : str
+        Validation stage after optimization (should be ``"complete"`` if the
+        optimization preserved the workflow semantics).
+    c1_violations, c2_violations : int
+        Graph-quality violation counts *after* optimization.
+    diff_loc : int
+        Lines added plus removed by the optimization turn.
+    cost_usd, seconds : float
+        Cost and wall-clock for this turn.
+    agent_error : str
+        Non-empty when the CLI itself failed.
+    """
+    import time
+    from pathlib import Path
+
+    target = Path(path)
+    before = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    prompt = OPTIMIZE_PROMPT.format(guide_opt=WORKFLOW_OPT_GUIDE)
+
+    t0 = time.time()
+    run = run_claude_code(
+        prompt,
+        workdir=target.parent,
+        model=model,
+        resume=session_id or None,
+        max_budget_usd=max_budget_usd,
+        timeout_s=agent_timeout_s,
+        arm=arm,
+        lib_dir=lib_dir or None,
+        effort=effort or None,
+    )
+    after = target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+    diff = workflow_bench.count_edit(before, after)
+
+    checker = ValidateWorkflow(
+        path=path,
+        timeout_s=600,
+        arm=arm,
+        task="",
+    )
+    checker.run()
+
+    return (
+        checker.outputs.stage.value,
+        checker.outputs.constructs_ok.value,
+        checker.outputs.executes_ok.value,
+        checker.outputs.roundtrip_ok.value,
+        checker.outputs.error.value,
+        checker.outputs.n_nodes.value,
+        checker.outputs.n_edges.value,
+        checker.outputs.c1_violations.value,
+        checker.outputs.c2_violations.value,
+        diff,
+        run.cost_usd,
+        round(time.time() - t0, 1),
         run.error if run.is_error else "",
     )
 
@@ -544,7 +656,9 @@ def WorkflowAgent(
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
     run_variant: bool = True,
+    run_optimize: bool = False,
     verbose: bool = True,
+    effort: str = "",
 ):
     """Generate → validate → repair one task in one arm, and measure every step.
 
@@ -644,6 +758,7 @@ def WorkflowAgent(
         agent_timeout_s=agent_timeout_s,
         arm=arm,
         lib_dir=lib_dir,
+        effort=effort,
     )
     gen.run()
     path = gen.outputs.path.value
@@ -663,6 +778,7 @@ def WorkflowAgent(
     out.total_tokens_out += gen.outputs.tokens_out.value
     out.agent_error = gen.outputs.agent_error.value
     out.timed_out = gen.outputs.timed_out.value
+    out.model_id_actual = gen.outputs.model_id.value
 
     if not Path(path).is_file():
         out.stage_first = out.final_stage = "no_file"
@@ -709,6 +825,7 @@ def WorkflowAgent(
             agent_timeout_s=agent_timeout_s,
             arm=arm,
             lib_dir=lib_dir,
+            effort=effort,
         )
         fixer.run()
         session_id = fixer.outputs.session_id.value
@@ -767,6 +884,8 @@ def WorkflowAgent(
     out.n_nodes = checker.outputs.n_nodes.value
     out.n_edges = checker.outputs.n_edges.value
     out.measured_json = checker.outputs.measured_json.value
+    out.c1_violations = checker.outputs.c1_violations.value
+    out.c2_violations = checker.outputs.c2_violations.value
     out.hit_repair_cap = stage != "complete" and out.repair_cycles >= max_repairs
     # Composition is an aiflow-arm question: the scratch arm has no graph at all,
     # so leave it False there rather than recording a meaningless verdict.
@@ -780,6 +899,37 @@ def WorkflowAgent(
     # than recording a meaningless zero-reuse "result".
     if arm == "aiflow":
         out.n_reused_nodes, out.n_new_nodes = workflow_bench.count_node_reuse(source)
+    # ── optional optimization turn: apply C1/C2 rules to a complete workflow ─
+    if run_optimize and stage == "complete" and arm == "aiflow":
+        out.optimize_attempted = True
+        # Snapshot the validated workflow before the optimization edits it.
+        shutil.copy2(path, Path(path).with_name(f"{Path(path).stem}_primary.py"))
+        say("optimizing graph structure …")
+        optimizer = OptimizeWorkflow(
+            path=path,
+            session_id=session_id,
+            model=model,
+            max_budget_usd=max_budget_usd,
+            agent_timeout_s=agent_timeout_s,
+            arm=arm,
+            lib_dir=lib_dir,
+            effort=effort,
+        )
+        optimizer.run()
+        out.optimize_stage = optimizer.outputs.stage.value
+        out.optimize_ok = out.optimize_stage == "complete"
+        out.optimize_error = optimizer.outputs.error.value
+        out.optimize_diff_loc = optimizer.outputs.diff_loc.value
+        out.optimize_cost_usd = optimizer.outputs.cost_usd.value
+        out.optimize_seconds = optimizer.outputs.seconds.value
+        out.c1_violations_after = optimizer.outputs.c1_violations.value
+        out.c2_violations_after = optimizer.outputs.c2_violations.value
+        out.cost_usd += optimizer.outputs.cost_usd.value
+        if out.optimize_ok:
+            shutil.copy2(path, Path(path).with_name(f"{Path(path).stem}_optimized.py"))
+        say(f"optimize → {out.optimize_stage} (diff {out.optimize_diff_loc} LOC, "
+            f"C1: {out.c1_violations}→{out.c1_violations_after}, "
+            f"C2: {out.c2_violations}→{out.c2_violations_after})")
     # ── the follow-up edit: what does it cost to change your mind? ───────────
     variant, variant_expect = workflow_bench.variant_of(task)
     if run_variant and variant and stage == "complete":
@@ -799,6 +949,7 @@ def WorkflowAgent(
             max_budget_usd=max_budget_usd,
             agent_timeout_s=agent_timeout_s,
             arm=arm,
+            effort=effort,
         )
         varier.run()
         out.variant_seconds = round(varier.outputs.variant_seconds.value, 1)

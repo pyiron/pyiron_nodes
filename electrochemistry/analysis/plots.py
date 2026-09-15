@@ -322,3 +322,203 @@ def PlotElectrostaticPotential(
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     return fig
+
+
+@as_function_node
+def PlotBulkElectricField(
+    trajectory,
+    context: dict,
+    bulk_fraction_lo: float = 0.35,
+    bulk_fraction_hi: float = 0.65,
+    n_bins: int = 200,
+    initial_step: int = 0,
+    smooth: bool = True,
+    xlabel: str = "MD step",
+    ylabel: str = "Mean electric field (V/Å)",
+) -> Figure:
+    """Compute and plot the time evolution of the mean electric field in the
+    bulk-like electrolyte region.
+
+    Concept
+    -------
+    In the planar (quasi-2D) geometry of an electrochemical cell the
+    electrostatic potential V(z) obeys the 1-D Poisson equation:
+
+        d²V/dz² = −ρ_free(z) / ε₀
+
+    Integrating once from the bottom electrode surface gives the z-component
+    of the electric field:
+
+        E(z) = −dV/dz = (1/ε₀) ∫_{z_ref}^{z} ρ_free(z') dz'
+
+    At every stored MD frame this function:
+
+      1. Bins all charged species (ions, water, electrodes) along z into
+         *n_bins* uniform slabs and computes the volumetric charge density
+         ρ(z, t) = Σ_i q_i · n_i(z, t) / (A_xy · dz).
+      2. Integrates ρ numerically via a cumulative sum (Gauss / Poisson) to
+         obtain E(z, t).
+      3. Averages E(z, t) over the *bulk electrolyte region*, defined as the
+         relative span [bulk_fraction_lo, bulk_fraction_hi] of the distance
+         between the Al electrode surface (z = z_bot) and the Ne pseudo-
+         electrode layer (z = z_top).
+
+    The bulk window is chosen because the double-layer contribution vanishes
+    there at equilibrium.  A non-zero or drifting E_bulk therefore signals
+    incomplete equilibration, residual charge imbalance, or growing ion
+    concentration gradients — all physically meaningful indicators that can
+    be read off this time series.
+
+    Assumptions
+    -----------
+    * Orthogonal simulation box; only the (0,0) and (1,1) cell entries are
+      used for the cross-section area A_xy.
+    * Electrode species are `charges['metal']` (e.g. Al, bottom) and Ne
+      (top); their outermost z-positions in frame 0 fix the electrolyte
+      window that is kept constant across all frames.
+    * Point-charge model: each atom contributes its partial charge q_i to
+      the bin it occupies.
+    * Periodic boundary conditions along z are *not* applied; the Poisson
+      integration starts at z_bot and runs toward z_top.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    initial_structure = context["initial_structure"]
+    charges = context["charges"]
+
+    species_array = np.asarray(trajectory.species)
+    positions = np.asarray(trajectory.positions)[initial_step:]   # (n_frames, n_atoms, 3)
+    steps = np.asarray(trajectory.steps)[initial_step:]
+    n_frames = positions.shape[0]
+
+    A_xy = initial_structure.cell[0, 0] * initial_structure.cell[1, 1]  # Å²
+
+    ind_metal = np.where(species_array == charges["metal"])[0]
+    ind_Ne = np.where(species_array == "Ne")[0]
+
+    first = positions[0]
+    z_bot = float(np.max(first[ind_metal, 2]))
+    z_top = float(np.max(first[ind_Ne, 2]))
+
+    charge_map = {
+        charges["cation"]: charges["cation_charge"],
+        charges["anion"]: charges["anion_charge"],
+        "O": charges["O_charge"],
+        "H": charges["H_charge"],
+        charges["metal"]: charges["metal_charge"],
+        "Ne": charges["neon_charge"],
+    }
+
+    bin_edges = np.linspace(z_bot, z_top, n_bins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    dz = float(bin_edges[1] - bin_edges[0])
+    V_bin = A_xy * dz  # Å³
+
+    z_extent = z_top - z_bot
+    z_lo = z_bot + bulk_fraction_lo * z_extent
+    z_hi = z_bot + bulk_fraction_hi * z_extent
+    bulk_mask = (bin_centers >= z_lo) & (bin_centers <= z_hi)
+
+    epsilon_0 = 8.854187817e-12   # F/m
+    e_charge = 1.602176634e-19    # C
+    ang_to_m = 1e-10              # Å → m
+
+    # Accumulate charge density: rho_all[t, z_bin] in e/Å³
+    rho_all = np.zeros((n_frames, n_bins))
+    for el, q in charge_map.items():
+        idx = np.where(species_array == el)[0]
+        if len(idx) == 0 or q == 0.0:
+            continue
+        z_el = positions[:, idx, 2]                                   # (n_frames, n_el)
+        bin_idx = np.clip(
+            np.searchsorted(bin_edges[1:], z_el), 0, n_bins - 1
+        )                                                             # (n_frames, n_el)
+        frame_idx = np.broadcast_to(
+            np.arange(n_frames)[:, None], z_el.shape
+        )
+        np.add.at(rho_all.ravel(), (frame_idx * n_bins + bin_idx).ravel(), q / V_bin)
+
+    # Poisson integration: E(z, t) in V/Å
+    rho_c = rho_all * e_charge / ang_to_m**3                          # C/m³
+    dz_m = dz * ang_to_m
+    E_z = np.cumsum(rho_c * dz_m, axis=1) / epsilon_0                # V/m, shape (n_frames, n_bins)
+    E_z_per_ang = E_z * ang_to_m                                      # V/Å
+
+    E_bulk_series = np.mean(E_z_per_ang[:, bulk_mask], axis=1)        # (n_frames,)
+
+    if smooth and n_frames > 20:
+        from scipy.ndimage import uniform_filter1d
+        window = max(3, n_frames // 20)
+        E_smooth = uniform_filter1d(E_bulk_series, size=window)
+    else:
+        E_smooth = None
+
+    fig, ax = plt.subplots()
+    ax.plot(steps, E_bulk_series, color="#9CA3AF", linewidth=0.8, alpha=0.5, label="raw")
+    if E_smooth is not None:
+        ax.plot(steps, E_smooth, color="#3B82F6", linewidth=2.0, label="smoothed")
+    ax.axhline(0.0, color="#6B7280", linewidth=1.0, linestyle="--")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend(frameon=False)
+    ax.yaxis.grid(True, color="#E5E7EB", linewidth=0.6, zorder=0)
+    ax.set_axisbelow(True)
+    return fig
+
+
+@as_function_node
+def DoublLayerCapacitance(context: dict):
+    import numpy as np
+    from ase.units import Bohr
+
+    Data = context["density_data"]
+    initial_structure = context["initial_structure"]
+    charges = context["charges"]
+    metal = charges["metal"]
+    z = np.array(Data[metal][0])
+    e_charge = 1.602176634e-19
+    angstrom_to_meter = 1e-10
+    charge_map = {
+        charges["cation"]: charges["cation_charge"],
+        charges["anion"]: charges["anion_charge"],
+        "O": charges["O_charge"],
+        "H": charges["H_charge"],
+        metal: charges["metal_charge"],
+        "Ne": charges["neon_charge"],
+    }
+    rho_e = sum(
+        charge * np.array(Data[el][1])
+        for el, charge in charge_map.items()
+        if el in Data
+    )
+    delta_z = np.gradient(z)[0]
+    A_ang2 = initial_structure.cell[0, 0] * initial_structure.cell[1, 1]
+    vol_bohr = A_ang2 * delta_z * (1 / Bohr) ** 3
+    rho_e_vol = rho_e / vol_bohr
+    epsilon_0 = 8.854187817e-12
+    rho_c = -rho_e_vol * e_charge * (1 / Bohr / angstrom_to_meter) ** 3
+    dz_m = np.gradient(z * angstrom_to_meter)
+    V = np.cumsum((1 / epsilon_0) * np.cumsum(rho_c * dz_m) * dz_m)
+    A_m2 = A_ang2 * angstrom_to_meter**2
+    metal_mask = np.array(Data[metal][1]) > 0.01 * np.max(Data[metal][1])
+    ne_mask = np.array(Data["Ne"][1]) > 0.01 * np.max(Data["Ne"][1])
+    n = len(z)
+    bulk_mask = np.zeros(n, dtype=bool)
+    bulk_mask[3 * n // 10 : 7 * n // 10] = True
+    bulk_mask &= ~metal_mask & ~ne_mask
+    V_bulk = np.mean(V[bulk_mask]) if np.any(bulk_mask) else 0.0
+
+    def _dlc(electrode_mask, species, charge_per_atom):
+        if not np.any(electrode_mask) or not np.any(bulk_mask):
+            return float("nan")
+        dV = np.mean(V[electrode_mask]) - V_bulk
+        if abs(dV) < 1e-10:
+            return float("nan")
+        n_atoms = np.sum(Data[species][1])
+        sigma = n_atoms * charge_per_atom * e_charge / A_m2
+        return float(abs(sigma / dV) * 100.0)  # F/m² → μF/cm²
+
+    C_metal = _dlc(metal_mask, metal, charges["metal_charge"])
+    C_Ne = _dlc(ne_mask, "Ne", charges["neon_charge"])
+    return C_metal, C_Ne

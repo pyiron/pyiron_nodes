@@ -83,10 +83,15 @@ def ForkExecutor(poll_interval: float = 0.1):
     because Python cannot interrupt a call in progress; with this executor the
     node itself is killed and reported as Cancelled.
 
-    Unlike ``ProcessPoolExecutor`` this forks, so unpicklable inputs — a loaded
-    GRACE or MACE calculator — do not have to be sent to the worker, and the
-    model is not reloaded per call.  The node's *return value* still has to be
+    Unlike ``ProcessPoolExecutor`` this forks, so unpicklable inputs — a LAMMPS
+    potential, a ``calphy`` job — do not have to be sent to the worker, and
+    nothing is reloaded per call.  The node's *return value* still has to be
     picklable, which arrays and dataclasses are.  POSIX only.
+
+    Not usable with a TensorFlow-backed calculator such as ``GRACE``: a forked
+    child deadlocks the first time it touches TensorFlow, so this executor
+    refuses to run rather than hang.  Those nodes are stoppable in-process
+    instead — ``Minimize`` checks for a Stop between optimiser steps.
 
     Parameters
     ----------
