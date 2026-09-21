@@ -67,7 +67,7 @@ class InputPlotOptions:
 def PlotDataFrame(
     df: pd.DataFrame,
     x: Optional[list | np.ndarray] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Plot a pandas DataFrame.
@@ -81,6 +81,8 @@ def PlotDataFrame(
     options : InputPlotOptions, optional
         Plot configuration (title, colour, symbol, legend, log‑scales).
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
@@ -178,7 +180,7 @@ def MergePlots(figures: PortList = PortList(["fig1", "fig2"])):
 def PlotDataFrameXY(
     df: pd.DataFrame,
     x: Optional[list | np.ndarray] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Plot a DataFrame with X‑ and Y‑axes.
@@ -189,6 +191,8 @@ def PlotDataFrameXY(
     x : optional column(s) for the x‑axis
     options : InputPlotOptions, optional
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
 
     # Default labels in case not deduced
@@ -233,11 +237,13 @@ def PlotDataFrameXY(
 def Scatter(
     x: Optional[list | np.ndarray] = None,
     y: Optional[list | np.ndarray] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Simple scatter plot.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
@@ -265,11 +271,13 @@ def Scatter(
 def LinearFittingCurve(
     x: Optional[list | np.ndarray] = None,
     y: Optional[list | np.ndarray] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Plot data together with a linear fit and an ideal line.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
     import numpy as np
 
@@ -303,11 +311,13 @@ def LinearFittingCurve(
 def ShowArray(
     mat: Optional[np.ndarray],
     aspect_ratio: float = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Display an array as an image.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
@@ -332,11 +342,13 @@ def ShowArray(
 def Histogram(
     x: Optional[list | np.ndarray],
     bins: int = 50,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Plot a histogram.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     from matplotlib import pyplot as plt
 
     fig, ax = plt.subplots()
@@ -359,11 +371,13 @@ def Plot(
     y: Optional[list | np.ndarray | pd.core.series.Series],
     x: Optional[list | np.ndarray | pd.core.series.Series] = None,
     axis: Optional[object] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     General plot function that respects InputPlotOptions.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     import numpy as np
     import pandas as pd
     from matplotlib import pyplot as plt
@@ -414,11 +428,13 @@ def MultiPlot(
     y: Optional[list | np.ndarray | pd.core.series.Series],
     x: Optional[list | np.ndarray | pd.core.series.Series] = None,
     axis: Optional[object] = None,
-    options: InputPlotOptions = InputPlotOptions().run(),
+    options: Optional[InputPlotOptions] = None,
 ):
     """
     Plot multiple series respecting InputPlotOptions.
     """
+    if options is None:
+        options = InputPlotOptions().run()
     import numpy as np
     from matplotlib import pyplot as plt
 

@@ -201,6 +201,7 @@ def GenerateWorkflow(
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
     effort: str = "",
+    chat_log_path: str = "",
 ):
     """Have Claude Code write one solution for *task*, in the given *arm*.
 
@@ -278,6 +279,7 @@ def GenerateWorkflow(
             arm=arm,
             lib_dir=lib_dir or None,
             effort=effort or None,
+            chat_log_path=chat_log_path or None,
         )
 
     def hit_wall(r):
@@ -423,6 +425,7 @@ def RepairWorkflow(
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
     effort: str = "",
+    chat_log_path: str = "",
 ):
     """Hand a validation failure back to the agent that wrote the code.
 
@@ -455,6 +458,7 @@ def RepairWorkflow(
         arm=arm,
         lib_dir=lib_dir or None,
         effort=effort or None,
+        chat_log_path=chat_log_path or None,
     )
     return (
         run.session_id or session_id,
@@ -493,6 +497,7 @@ def VaryWorkflow(
     agent_timeout_s: int = AGENT_TIMEOUT_S,
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     effort: str = "",
+    chat_log_path: str = "",
 ):
     """Ask the agent for one follow-up change to a solution that already works.
 
@@ -525,6 +530,7 @@ def VaryWorkflow(
         timeout_s=agent_timeout_s,
         arm=arm,
         effort=effort or None,
+        chat_log_path=chat_log_path or None,
     )
     after = (
         target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
@@ -569,6 +575,7 @@ def OptimizeWorkflow(
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     lib_dir: str = "",
     effort: str = "",
+    chat_log_path: str = "",
 ):
     """Apply workflow_optimization_guide.md in one LLM turn, then re-validate.
 
@@ -614,6 +621,7 @@ def OptimizeWorkflow(
         arm=arm,
         lib_dir=lib_dir or None,
         effort=effort or None,
+        chat_log_path=chat_log_path or None,
     )
     after = (
         target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
@@ -663,6 +671,7 @@ def WorkflowAgent(
     run_optimize: bool = False,
     verbose: bool = True,
     effort: str = "",
+    save_chat: bool = True,
 ):
     """Generate → validate → repair one task in one arm, and measure every step.
 
@@ -763,6 +772,7 @@ def WorkflowAgent(
         arm=arm,
         lib_dir=lib_dir,
         effort=effort,
+        chat_log_path=str(scratch / "chat_gen.jsonl") if save_chat else "",
     )
     gen.run()
     path = gen.outputs.path.value
@@ -830,6 +840,7 @@ def WorkflowAgent(
             arm=arm,
             lib_dir=lib_dir,
             effort=effort,
+            chat_log_path=str(scratch / f"chat_repair_{out.repair_cycles + 1}.jsonl") if save_chat else "",
         )
         fixer.run()
         session_id = fixer.outputs.session_id.value
@@ -918,6 +929,7 @@ def WorkflowAgent(
             arm=arm,
             lib_dir=lib_dir,
             effort=effort,
+            chat_log_path=str(scratch / "chat_optimize.jsonl") if save_chat else "",
         )
         optimizer.run()
         out.optimize_stage = optimizer.outputs.stage.value
@@ -956,6 +968,7 @@ def WorkflowAgent(
             agent_timeout_s=agent_timeout_s,
             arm=arm,
             effort=effort,
+            chat_log_path=str(scratch / "chat_variant.jsonl") if save_chat else "",
         )
         varier.run()
         out.variant_seconds = round(varier.outputs.variant_seconds.value, 1)
