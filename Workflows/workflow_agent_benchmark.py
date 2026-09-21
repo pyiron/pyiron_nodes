@@ -840,7 +840,11 @@ def WorkflowAgent(
             arm=arm,
             lib_dir=lib_dir,
             effort=effort,
-            chat_log_path=str(scratch / f"chat_repair_{out.repair_cycles + 1}.jsonl") if save_chat else "",
+            chat_log_path=(
+                str(scratch / f"chat_repair_{out.repair_cycles + 1}.jsonl")
+                if save_chat
+                else ""
+            ),
         )
         fixer.run()
         session_id = fixer.outputs.session_id.value
