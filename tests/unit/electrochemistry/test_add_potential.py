@@ -295,7 +295,9 @@ class TestSetupIntegratesWithCreateVaspInputResources(_SetupFixture):
         self.assertAlmostEqual(incar["NELECT"], 39.0, places=6)
         # the Ne ZVAL line was rewritten in the concatenated POTCAR content
         self.assertIn("8.5000000", io_bundle.potcar_content)
-        self.assertNotIn("ZVAL   =    8.000    mass and valenz", io_bundle.potcar_content)
+        self.assertNotIn(
+            "ZVAL   =    8.000    mass and valenz", io_bundle.potcar_content
+        )
 
     def test_cdce_plugin_feeds_into_create_vasp_input_resources(self):
         structure, calc, plugin_data = CDCESetup._original_func(
