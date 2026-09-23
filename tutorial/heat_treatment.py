@@ -46,7 +46,9 @@ def GrainGrowth(
 
     temperature = np.asarray(temperature_K, dtype=float)
     growth_rate = k0_um2_per_s * np.exp(-Q_kJ_per_mol / (R_kJ_per_mol_K * temperature))
-    grain_size_um = np.sqrt(d0_um**2 + growth_rate * np.asarray(time_min, dtype=float) * seconds_per_minute)
+    grain_size_um = np.sqrt(
+        d0_um**2 + growth_rate * np.asarray(time_min, dtype=float) * seconds_per_minute
+    )
     return grain_size_um
 
 
