@@ -346,14 +346,13 @@ class TestMergeVaspInput(unittest.TestCase):
         self.assertEqual(incar["LREAL"], "Auto")
 
 
-# ── CreateVaspInputResources (file writing) ────────────────────────────────────
+# ── CreateVaspInputResources (working-directory resolution) ───────────────────
 
 
 class TestCreateVaspInputResources(unittest.TestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
         self.root = self._tmp.name
-        self.workdir = os.path.join(self.root, "run")
         # fake POTCAR library so we don't need the real potential files
         self.potcar_lib = os.path.join(self.root, "potentials")
         self.symbol = "Fe_dummy"
@@ -366,42 +365,62 @@ class TestCreateVaspInputResources(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _create(self, scf=None, **kw):
+    def _create(self, working_directory=None, scf=None, **kw):
         return CreateVaspInputResources._original_func(
             structure=self.structure,
             calc=VaspInput(scf=scf or make_scf()),
             potcar_lib_path=self.potcar_lib,
-            working_directory=self.workdir,
+            working_directory=working_directory,
             potcar_symbols=[self.symbol],
             **kw,
         )
 
-    def test_writes_all_four_files(self):
-        io_bundle = self._create()
-        self.assertEqual(io_bundle.working_directory, self.workdir)
-        for name in ("POSCAR", "INCAR", "KPOINTS", "POTCAR"):
-            self.assertTrue(os.path.exists(os.path.join(self.workdir, name)), msg=name)
+    def test_explicit_working_directory_is_used_as_is(self):
+        io_bundle = self._create(working_directory="/some/run/dir")
+        self.assertEqual(io_bundle.working_directory, "/some/run/dir")
 
-    def test_incar_roundtrips(self):
-        self._create(scf=make_scf(energy_cutoff=350.0))
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
+    def test_working_directory_defaults_to_a_content_hash(self):
+        io_bundle = self._create()
+        self.assertEqual(len(io_bundle.working_directory), 8)
+        int(io_bundle.working_directory, 16)  # valid hex
+
+    def test_no_files_or_directories_are_created(self):
+        # only the content strings are rendered here — RunVaspCalculation
+        # is the one that writes them to disk
+        workdir = os.path.join(self.root, "run")
+        self._create(working_directory=workdir)
+        self.assertFalse(os.path.exists(workdir))
+
+    def test_renders_all_four_file_contents(self):
+        io_bundle = self._create()
+        self.assertIsInstance(io_bundle.poscar_content, str)
+        self.assertIsInstance(io_bundle.incar_content, str)
+        self.assertIsInstance(io_bundle.potcar_content, str)
+        self.assertIsInstance(io_bundle.kpoints_content, str)
+
+    def test_incar_content_roundtrips(self):
+        io_bundle = self._create(scf=make_scf(energy_cutoff=350.0))
+        incar = Incar.from_str(io_bundle.incar_content)
         self.assertEqual(incar["ENCUT"], 350.0)
         self.assertEqual(incar["IBRION"], -1)
 
-    def test_kpoints_mesh_written(self):
-        self._create(scf=make_scf(kpoints="6 6 6"))
-        with open(os.path.join(self.workdir, "KPOINTS")) as f:
-            content = f.read()
-        self.assertIn("6 6 6", content)
+    def test_kpoints_content_has_the_mesh(self):
+        io_bundle = self._create(scf=make_scf(kpoints="6 6 6"))
+        self.assertIn("6 6 6", io_bundle.kpoints_content)
 
-    def test_potcar_is_concatenation(self):
-        self._create()
-        with open(os.path.join(self.workdir, "POTCAR")) as f:
-            self.assertEqual(f.read(), self.potcar_content)
+    def test_potcar_content_is_concatenation(self):
+        io_bundle = self._create()
+        self.assertEqual(io_bundle.potcar_content, self.potcar_content)
 
     def test_bad_kpoints_string_raises(self):
         with self.assertRaises(ValueError):
             self._create(scf=make_scf(kpoints="4 4"))
+
+    def test_bundle_carries_through_the_given_settings(self):
+        io_bundle = self._create(working_directory="/some/run/dir")
+        self.assertIs(io_bundle.structure, self.structure)
+        self.assertEqual(io_bundle.potcar_lib_path, self.potcar_lib)
+        self.assertEqual(io_bundle.potcar_symbols, [self.symbol])
 
 
 # ── hashing / potcar lookup ────────────────────────────────────────────────────
@@ -444,22 +463,65 @@ class TestGetPotcarPaths(unittest.TestCase):
 class TestRunVaspCalculation(unittest.TestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
-        self.io = VaspInputResources(
-            structure=None, calc=None, working_directory=self._tmp.name
-        )
+        self.root = self._tmp.name
+        self.workdir = os.path.join(self.root, "run")
+        # fake POTCAR library so we don't need the real potential files
+        self.potcar_lib = os.path.join(self.root, "potentials")
+        self.symbol = "Fe_dummy"
+        os.makedirs(os.path.join(self.potcar_lib, self.symbol))
+        self.potcar_content = "DUMMY POTCAR for Fe\n"
+        with open(os.path.join(self.potcar_lib, self.symbol, "POTCAR"), "w") as f:
+            f.write(self.potcar_content)
+        self.structure = bulk("Fe", cubic=True)  # 2 Fe atoms
+        self.io = self._bundle()
 
     def tearDown(self):
         self._tmp.cleanup()
 
+    def _bundle(self, scf=None):
+        # RunVaspCalculation only dumps content that was already rendered
+        # onto the bundle by CreateVaspInputResources.
+        return CreateVaspInputResources._original_func(
+            structure=self.structure,
+            calc=VaspInput(scf=scf or make_scf()),
+            potcar_lib_path=self.potcar_lib,
+            working_directory=self.workdir,
+            potcar_symbols=[self.symbol],
+        )
+
     def test_debug_does_not_launch_vasp(self):
         io_bundle, stdout = RunVaspCalculation._original_func(self.io, debug=True)
         self.assertIs(io_bundle, self.io)
-        self.assertEqual(stdout, self._tmp.name)
+        self.assertEqual(stdout, self.workdir)
+
+    def test_writes_all_four_files(self):
+        RunVaspCalculation._original_func(self.io, debug=True)
+        for name in ("POSCAR", "INCAR", "KPOINTS", "POTCAR"):
+            self.assertTrue(os.path.exists(os.path.join(self.workdir, name)), msg=name)
+
+    def test_incar_roundtrips(self):
+        io_bundle = self._bundle(scf=make_scf(energy_cutoff=350.0))
+        RunVaspCalculation._original_func(io_bundle, debug=True)
+        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
+        self.assertEqual(incar["ENCUT"], 350.0)
+        self.assertEqual(incar["IBRION"], -1)
+
+    def test_kpoints_mesh_written(self):
+        io_bundle = self._bundle(scf=make_scf(kpoints="6 6 6"))
+        RunVaspCalculation._original_func(io_bundle, debug=True)
+        with open(os.path.join(self.workdir, "KPOINTS")) as f:
+            content = f.read()
+        self.assertIn("6 6 6", content)
+
+    def test_potcar_is_concatenation(self):
+        RunVaspCalculation._original_func(self.io, debug=True)
+        with open(os.path.join(self.workdir, "POTCAR")) as f:
+            self.assertEqual(f.read(), self.potcar_content)
 
     def test_nonzero_exit_raises_and_writes_error_msg(self):
         with self.assertRaises(RuntimeError):
             RunVaspCalculation._original_func(self.io, vasp_command="false")
-        self.assertTrue(os.path.exists(os.path.join(self._tmp.name, "error.msg")))
+        self.assertTrue(os.path.exists(os.path.join(self.workdir, "error.msg")))
 
 
 # ── ParseVaspOutput (static fixture) ───────────────────────────────────────────
@@ -482,10 +544,10 @@ def parse_static_fixture(calc, **kwargs):
 
 
 def calc_ports(result):
-    """Pick the (out, trajectory, converged) ports out of the node's return."""
-    out, trajectory = result[0], result[1]
+    """Pick the (out, converged) ports out of the node's return."""
+    out = result[0]
     converged = result[-1]
-    return out, trajectory, converged
+    return out, converged
 
 
 # free energy of the fixture's single ionic step, as vaspparser reports it under
@@ -498,7 +560,6 @@ class TestParseVaspOutputStatic(unittest.TestCase):
     def setUpClass(cls):
         (
             cls.out,
-            cls.trajectory,
             cls.last_structure,
             cls.total_energy,
             cls.magnetic_moments,
@@ -526,9 +587,7 @@ class TestParseVaspOutputStatic(unittest.TestCase):
         self.assertEqual(self.out.structure.get_chemical_formula(), "Fe2")
         self.assertEqual(len(self.out.structure), 2)
 
-    def test_trajectory_and_convergence_ports(self):
-        # kept alongside `out` for visualisation nodes (AnimateAse)
-        self.assertEqual(len(self.trajectory), 1)
+    def test_convergence_port(self):
         self.assertTrue(self.converged)
 
     def test_last_structure_port(self):
@@ -562,7 +621,7 @@ class TestParseVaspOutputStatic(unittest.TestCase):
 
     def test_dos_source_doscar_without_a_doscar(self):
         result = parse_static_fixture(calc=None, dos_source="doscar")
-        self.assertIsNone(result[5])
+        self.assertIsNone(result[4])
 
     def test_unknown_dos_source_raises(self):
         with self.assertRaises(ValueError):
@@ -576,7 +635,7 @@ class TestParseVaspOutputMinimize(unittest.TestCase):
             scf=make_scf(),
             minimization=InputMinimizationVASP._original_dataclass(),
         )
-        cls.out, cls.trajectory, cls.converged = calc_ports(parse_static_fixture(calc))
+        cls.out, cls.converged = calc_ports(parse_static_fixture(calc))
 
     def test_returns_output_calc_minimize(self):
         self.assertIsInstance(self.out, OutputCalcMinimize.dataclass_type)
@@ -597,7 +656,7 @@ class TestParseVaspOutputMD(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         calc = VaspInput(scf=make_scf(), md=InputMDVASP._original_dataclass())
-        cls.out, cls.trajectory, cls.converged = calc_ports(parse_static_fixture(calc))
+        cls.out, cls.converged = calc_ports(parse_static_fixture(calc))
 
     def test_returns_output_calc_md(self):
         self.assertIsInstance(self.out, OutputCalcMD.dataclass_type)
@@ -664,7 +723,6 @@ class TestParseVaspOutputFullRun(unittest.TestCase):
     def setUpClass(cls):
         (
             cls.out,
-            cls.trajectory,
             cls.last_structure,
             cls.total_energy,
             cls.magnetic_moments,
@@ -735,15 +793,15 @@ class TestParseVaspOutputFullRunDoscar(unittest.TestCase):
     """`dos_source='doscar'` against a DOSCAR VASP actually wrote."""
 
     def test_doscar_matches_the_file_on_disk(self):
-        dos = parse_full_fixture(dos_source="doscar")[5]
+        dos = parse_full_fixture(dos_source="doscar")[4]
         raw = np.loadtxt(STATIC_VASP_FULL / "DOSCAR", skiprows=6)
         self.assertTrue(np.array_equal(dos.energies, raw[:, 0]))
         self.assertTrue(np.array_equal(dos.total_densities, raw[:, 1:3].T))
         self.assertTrue(np.array_equal(dos.integrated_densities, raw[:, 3:5].T))
 
     def test_header_efermi_agrees_with_vasprun(self):
-        from_file = parse_full_fixture(dos_source="doscar")[5]
-        from_xml = parse_full_fixture(dos_source="vasprun")[5]
+        from_file = parse_full_fixture(dos_source="doscar")[4]
+        from_xml = parse_full_fixture(dos_source="vasprun")[4]
         self.assertAlmostEqual(from_file.efermi, from_xml.efermi, places=6)
         self.assertTrue(np.allclose(from_file.energies, from_xml.energies, atol=1e-3))
 
@@ -824,14 +882,14 @@ class TestMagneticMomentsFromOutcar(unittest.TestCase):
         return ParseVaspOutput._original_func(io)
 
     def test_moments_are_read_per_atom(self):
-        magmoms = self.parse()[4]
+        magmoms = self.parse()[3]
         self.assertIsNotNone(magmoms)
         self.assertEqual(magmoms.shape, (2,))
         self.assertTrue(np.allclose(magmoms, [2.2, 2.3]))
 
     def test_rest_of_the_parse_is_unaffected(self):
         result = self.parse()
-        self.assertAlmostEqual(result[3], FULL_ENERGY, places=6)
+        self.assertAlmostEqual(result[2], FULL_ENERGY, places=6)
         self.assertTrue(
             np.allclose(np.diag(result[0].stress), FULL_STRESS_GPA, atol=1e-3)
         )
@@ -874,37 +932,37 @@ class TestVolumetricFromDisk(unittest.TestCase):
         return ParseVaspOutput._original_func(io, **kwargs)
 
     def test_both_grids_are_read_by_default(self):
-        density, potential = self.parse()[7], self.parse()[6]
+        density, potential = self.parse()[6], self.parse()[5]
         self.assertEqual(density.total_data.shape, self.GRID)
         self.assertEqual(potential.total_data.shape, self.GRID)
 
     def test_charge_density_is_normalised_by_the_volume(self):
         # vaspparser reads CHGCAR with normalize=True and LOCPOT without
-        density, potential = self.parse()[7], self.parse()[6]
+        density, potential = self.parse()[6], self.parse()[5]
         volume = read_atoms(str(STATIC_VASP_FULL / "POSCAR")).get_volume()
         self.assertTrue(np.allclose(density.total_data * volume, self.total, atol=1e-6))
         self.assertTrue(np.allclose(potential.total_data, self.total * 2.0, atol=1e-6))
 
     def test_grid_helpers_work_on_the_parsed_data(self):
-        averaged = self.parse()[6].get_average_along_axis(ind=2)
+        averaged = self.parse()[5].get_average_along_axis(ind=2)
         self.assertEqual(len(averaged), self.GRID[2])
 
     def test_electron_density_can_be_skipped(self):
         result = self.parse(parse_electron_density=False)
-        self.assertIsNone(result[7])
-        self.assertIsNotNone(result[6])  # LOCPOT still read
+        self.assertIsNone(result[6])
+        self.assertIsNotNone(result[5])  # LOCPOT still read
 
     def test_electrostatic_potential_can_be_skipped(self):
         result = self.parse(parse_electrostatic_potential=False)
-        self.assertIsNone(result[6])
-        self.assertIsNotNone(result[7])  # CHGCAR still read
+        self.assertIsNone(result[5])
+        self.assertIsNotNone(result[6])  # CHGCAR still read
 
     def test_both_can_be_skipped(self):
         result = self.parse(
             parse_electron_density=False, parse_electrostatic_potential=False
         )
+        self.assertIsNone(result[5])
         self.assertIsNone(result[6])
-        self.assertIsNone(result[7])
 
 
 class TestUnwrapPositions(unittest.TestCase):
@@ -1410,14 +1468,14 @@ class TestParseVaspOutputDoscarSource(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_doscar_source_reads_the_file(self):
-        dos = ParseVaspOutput._original_func(self.io, dos_source="doscar")[5]
+        dos = ParseVaspOutput._original_func(self.io, dos_source="doscar")[4]
         self.assertEqual(dos.energies.shape, (4,))
         self.assertTrue(np.allclose(dos.total_densities, 10.0))
         self.assertEqual(dos.resolved_densities.shape, (1, 2, 9, 4))
 
     def test_vasprun_source_ignores_the_doscar(self):
         # same directory, other source: the 301-point grid from vasprun.xml
-        dos = ParseVaspOutput._original_func(self.io, dos_source="vasprun")[5]
+        dos = ParseVaspOutput._original_func(self.io, dos_source="vasprun")[4]
         self.assertEqual(dos.energies.shape, (301,))
 
 
