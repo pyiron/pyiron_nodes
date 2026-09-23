@@ -8,10 +8,14 @@ object is required, and every file the nodes read (POTCAR, plugin template,
 
 Covered:
 
-* ``_modify_potcar``   — replaces the Ne ``ZVAL`` line in a POTCAR.
-* ``_write_plugin_file`` — fills a plugin template and writes ``vasp_plugin.py``.
-* ``CCESetup`` / ``CDCESetup`` — build the electrochemistry INCAR + plugin from
-  an ``VaspInputResources`` bundle, including the structure-derived quantities.
+* ``_plugin_content`` — fills a plugin template and returns its content as a
+  string (no disk writes).
+* ``CCESetup`` / ``CDCESetup`` — build the ``VaspPlugin`` bundle (rendered
+  plugin content, extra INCAR tags, and — for CCE — the Ne ``ZVAL`` POTCAR
+  override) from a bare ``structure``/``electrode``/``calc``, including the
+  structure-derived quantities. Neither node touches disk anymore; that is
+  ``CreateVaspInputResources``'s job now, exercised here as an integration
+  check that the returned ``VaspPlugin`` is actually consumed correctly.
 * ``ParsePotential`` — reshapes the electrostatic-potential trace by ``NSW``.
 * The shipped ``.plugin`` templates stay ``str.format``-compatible.
 """
@@ -26,14 +30,18 @@ from ase import Atoms
 from pymatgen.io.vasp.inputs import Incar
 
 from pyiron_nodes.atomistic.calculator.data import InputMDVASP, InputSCF
-from pyiron_nodes.atomistic.engine.vasp_new import VaspInput, VaspInputResources
+from pyiron_nodes.atomistic.engine.vasp_new import (
+    CreateVaspInputResources,
+    VaspInput,
+    VaspInputResources,
+    VaspPlugin,
+)
 from pyiron_nodes.electrochemistry.add_potential.vasp import (
     CCESetup,
     CDCESetup,
     CEParameters,
     ParsePotential,
-    _modify_potcar,
-    _write_plugin_file,
+    _plugin_content,
 )
 
 # real plugin templates shipped next to the module under test
@@ -60,41 +68,10 @@ def make_md(**overrides) -> InputMDVASP:
     return InputMDVASP._original_dataclass(**params)
 
 
-# ── _modify_potcar ─────────────────────────────────────────────────────────────
+# ── _plugin_content ──────────────────────────────────────────────────────────
 
 
-class TestModifyPotcar(unittest.TestCase):
-    def setUp(self):
-        self._tmp = TemporaryDirectory()
-        self.workdir = self._tmp.name
-        with open(os.path.join(self.workdir, "POTCAR"), "w") as f:
-            f.writelines([_AU_POTCAR, _NE_POTCAR])
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_replaces_ne_zval(self):
-        _modify_potcar(self.workdir, _NE_POTCAR, zval_ne=8.0001234)
-        with open(os.path.join(self.workdir, "POTCAR")) as f:
-            content = f.read()
-        self.assertIn("ZVAL   =    8.0001234", content)
-        # the Au line is left untouched
-        self.assertIn("ZVAL   =   11.000", content)
-
-    def test_missing_line_raises(self):
-        with self.assertRaises(ValueError):
-            _modify_potcar(self.workdir, "not a real POTCAR line\n", zval_ne=8.0)
-
-    def test_missing_potcar_raises(self):
-        with TemporaryDirectory() as empty:
-            with self.assertRaises(FileNotFoundError):
-                _modify_potcar(empty, _NE_POTCAR, zval_ne=8.0)
-
-
-# ── _write_plugin_file ─────────────────────────────────────────────────────────
-
-
-class TestWritePluginFile(unittest.TestCase):
+class TestPluginContent(unittest.TestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
         self.workdir = self._tmp.name
@@ -124,33 +101,32 @@ class TestWritePluginFile(unittest.TestCase):
         return CEParameters(**base)
 
     def test_fills_template(self):
-        _write_plugin_file(self.workdir, self._params())
-        with open(os.path.join(self.workdir, "vasp_plugin.py")) as f:
-            content = f.read()
+        content = _plugin_content(self._params())
         self.assertIn("phi0=0.5", content)
         self.assertIn("temperature=400.0", content)
         self.assertIn("nelect=38", content)
 
     def test_missing_template_raises(self):
         with self.assertRaises(FileNotFoundError):
-            _write_plugin_file(self.workdir, self._params(path_to_plugin="/no/such"))
+            _plugin_content(self._params(path_to_plugin="/no/such"))
 
 
 # ── CCESetup / CDCESetup shared fixture ────────────────────────────────────────
 
 
 class _SetupFixture(unittest.TestCase):
-    """A full ``VaspInputResources`` bundle plus a fake POTCAR library.
+    """A bare structure/electrode/calc plus a fake per-element POTCAR library.
 
     Structure is an orthogonal Au (electrode) + Ne (CCE gas) slab so that the
     structure-derived quantities in the setup nodes have something to chew on.
+    Neither ``CCESetup`` nor ``CDCESetup`` writes to disk anymore, so there is
+    no working directory here — only the POTCAR library ``_get_potcar_paths``
+    reads ZVAL values from.
     """
 
     def setUp(self):
         self._tmp = TemporaryDirectory()
         self.root = self._tmp.name
-        self.workdir = os.path.join(self.root, "run")
-        os.makedirs(self.workdir)
 
         # fake per-element POTCAR library (read by _get_potcar_paths → ZVAL)
         self.potcar_lib = os.path.join(self.root, "potentials")
@@ -158,9 +134,6 @@ class _SetupFixture(unittest.TestCase):
             os.makedirs(os.path.join(self.potcar_lib, symbol))
             with open(os.path.join(self.potcar_lib, symbol, "POTCAR"), "w") as f:
                 f.write(content)
-        # concatenated POTCAR in the working dir (what _modify_potcar edits)
-        with open(os.path.join(self.workdir, "POTCAR"), "w") as f:
-            f.writelines([_AU_POTCAR, _NE_POTCAR])
 
         # Au at the bottom, Ne on top — orthogonal cell
         self.structure = Atoms(
@@ -170,13 +143,7 @@ class _SetupFixture(unittest.TestCase):
             pbc=True,
         )
         self.electrode = Atoms("Au", positions=[[0, 0, 0]], cell=[10, 10, 12])
-
-        self.io = VaspInputResources(
-            structure=self.structure,
-            calc=VaspInput(scf=make_scf(), md=make_md()),
-            potcar_lib_path=self.potcar_lib,
-            working_directory=self.workdir,
-        )
+        self.calc = VaspInput(scf=make_scf(), md=make_md())
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -186,124 +153,169 @@ class _SetupFixture(unittest.TestCase):
 
 
 class TestCCESetup(_SetupFixture):
-    def _run(self, **kw):
+    def _run(self, structure=None, calc=None, **kw):
         return CCESetup._original_func(
-            io_bundle=self.io,
+            structure=structure if structure is not None else self.structure,
             electrode=self.electrode,
+            calc=calc if calc is not None else self.calc,
+            potcar_lib_path=self.potcar_lib,
             path_to_plugin=str(_PLUGIN_DIR / "vasp_plugin-CCE.plugin"),
             **kw,
         )
 
-    def test_writes_incar_and_plugin(self):
-        self._run()
-        self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
-        self.assertTrue(os.path.exists(os.path.join(self.workdir, "vasp_plugin.py")))
+    def test_returns_structure_calc_and_plugin_unchanged(self):
+        structure, calc, plugin_data = self._run()
+        self.assertIs(structure, self.structure)
+        self.assertIs(calc, self.calc)
+        self.assertIsInstance(plugin_data, VaspPlugin)
 
-    def test_incar_has_plugin_and_nelect_tags(self):
-        io = self._run()
-        # PLUGINS/* keys carry a slash pymatgen's Incar reader mangles, so check
-        # them on the dict the node actually built
-        self.assertEqual(io.extra_incar["PLUGINS/LOCAL_POTENTIAL"], "T")
-        self.assertEqual(io.extra_incar["PLUGINS/OCCUPANCIES"], "T")
-        # the standard NELECT tag round-trips through the written INCAR;
+    def test_plugin_content_is_rendered(self):
+        _, _, plugin_data = self._run(potential=0.5)
+        self.assertIn("phi0 = 0.5", plugin_data.plugin_content)
+        self.assertIn("temperature = 400.0", plugin_data.plugin_content)
+
+    def test_extra_incar_has_plugin_and_nelect_tags(self):
+        _, _, plugin_data = self._run()
+        self.assertEqual(plugin_data.extra_incar["PLUGINS/LOCAL_POTENTIAL"], "T")
+        self.assertEqual(plugin_data.extra_incar["PLUGINS/OCCUPANCIES"], "T")
         # NELECT is neutral (2*11 + 2*8) when Q0 = 0
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
-        self.assertAlmostEqual(incar["NELECT"], 38.0, places=6)
+        self.assertAlmostEqual(plugin_data.extra_incar["NELECT"], 38.0, places=6)
 
     def test_charge_shifts_nelect(self):
         # Q0 spread over the 2 Ne atoms: NELECT = 38 + Q0
-        self._run(Q0=1.0)
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
-        self.assertAlmostEqual(incar["NELECT"], 39.0, places=6)
+        _, _, plugin_data = self._run(Q0=1.0)
+        self.assertAlmostEqual(plugin_data.extra_incar["NELECT"], 39.0, places=6)
 
-    def test_ne_zval_modified_in_potcar(self):
-        self._run(Q0=1.0)
-        with open(os.path.join(self.workdir, "POTCAR")) as f:
-            content = f.read()
+    def test_ne_zval_override_is_recorded(self):
+        _, _, plugin_data = self._run(Q0=1.0)
         # zval_ne = 8 + Q0/n_Ne = 8 + 0.5
-        self.assertIn("8.5000000", content)
+        (new_line,) = plugin_data.override_potcar.values()
+        self.assertIn("8.5000000", new_line)
 
-    def test_requires_md(self):
-        self.io.calc = VaspInput(scf=make_scf())  # no md
-        with self.assertRaises(ValueError):
-            self._run()
+    def test_potcar_lib_path_carried_on_plugin(self):
+        _, _, plugin_data = self._run()
+        self.assertEqual(plugin_data.potcar_lib_path, self.potcar_lib)
 
     def test_requires_ne_atoms(self):
-        self.io.structure = Atoms(
+        no_ne = Atoms(
             "Au2", positions=[[0, 0, 0], [0, 0, 2]], cell=[10, 10, 12], pbc=True
         )
         with self.assertRaises(ValueError):
-            self._run()
+            self._run(structure=no_ne)
 
     def test_non_orthogonal_cell_raises(self):
         skewed = self.structure.copy()
         cell = skewed.get_cell()
         cell[2][0] = 3.0  # tilt a3 into x
         skewed.set_cell(cell)
-        self.io.structure = skewed
         with self.assertRaises(ValueError):
-            self._run()
+            self._run(structure=skewed)
 
-    def test_existing_output_files_warn(self):
-        with open(os.path.join(self.workdir, "Q.dat"), "w") as f:
-            f.write("0.0\n")
-        # pre-existing outputs are flagged with a warning, not an error
-        with self.assertWarns(UserWarning):
-            self._run()
+    def test_missing_md_raises(self):
+        with self.assertRaises(AttributeError):
+            self._run(calc=VaspInput(scf=make_scf()))  # no md
 
 
 # ── CDCESetup ──────────────────────────────────────────────────────────────────
 
 
 class TestCDCESetup(_SetupFixture):
-    def _run(self, **kw):
+    def _run(self, structure=None, calc=None, **kw):
         return CDCESetup._original_func(
-            io_bundle=self.io,
+            structure=structure if structure is not None else self.structure,
             electrode=self.electrode,
+            calc=calc if calc is not None else self.calc,
+            potcar_lib_path=self.potcar_lib,
             path_to_plugin=str(_PLUGIN_DIR / "vasp_plugin-CDCE_MD.plugin"),
             **kw,
         )
 
-    def test_writes_incar_and_plugin(self):
-        self._run()
-        self.assertTrue(os.path.exists(os.path.join(self.workdir, "INCAR")))
-        self.assertTrue(os.path.exists(os.path.join(self.workdir, "vasp_plugin.py")))
+    def test_returns_structure_calc_and_plugin_unchanged(self):
+        structure, calc, plugin_data = self._run()
+        self.assertIs(structure, self.structure)
+        self.assertIs(calc, self.calc)
+        self.assertIsInstance(plugin_data, VaspPlugin)
 
-    def test_incar_has_force_stress_plugin_tag(self):
-        io = self._run()
-        self.assertEqual(io.extra_incar["PLUGINS/FORCE_AND_STRESS"], "T")
-        self.assertEqual(io.extra_incar["PLUGINS/LOCAL_POTENTIAL"], "T")
-        # LREMOVE_DRIFT is not a tag pymatgen coerces, so it stays the string "F"
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
-        self.assertEqual(incar["LREMOVE_DRIFT"], "F")
+    def test_extra_incar_has_force_stress_plugin_tag(self):
+        _, _, plugin_data = self._run()
+        self.assertEqual(plugin_data.extra_incar["PLUGINS/FORCE_AND_STRESS"], "T")
+        self.assertEqual(plugin_data.extra_incar["PLUGINS/LOCAL_POTENTIAL"], "T")
+        self.assertEqual(plugin_data.extra_incar["LREMOVE_DRIFT"], "F")
 
     def test_charge_shifts_nelect(self):
         # CDCE: NELECT = nelect_neutral + round(Q0)
-        self._run(Q0=2.0)
-        incar = Incar.from_file(os.path.join(self.workdir, "INCAR"))
-        self.assertAlmostEqual(incar["NELECT"], 40.0, places=6)
+        _, _, plugin_data = self._run(Q0=2.0)
+        self.assertAlmostEqual(plugin_data.extra_incar["NELECT"], 40.0, places=6)
 
-    def test_requires_md(self):
-        self.io.calc = VaspInput(scf=make_scf())
-        with self.assertRaises(ValueError):
-            self._run()
+    def test_no_potcar_override(self):
+        # unlike CCE, CDCE never touches the POTCAR
+        _, _, plugin_data = self._run()
+        self.assertIsNone(plugin_data.override_potcar)
 
     def test_non_orthogonal_cell_raises(self):
         skewed = self.structure.copy()
         cell = skewed.get_cell()
         cell[2][1] = 2.0  # tilt a3 into y
         skewed.set_cell(cell)
-        self.io.structure = skewed
         with self.assertRaises(ValueError):
-            self._run()
+            self._run(structure=skewed)
 
-    def test_existing_output_files_warn(self):
-        stale = os.path.join(self.workdir, "phi.dat")
-        with open(stale, "w") as f:
-            f.write("stale\n")
-        # pre-existing outputs are flagged with a warning, not an error
-        with self.assertWarns(UserWarning):
-            self._run()
+    def test_missing_md_raises(self):
+        with self.assertRaises(AttributeError):
+            self._run(calc=VaspInput(scf=make_scf()))
+
+
+# ── CCESetup / CDCESetup → CreateVaspInputResources integration ───────────────
+# The setup nodes no longer write anything themselves — they hand back a
+# ``VaspPlugin`` that ``CreateVaspInputResources`` is responsible for folding
+# into the rendered INCAR/POTCAR content. This is the wiring the workflow
+# relies on, so it is worth covering directly rather than only through each
+# node in isolation.
+
+
+class TestSetupIntegratesWithCreateVaspInputResources(_SetupFixture):
+    def test_cce_plugin_feeds_into_create_vasp_input_resources(self):
+        structure, calc, plugin_data = CCESetup._original_func(
+            structure=self.structure,
+            electrode=self.electrode,
+            calc=self.calc,
+            potcar_lib_path=self.potcar_lib,
+            path_to_plugin=str(_PLUGIN_DIR / "vasp_plugin-CCE.plugin"),
+            Q0=1.0,
+        )
+        io_bundle = CreateVaspInputResources._original_func(
+            structure=structure,
+            calc=calc,
+            potcar_lib_path=self.potcar_lib,
+            plugin_data=plugin_data,
+            working_directory=os.path.join(self.root, "run"),
+        )
+        self.assertEqual(io_bundle.plugin_content, plugin_data.plugin_content)
+        incar = Incar.from_str(io_bundle.incar_content)
+        self.assertAlmostEqual(incar["NELECT"], 39.0, places=6)
+        # the Ne ZVAL line was rewritten in the concatenated POTCAR content
+        self.assertIn("8.5000000", io_bundle.potcar_content)
+        self.assertNotIn("ZVAL   =    8.000    mass and valenz", io_bundle.potcar_content)
+
+    def test_cdce_plugin_feeds_into_create_vasp_input_resources(self):
+        structure, calc, plugin_data = CDCESetup._original_func(
+            structure=self.structure,
+            electrode=self.electrode,
+            calc=self.calc,
+            potcar_lib_path=self.potcar_lib,
+            path_to_plugin=str(_PLUGIN_DIR / "vasp_plugin-CDCE_MD.plugin"),
+            Q0=2.0,
+        )
+        io_bundle = CreateVaspInputResources._original_func(
+            structure=structure,
+            calc=calc,
+            potcar_lib_path=self.potcar_lib,
+            plugin_data=plugin_data,
+            working_directory=os.path.join(self.root, "run"),
+        )
+        incar = Incar.from_str(io_bundle.incar_content)
+        self.assertAlmostEqual(incar["NELECT"], 40.0, places=6)
+        self.assertEqual(incar["LREMOVE_DRIFT"], "F")
 
 
 # ── shipped plugin templates ───────────────────────────────────────────────────

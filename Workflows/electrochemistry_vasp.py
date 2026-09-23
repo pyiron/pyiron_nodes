@@ -29,22 +29,29 @@ wf.md = InputMDVASP(temperature=300.0, n_ionic_steps=100, time_step=1.0)
 
 wf.calc = MergeVaspInput(scf=wf.scf, md=wf.md)
 
-# write POSCAR / INCAR / POTCAR / KPOINTS for the full cell
-wf.CreateVaspInputResources = CreateVaspInputResources(
-    structure=wf.AddNeonLayer,
-    calc=wf.calc,
-    working_directory="./electrochemistry_vasp_run",
-)
-
-# ── add the constant-potential (Ne-CCE) plugin on top of the base input ─────────
-# `electrode` is the bare Al slab; `potential` is the target voltage in volts
+# ── build the constant-potential (Ne-CCE) plugin ─────────────────────────────
+# `electrode` is the bare Al slab; `potential` is the target voltage in volts.
+# This only renders the plugin content and the extra INCAR/POTCAR tags — it
+# does not touch disk.
 wf.CCESetup = CCESetup(
-    io_bundle=wf.CreateVaspInputResources,
+    structure=wf.AddNeonLayer,
     electrode=wf.Surface,
+    calc=wf.calc,
     potential=0.0,
 )
 
-wf.RunVaspCalculation = RunVaspCalculation(io_bundle=wf.CCESetup, debug=False)
+# write POSCAR / INCAR / POTCAR / KPOINTS for the full cell, folding in the
+# CCE plugin's extra INCAR tags and Ne ZVAL override
+wf.CreateVaspInputResources = CreateVaspInputResources(
+    structure=wf.CCESetup.outputs.structure,
+    calc=wf.CCESetup.outputs.calc,
+    plugin_data=wf.CCESetup.outputs.plugin_data,
+    working_directory="./electrochemistry_vasp_run",
+)
+
+wf.RunVaspCalculation = RunVaspCalculation(
+    io_bundle=wf.CreateVaspInputResources, debug=False
+)
 
 # read the electrode charge (Q.dat), potential (phi.dat) and the planar-averaged
 # electrostatic potential (el_pot_z.dat) written by the plugin
