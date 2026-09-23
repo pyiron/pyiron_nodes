@@ -71,7 +71,6 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
     _ordered_elements,
     _output_parser_class,
     _parse_velocities,
-    _render_vasp_input_files,
     _SkippedVolumetricData,
     _static_from_output,
     _trajectory_from_output,
@@ -481,16 +480,14 @@ class TestRunVaspCalculation(unittest.TestCase):
 
     def _bundle(self, scf=None):
         # RunVaspCalculation only dumps content that was already rendered
-        # (normally by CreateVaspInputResources) onto the bundle.
-        io_bundle = VaspInputResources(
+        # onto the bundle by CreateVaspInputResources.
+        return CreateVaspInputResources._original_func(
             structure=self.structure,
             calc=VaspInput(scf=scf or make_scf()),
             potcar_lib_path=self.potcar_lib,
             working_directory=self.workdir,
             potcar_symbols=[self.symbol],
         )
-        _render_vasp_input_files(io_bundle)
-        return io_bundle
 
     def test_debug_does_not_launch_vasp(self):
         io_bundle, stdout = RunVaspCalculation._original_func(self.io, debug=True)
