@@ -157,6 +157,15 @@ class VaspInputResources:
     incar_content: Optional[str] = None
     potcar_content: Optional[str] = None
     kpoints_content: Optional[str] = None
+    plugin_content: Optional[str] = None 
+
+
+@dataclass
+class VaspPlugin:
+    plugin_content: str = None
+    override_potcar: Optional[dict] = None 
+    extra_incar: Optional[dict] = None
+    potcar_lib_path: Optional[str] = None 
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -724,6 +733,22 @@ def _generate_hash(io_bundle: VaspInputResources) -> str:
     hash_string = "|".join(parts)
     return hashlib.sha256(hash_string.encode()).hexdigest()[:8]
 
+def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
+    """Dump the rendered file content onto disk in ``io_bundle.working_directory``."""
+    workdir = io_bundle.working_directory
+    os.makedirs(workdir, exist_ok=True)
+
+    files = {
+        "POSCAR": io_bundle.poscar_content,
+        "INCAR": io_bundle.incar_content,
+        "POTCAR": io_bundle.potcar_content,
+        "KPOINTS": io_bundle.kpoints_content,
+    }
+    if io_bundle.plugin_content:
+        files["vasp_plugin.py"] = io_bundle.plugin_content
+    for name, content in files.items():
+        with open(os.path.join(workdir, name), "w") as f:
+            f.write(content)
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
@@ -758,83 +783,12 @@ def MergeVaspInput(
     return calc
 
 
-def _render_vasp_input_files(io_bundle: "VaspInputResources") -> None:
-    """Render POSCAR/INCAR/POTCAR/KPOINTS content and store it on ``io_bundle``.
-
-    Fills ``poscar_content``, ``incar_content``, ``potcar_content`` and
-    ``kpoints_content``. No disk I/O other than reading the POTCAR library.
-    POTCAR is the per-species pseudopotentials concatenated in POSCAR order,
-    looked up from the bundled CSV under ``potcar_lib_path`` unless
-    ``potcar_symbols`` names the folders explicitly. KPOINTS is a Gamma-centred
-    mesh parsed from the ``"kx ky kz"`` string on ``InputSCF``.
-
-    Raises
-    ------
-    ValueError
-        If ``scf.kpoints`` is not three integers.
-    """
-    # Group atoms by species to ensure the order of POTCAR matches POSCAR
-    unordered_atoms = io_bundle.structure.copy()
-    grouped_atoms = _grouped_atoms(unordered_atoms)
-
-    # POSCAR
-    pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
-    io_bundle.poscar_content = pmg_structure.to(fmt="poscar")
-
-    # INCAR
-    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
-    io_bundle.incar_content = str(incar)
-
-    # POTCAR — look up paths from CSV, concatenate files in POSCAR order
-    potcar_paths = (
-        [
-            os.path.join(io_bundle.potcar_lib_path, s, "POTCAR")
-            for s in io_bundle.potcar_symbols
-        ]
-        if io_bundle.potcar_symbols is not None
-        else _get_potcar_paths(
-            io_bundle.structure,
-            io_bundle.calc.scf.functional,
-            io_bundle.potcar_lib_path,
-        )
-    )
-    potcar_parts = []
-    for p in potcar_paths:
-        with open(p, "r") as fd:
-            potcar_parts.append(fd.read())
-    io_bundle.potcar_content = "".join(potcar_parts)
-
-    # KPOINTS — Gamma-centred mesh parsed from the "kx ky kz" string on InputSCF
-    mesh = [int(k) for k in io_bundle.calc.scf.kpoints.split()]
-    if len(mesh) != 3:
-        raise ValueError(
-            f'scf.kpoints must be three integers like "4 4 4", got: '
-            f"{io_bundle.calc.scf.kpoints!r}"
-        )
-    io_bundle.kpoints_content = str(Kpoints.gamma_automatic(mesh))
-
-
-def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
-    """Dump the rendered file content onto disk in ``io_bundle.working_directory``."""
-    workdir = io_bundle.working_directory
-    os.makedirs(workdir, exist_ok=True)
-
-    files = {
-        "POSCAR": io_bundle.poscar_content,
-        "INCAR": io_bundle.incar_content,
-        "POTCAR": io_bundle.potcar_content,
-        "KPOINTS": io_bundle.kpoints_content,
-    }
-    for name, content in files.items():
-        with open(os.path.join(workdir, name), "w") as f:
-            f.write(content)
-
-
 @as_function_node
 def CreateVaspInputResources(
     structure: Atoms,
     calc: VaspInput,
     potcar_lib_path: str = _default_potcar_lib_path,
+    plugin_data: Optional[VaspPlugin] = None,
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
 ) -> VaspInputResources:
@@ -872,6 +826,7 @@ def CreateVaspInputResources(
     ValueError
         If ``scf.kpoints`` is not three integers.
     """
+
     io_bundle = VaspInputResources(
         structure=structure,
         calc=calc,
@@ -884,7 +839,63 @@ def CreateVaspInputResources(
     if io_bundle.working_directory is None:
         io_bundle.working_directory = _generate_hash(io_bundle)
 
-    _render_vasp_input_files(io_bundle)
+    # Group atoms by species to ensure the order of POTCAR matches POSCAR
+    unordered_atoms = io_bundle.structure.copy()
+    grouped_atoms = _grouped_atoms(unordered_atoms)
+
+    # POSCAR
+    pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
+    io_bundle.poscar_content = pmg_structure.to(fmt="poscar")
+
+    # POTCAR — look up paths from CSV, concatenate files in POSCAR order
+    if plugin_data is not None and plugin_data.potcar_lib_path is not None:
+        io_bundle.potcar_lib_path = plugin_data.potcar_lib_path
+
+    potcar_paths = (
+        [
+            os.path.join(io_bundle.potcar_lib_path, s, "POTCAR")
+            for s in io_bundle.potcar_symbols
+        ]
+        if io_bundle.potcar_symbols is not None
+        else _get_potcar_paths(
+            io_bundle.structure,
+            io_bundle.calc.scf.functional,
+            io_bundle.potcar_lib_path,
+        )
+    )
+    potcar_parts = []
+    for p in potcar_paths:
+        with open(p, "r") as fd:
+            potcar_parts.append(fd.read())
+    io_bundle.potcar_content = "".join(potcar_parts)
+
+    # Plugin, can override POTCAR and add extra INCAR tags; the plugin content is written
+    if plugin_data is not None:
+        io_bundle.plugin_content = plugin_data.plugin_content
+
+        plugin_incar = plugin_data.extra_incar
+        io_bundle.extra_incar = {**(io_bundle.extra_incar or {}), **plugin_incar}
+
+        if plugin_data.override_potcar is not None:
+
+            for old_line, new_line in plugin_data.override_potcar.items():
+                if old_line not in io_bundle.potcar_content:
+                    raise ValueError(f"Line '{old_line}' not found in POTCAR content.")
+                io_bundle.potcar_content = io_bundle.potcar_content.replace(old_line, new_line, 1)
+
+
+    # INCAR
+    incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
+    io_bundle.incar_content = str(incar)
+
+    # KPOINTS — Gamma-centred mesh parsed from the "kx ky kz" string on InputSCF
+    mesh = [int(k) for k in io_bundle.calc.scf.kpoints.split()]
+    if len(mesh) != 3:
+        raise ValueError(
+            f'scf.kpoints must be three integers like "4 4 4", got: '
+            f"{io_bundle.calc.scf.kpoints!r}"
+        )
+    io_bundle.kpoints_content = str(Kpoints.gamma_automatic(mesh))
 
     return io_bundle
 
