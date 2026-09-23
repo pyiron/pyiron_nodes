@@ -157,15 +157,15 @@ class VaspInputResources:
     incar_content: Optional[str] = None
     potcar_content: Optional[str] = None
     kpoints_content: Optional[str] = None
-    plugin_content: Optional[str] = None 
+    plugin_content: Optional[str] = None
 
 
 @dataclass
 class VaspPlugin:
     plugin_content: str = None
-    override_potcar: Optional[dict] = None 
+    override_potcar: Optional[dict] = None
     extra_incar: Optional[dict] = None
-    potcar_lib_path: Optional[str] = None 
+    potcar_lib_path: Optional[str] = None
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -733,6 +733,7 @@ def _generate_hash(io_bundle: VaspInputResources) -> str:
     hash_string = "|".join(parts)
     return hashlib.sha256(hash_string.encode()).hexdigest()[:8]
 
+
 def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
     """Dump the rendered file content onto disk in ``io_bundle.working_directory``."""
     workdir = io_bundle.working_directory
@@ -749,6 +750,7 @@ def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
     for name, content in files.items():
         with open(os.path.join(workdir, name), "w") as f:
             f.write(content)
+
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
@@ -881,8 +883,9 @@ def CreateVaspInputResources(
             for old_line, new_line in plugin_data.override_potcar.items():
                 if old_line not in io_bundle.potcar_content:
                     raise ValueError(f"Line '{old_line}' not found in POTCAR content.")
-                io_bundle.potcar_content = io_bundle.potcar_content.replace(old_line, new_line, 1)
-
+                io_bundle.potcar_content = io_bundle.potcar_content.replace(
+                    old_line, new_line, 1
+                )
 
     # INCAR
     incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)

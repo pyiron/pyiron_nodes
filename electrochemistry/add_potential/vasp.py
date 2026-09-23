@@ -15,7 +15,7 @@ from pyiron_nodes.atomistic.engine.vasp_new import (
     VaspInput,
     _ordered_elements,
     _get_potcar_paths,
-    read_potcar_config
+    read_potcar_config,
 )
 
 _potcar_config = read_potcar_config(Path.home() / ".pyiron_vasp_config")
@@ -225,9 +225,7 @@ def CCESetup(
 
     # Ne CCE atoms
     ne_indices = [
-        i
-        for i, sym in enumerate(structure.get_chemical_symbols())
-        if sym == "Ne"
+        i for i, sym in enumerate(structure.get_chemical_symbols()) if sym == "Ne"
     ]
     if len(ne_indices) == 0:
         raise ValueError(
@@ -251,9 +249,9 @@ def CCESetup(
         ]
     )
 
-    d_electrode = float(
-        np.max(structure[ne_indices].positions[:, 2])
-    ) - float(np.max(structure[electrode_indices].positions[:, 2]))
+    d_electrode = float(np.max(structure[ne_indices].positions[:, 2])) - float(
+        np.max(structure[electrode_indices].positions[:, 2])
+    )
 
     #  This is to make sure NELECT and the Ne ZVAL cancel out exactly
     zval_ne = float(f"{(8 + np.round(Q0 / n_Ne, 8)):.7f}")
@@ -268,8 +266,7 @@ def CCESetup(
     # -------------------------------------------------------------------------
     # OUTPUT variables
     # -------------------------------------------------------------------------
-    
-    
+
     cce_params = CEParameters(
         path_to_plugin=path_to_plugin,
         temperature=temperature,
@@ -291,17 +288,17 @@ def CCESetup(
     plugin_content = _plugin_content(cce_params)
 
     extra_incar = {
-        "NELECT": nelect_adjusted, 
-        "PLUGINS/LOCAL_POTENTIAL": "T", 
-        "PLUGINS/OCCUPANCIES": "T"}
-
+        "NELECT": nelect_adjusted,
+        "PLUGINS/LOCAL_POTENTIAL": "T",
+        "PLUGINS/OCCUPANCIES": "T",
+    }
 
     plugin_data = VaspPlugin(
         plugin_content=plugin_content,
-        override_potcar= {ne_zval_original_line : ne_zval_new_line},
-        extra_incar= extra_incar,
+        override_potcar={ne_zval_original_line: ne_zval_new_line},
+        extra_incar=extra_incar,
         potcar_lib_path=potcar_lib_path,
-        )
+    )
 
     return structure, calc, plugin_data
 
@@ -444,7 +441,7 @@ def CDCESetup(
     # -------------------------------------------------------------------------
     # INCAR dictionary
     # -------------------------------------------------------------------------
-    
+
     cdce_params = CEParameters(
         path_to_plugin=path_to_plugin,
         phi0=potential,
