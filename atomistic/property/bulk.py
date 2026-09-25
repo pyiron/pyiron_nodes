@@ -126,18 +126,24 @@ def PlotEVCurve(
         fontsize (int, optional): Font size for labels and title. Defaults to 12.
 
     Returns:
-        fig, ax: The matplotlib figure and axis objects.
+        fig (matplotlib.figure.Figure): The finished figure.
     """
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(5.2, 3.6), dpi=140)
     ax.plot(
         ev_curve_df["volume"],
         ev_curve_df["energy"],
         marker="o",
         linestyle="-",
-        color="b",
+        color="#0072B2",
+        linewidth=1.4,
+        markersize=3.5,
     )
     ax.set_xlabel(xlabel, fontsize=fontsize)
     ax.set_ylabel(ylabel, fontsize=fontsize)
     ax.set_title(title, fontsize=fontsize)
-    # ax.legend()
+    ax.tick_params(labelsize=fontsize - 2)
+    ax.grid(alpha=0.3)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
     return fig

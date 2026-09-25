@@ -251,7 +251,7 @@ def PlotDeformationMap(assessment: dict = None):
     i = int(assessment["target_index"])
     mode = str(np.asarray(assessment["modes"], dtype=object)[i])
 
-    fig, ax = plt.subplots(figsize=(7.0, 4.5))
+    fig, ax = plt.subplots(figsize=(7.0, 4.5), dpi=140)
     y_lo = min(float(sfe.min()) - 5.0, -5.0)
     y_hi = max(float(sfe.max()) + 5.0, hi + 10.0)
     ax.axhspan(y_lo, lo, color="tab:red", alpha=0.12)
@@ -301,6 +301,7 @@ def PlotDeformationMap(assessment: dict = None):
     ax.set_title(
         f"Deformation-mode map of {base_element}(1-x){solute_element}(x) austenite"
     )
+    ax.tick_params(labelsize=10)
     ax.legend(loc="upper left", frameon=False)
     fig.tight_layout()
     return fig

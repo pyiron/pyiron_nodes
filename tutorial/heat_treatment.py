@@ -16,8 +16,8 @@ from core import as_function_node
 
 @as_function_node
 def GrainGrowth(
+    time: float,
     temperature_K: float = 1123.0,
-    time_min: float = 60.0,
     d0_um: float = 5.0,
     k0_um2_per_s: float = 1.0e11,
     Q_kJ_per_mol: float = 250.0,
@@ -31,7 +31,7 @@ def GrainGrowth(
 
     Args:
         temperature_K: annealing temperature in K.
-        time_min: annealing time in minutes.
+        time: annealing time in minutes.
         d0_um: initial (as-received) grain size in micrometres.
         k0_um2_per_s: pre-exponential growth factor in um^2/s.
         Q_kJ_per_mol: activation energy for grain-boundary migration in kJ/mol.
@@ -47,7 +47,7 @@ def GrainGrowth(
     temperature = np.asarray(temperature_K, dtype=float)
     growth_rate = k0_um2_per_s * np.exp(-Q_kJ_per_mol / (R_kJ_per_mol_K * temperature))
     grain_size_um = np.sqrt(
-        d0_um**2 + growth_rate * np.asarray(time_min, dtype=float) * seconds_per_minute
+        d0_um**2 + growth_rate * np.asarray(time, dtype=float) * seconds_per_minute
     )
     return grain_size_um
 
@@ -97,12 +97,22 @@ def PlotYieldStrength(
     """
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots()
-    ax.plot(grain_size_um, sigma_y_MPa, "o-")
-    ax.set_xlabel("Grain size [um]")
-    ax.set_ylabel("Yield strength [MPa]")
+    fig, ax = plt.subplots(figsize=(5.2, 3.6), dpi=140)
+    ax.plot(
+        grain_size_um,
+        sigma_y_MPa,
+        "o-",
+        color="#0072B2",
+        linewidth=1.4,
+        markersize=3.5,
+    )
+    ax.set_xlabel("Grain size (µm)")
+    ax.set_ylabel("Yield strength (MPa)")
     ax.set_title(title)
     ax.grid(alpha=0.3)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
     return fig
 
 
