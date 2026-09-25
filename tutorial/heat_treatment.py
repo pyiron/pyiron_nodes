@@ -102,3 +102,51 @@ def PlotYieldStrength(
     ax.set_title(title)
     ax.grid(alpha=0.3)
     return fig
+
+
+@as_function_node("fig")
+def PlotStrengthByTemperature(
+    df=None,
+    title: str = "Hall-Petch: strength vs. grain size by temperature",
+    cmap: str = "plasma",
+):
+    """Plot yield strength vs. grain size for multiple temperatures.
+
+    Accepts the DataFrame produced by combining GrainGrowth and HallPetch
+    results over a temperature sweep.  Each row is one temperature; the
+    grain_size_um and sigma_y_MPa columns hold arrays.  Curves are
+    color-coded by temperature with a legend.
+
+    Args:
+        df: DataFrame with columns temperature_K, grain_size_um, sigma_y_MPa.
+        title: plot title.
+        cmap: matplotlib colormap name for temperature colour-coding.
+
+    Returns:
+        fig (matplotlib.figure.Figure): the finished figure.
+    """
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+
+    temps = df["temperature_K"].values
+    norm = mcolors.Normalize(vmin=temps.min(), vmax=temps.max())
+    colormap = cm.get_cmap(cmap)
+
+    for _, row in df.iterrows():
+        color = colormap(norm(row["temperature_K"]))
+        ax.plot(
+            row["grain_size_um"],
+            row["sigma_y_MPa"],
+            color=color,
+            label=f"{row['temperature_K']:.0f} K",
+        )
+
+    ax.set_xlabel("Grain size [um]")
+    ax.set_ylabel("Yield strength [MPa]")
+    ax.set_title(title)
+    ax.legend(title="Temperature")
+    ax.grid(alpha=0.3)
+    return fig

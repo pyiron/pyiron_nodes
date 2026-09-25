@@ -16,23 +16,6 @@ def EMT():
     return out
 
 
-# @as_function_node("engine")
-# def M3GNet(model: str = "M3GNet-MP-2021.2.8-PES"):
-#     """M3GNet: A universal neural network potential for atomistic simulations."""
-#     import matgl
-
-#     try:
-#         # matgl >= 1.1 renamed M3GNetCalculator to the model-agnostic PESCalculator
-#         from matgl.ext.ase import PESCalculator
-#     except ImportError:  # pragma: no cover - older matgl
-#         from matgl.ext.ase import M3GNetCalculator as PESCalculator
-
-#     from pyiron_nodes.atomistic.engine.generic import OutputEngine
-
-#     out = OutputEngine(calculator=PESCalculator(matgl.load_model(model)))
-#     return out
-
-
 @as_function_node("engine")
 @lru_cache
 def GRACE(model: str = "GRACE-FS-OAM", use_symmetry: bool = True):
