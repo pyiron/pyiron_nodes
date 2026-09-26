@@ -104,6 +104,7 @@ class SimSetupBundle:
         None  # dict keyed by species (from ParseElectrodeForce), or None
     )
 
+
 @as_inp_dataclass_node
 class SimSetupBundleInp(SimSetupBundle._original_dataclass):
     pass
