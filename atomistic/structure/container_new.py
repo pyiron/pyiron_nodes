@@ -119,6 +119,8 @@ try:
     PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE = True
 except ImportError:
     PYMATGEN_ANALYSIS_DEFECTS_AVAILABLE = False
+    SpacegroupAnalyzer = None
+    VoronoiInterstitialGenerator = None
 
 
 # ============================================================================

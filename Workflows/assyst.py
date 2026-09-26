@@ -1,17 +1,17 @@
 from core import Workflow
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.dataframe import GetColumnFromDataFrame
-from pyiron_nodes.dpg2026.atomistic.assyst.stoichiometry import (
+from pyiron_nodes.atomistic.assyst2.structures import (
     ElementInput,
     SpaceGroupSampling,
 )
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     MapCalculatorOnStructures,
     Relax,
     Static,
 )
-from pyiron_nodes.dpg2026.basic.math import Multiply
+from pyiron_nodes.math_utils import Multiply
 from pyiron_nodes.plotting import (
     Histogram,
     InputPlotOptions,

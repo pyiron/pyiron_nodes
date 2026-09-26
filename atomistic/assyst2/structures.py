@@ -1,14 +1,16 @@
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import product
+from typing import Optional, Union
 
 import pandas as pd
 from ase import Atoms
 
 from core import (
     as_function_node,
-    as_inp_dataclass_node,
+    PortList,
 )
+from pyiron_nodes.atomistic.structure._atoms import _ase_to_data
 
 
 @dataclass(frozen=True)
@@ -78,43 +80,96 @@ def StoichiometryTable(stoichiometry: Stoichiometry) -> pd.DataFrame:
     return pd.DataFrame(stoichiometry.stoichiometry)
 
 
-@as_inp_dataclass_node
-class SpaceGroupInput:
-    spacegroups: list[int] = field(default_factory=lambda: list(range(1, 231)))
-    stoichiometry: Stoichiometry = None
-    max_atoms: int = 10
+@as_function_node("filtered")
+def FilterSize(
+    elements: Stoichiometry,
+    min: Optional[int] = 0,
+    max: Optional[int] = None,
+):
+    """Filter a Stoichiometry by the number of atoms per structure.
 
-    # can be either a single cutoff distance or a dictionary mapping chemical
-    # symbols to min *radii*; you need to half the value if you go from using a
-    # float to a dict
-    min_dist: float | dict[str, float] | None = None
+    Args:
+        min (int): keep only compositions with at least this many atoms
+        max (int): keep only compositions with at most this many atoms
 
-    # FIXME: just to restrict number of structures during testing
-    max_structures: int = 20
+    Returns:
+        Stoichiometry: filtered object
+    """
+    import math
+
+    if max is None:
+        max = math.inf
+    return Stoichiometry(tuple(s for s in elements if min <= sum(s.values()) <= max))
 
 
 @as_function_node
-def SpaceGroupSampling(input: SpaceGroupInput) -> list[Atoms]:
+def SpaceGroupSampling(
+    elements: Stoichiometry,
+    spacegroups: Optional[Union[list[int], tuple[int, ...]]] = None,
+    max_atoms: int = 4,
+    max_structures: int = 10,
+    store: bool = False,
+) -> list[Atoms]:
+    """
+    Create symmetric random structures.
+
+    Args:
+        elements (Stoichiometry): list of compositions, one per structure
+        spacegroups (list of int): which space groups to generate; all 230 by default
+        max_atoms (int): do not generate structures larger than this
+        max_structures (int): generate at most this many structures
+    Returns:
+        list of Atoms: generated structures
+    """
+    import math
     from warnings import catch_warnings
 
-    from structuretoolkit.build.random import pyxtal
+    from assyst.crystals import pyxtal
     from tqdm.auto import tqdm
+
+    if spacegroups is None:
+        spacegroups = list(range(1, 231))
+    if max_structures is None:
+        max_structures = math.inf
 
     structures = []
     with catch_warnings(category=UserWarning, action="ignore"):
-        for stoich in (bar := tqdm(input.stoichiometry)):
-            elements, num_ions = zip(*stoich.items(), strict=False)
+        for stoich in (bar := tqdm(elements)):
+            symbols, num_ions = zip(*stoich.items(), strict=False)
             stoich_str = "".join(
-                f"{s}{n}" for s, n in zip(elements, num_ions, strict=False)
+                f"{s}{n}" for s, n in zip(symbols, num_ions, strict=False)
             )
             bar.set_description(stoich_str)
             structures += [
-                s["atoms"] for s in pyxtal(input.spacegroups, elements, num_ions)
+                _ase_to_data(s["atoms"]) for s in pyxtal(spacegroups, symbols, num_ions)
             ]
-            if len(structures) > input.max_structures:
-                structures = structures[: input.max_structures]
+            if len(structures) > max_structures:
+                structures = structures[:max_structures]
                 break
         bar.close()
+    return structures
+
+
+@as_function_node
+def CombineStructureSets(
+    sets: PortList = PortList(
+        ["spacegroups", "volume_relax", "full_relax", "rattle", "stretch"],
+        required=False,
+    ),
+) -> list[Atoms]:
+    """Combine any number of structure sets into a full training set.
+
+    Add, rename and remove inputs with the "+" and "x" buttons on the node.
+    The default port names follow the stages of the ASSYST pipeline.
+    """
+    import logging
+
+    structures = [s for values in sets.values() if values for s in values]
+    if len(structures) == 0:
+        logging.warning(
+            "Either no inputs given or all inputs are empty. "
+            "Returning the empty list!"
+        )
     return structures
 
 
@@ -126,7 +181,7 @@ def CombineStructures(
     set4: list[Atoms] | None,
     set5: list[Atoms] | None,
 ) -> list[Atoms]:
-    """Combine a number of structure lists into a single list."""
+    """Deprecated: use ``CombineStructureSets``, which takes any number of sets."""
     set3 = set3 or []
     set4 = set4 or []
     set5 = set5 or []
@@ -134,7 +189,7 @@ def CombineStructures(
     return structures
 
 
-@as_function_node
+@as_function_node("path")
 def SaveStructures(structures: list[Atoms], filename: str):
     """Save list of structures into a pickled dataframe.
 
@@ -166,5 +221,7 @@ def SaveStructures(structures: list[Atoms], filename: str):
     if not filename.endswith("pckl.gz"):
         filename += ".pckl.gz"
     dirname = os.path.dirname(filename)
-    os.makedirs(dirname, exist_ok=True)
+    if dirname:  # a bare filename has no directory part
+        os.makedirs(dirname, exist_ok=True)
     df.to_pickle(filename)
+    return filename

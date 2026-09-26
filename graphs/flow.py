@@ -239,17 +239,16 @@ def ConvertMacroToWorkflow(macro_node):
 #     return graph
 
 
-@as_function_node
+@as_function_node("order")
 def TopologicalSort(graph: Graph):
-    from core.graph import topological_sort
-
-    graph = topological_sort(graph)
-    return graph
+    """Node labels of *graph* in dependency order."""
+    order = graph.topological_sort()
+    return order
 
 
 @as_function_node
 def RemoveNode(graph: Graph, node_label: str):
-    from core.graph import remove_node
-
-    graph = remove_node(graph, node_label)
+    """A copy of *graph* with *node_label* deleted."""
+    graph = graph.copy()
+    graph.remove_node(node_label)
     return graph

@@ -26,7 +26,7 @@ class SpaceGroupInput:
 def SpaceGroupSampling(input: SpaceGroupInput, store: bool = True):
     from warnings import catch_warnings
 
-    from structuretoolkit.build.random import pyxtal
+    from assyst.crystals import pyxtal
 
     from pyiron_nodes.atomistic.calculator.data import OutputSEFS
 
