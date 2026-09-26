@@ -525,3 +525,26 @@ def DoublLayerCapacitance(context: dict):
     C_metal = _dlc(metal_mask, metal, charges["metal_charge"])
     C_Ne = _dlc(ne_mask, "Ne", charges["neon_charge"])
     return C_metal, C_Ne
+
+
+from core import group_node
+
+
+@group_node("context")
+def EnrichDensityContext(trajectory, sim_setup):
+    from pyiron_nodes.atomistic.calculator.data import SimSetupBundle
+    from pyiron_nodes.electrochemistry.analysis.plots import (
+        BuildDensityContext,
+        ElementDensityFromTrajectory,
+    )
+    from core import Workflow
+
+    inner_wf = Workflow("EnrichDensityContext")
+    inner_wf.density = ElementDensityFromTrajectory(trajectory=trajectory)
+    inner_wf.unpacked = SimSetupBundle(input=sim_setup)
+    inner_wf.bundle = BuildDensityContext(
+        density_data=inner_wf.density,
+        initial_structure=inner_wf.unpacked.outputs.structure,
+        charges=inner_wf.unpacked.outputs.charges,
+    )
+    return inner_wf.bundle.outputs.context
