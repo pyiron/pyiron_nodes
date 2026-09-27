@@ -11,12 +11,59 @@ def SingleNodeExecutor(max_workers: int = 1):
 
 
 @as_function_node("Executor")
-def FluxClusterExecutor(cache_directory: str = "./cache"):
+def FluxClusterExecutor(cache_directory: str = "./cache", non_modal: bool = False):
     from executorlib import FluxClusterExecutor as Executor
 
-    executor = Executor(cache_directory=cache_directory)
+    cache_directory = _resolve_cache_directory(cache_directory)
+    executor = Executor(cache_directory=cache_directory, wait=not non_modal)
     _make_stoppable(executor, cache_directory, None, "flux")
+    if non_modal:
+        _make_non_modal(executor)
     return executor
+
+
+def _make_non_modal(executor):
+    """Tell aiflow not to wait for work submitted to *executor*.
+
+    The run submits the job, reports it and ends; the result is collected by a
+    later run or from the Database panel, both of which find it by the node
+    hash.  Registered from here rather than passed through ``core`` for the
+    same reason as ``_make_stoppable``: it is a property of the executor the
+    user configured on the canvas.
+    """
+    from core import mark_non_modal
+
+    mark_non_modal(executor)
+
+
+def _resolve_cache_directory(cache_directory):
+    """Anchor a relative *cache_directory* under the configured data storage.
+
+    The default ``./cache`` is relative to the process working directory, which
+    is wherever the notebook happened to be launched from.  A queued job writes
+    its result into that directory and the client is the only thing that knows
+    where it was — so a kernel restarted from a different directory cannot find
+    the result it is still waiting for, and resubmits.  Anchoring the path makes
+    the cache the fixed, findable thing it has to be for recovery to work.
+
+    An absolute path is honoured as given.
+    """
+    import pathlib
+
+    path = pathlib.Path(cache_directory)
+    if path.is_absolute():
+        return str(path)
+
+    try:
+        from core.config import paths
+
+        base = pathlib.Path(paths.DATA_STORAGE)
+    except (ImportError, AttributeError):
+        # No core config to anchor to: leave the caller's path alone rather
+        # than inventing a location they would then have to go looking for.
+        return str(path)
+
+    return str((base / "executorlib_cache" / path).resolve())
 
 
 def _make_stoppable(executor, cache_directory, config_directory, backend):
@@ -152,12 +199,26 @@ def SlurmExecutor(
     run_time_max: int = 180,  # in seconds
     memory_max: int = None,  # in GB
     cache_directory: str = "./cache",
+    non_modal: bool = False,
     advanced: SlurmAdvancedSettings = None,
 ):
+    """Run nodes as SLURM jobs.
+
+    With ``non_modal`` the workflow does not wait: each node wired to this
+    executor is submitted, reported, and left in the queue, and the run ends.
+    That is what lets a ``for`` loop submit a parametric study in one go
+    instead of one job at a time.  Collect the results by running the workflow
+    again once the jobs are done, or from the Database panel — both find them
+    by the node's hash, which is also the cache key of the job.
+    """
     from executorlib import SlurmClusterExecutor
 
     if advanced is None:
         advanced = SlurmAdvancedSettings().run()
+
+    # Anchor the cache so a restarted kernel can still find jobs submitted from
+    # a different working directory — see _resolve_cache_directory.
+    cache_directory = _resolve_cache_directory(cache_directory)
 
     resource_dict = {
         # "cores": cores,
@@ -187,10 +248,17 @@ def SlurmExecutor(
         refresh_rate=advanced.refresh_rate,
         plot_dependency_graph=advanced.plot_dependency_graph,
         plot_dependency_graph_filename=advanced.plot_dependency_graph_filename,
+        # executorlib's own flag: do not wait for outstanding tasks when this
+        # executor is shut down.  Walking away from a queued job is the whole
+        # point of non_modal, and the job itself does not care — it writes its
+        # result into cache_directory either way.
+        wait=not non_modal,
     )
     # Pressing Stop scancels the jobs in `cache_directory` — see _make_stoppable
     # for why that is the whole directory rather than just this node's job.
     _make_stoppable(executor, cache_directory, advanced.pysqa_config_directory, "slurm")
+    if non_modal:
+        _make_non_modal(executor)
     return executor
 
 

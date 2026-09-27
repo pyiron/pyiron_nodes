@@ -557,3 +557,94 @@ def ShowVariedInputs(db, qualname: str = ""):
 
     result = inputs_df[varied_cols].reset_index(drop=True)
     return result
+
+
+@as_function_node("outstanding")
+def ShowOutstandingSubmissions(db, cache_directory: str = ""):
+    """Return a DataFrame of nodes that were submitted to a queue and never came back.
+
+    A node that blocks on a cluster executor is written to the database *before*
+    it waits, marked ``Submitted``.  If the kernel then dies, the SLURM job keeps
+    running and writes its result into the executor's cache directory — but the
+    notebook that knew about it is gone.  This node is the way back in: it answers
+    "what did I leave running, and what came back?"
+
+    Each row's ``node_id`` feeds straight into :func:`GetUpstreamGraph`, which
+    rebuilds the node and its whole upstream graph from the database alone.
+    Re-running that graph collects the result: the node hash is also the
+    executorlib cache key, so a finished job is read from cache and a job still
+    in the queue is re-attached to rather than resubmitted.
+
+    Args:
+        db: InstanceDatabase connection.
+        cache_directory: Where to look for the queue's HDF5 files.  Leave empty
+            to take it from each node's own executor row, which is where it was
+            recorded at submission time.
+
+    Returns:
+        pd.DataFrame: One row per outstanding submission, with ``node_id``,
+        ``hash``, ``qualname``, ``start_time``, ``cache_directory``,
+        ``queue_id``, ``queue_status`` and ``result_ready``.  Empty when
+        nothing is outstanding — which is the normal, healthy answer.
+    """
+    import pandas as pd
+    from sqlalchemy.orm import sessionmaker
+
+    from core.remote_cache import queue_status_for
+
+    Session = sessionmaker(bind=db.engine)
+    session = Session()
+    df = pd.read_sql(session.query(db.table).statement, session.bind)
+    session.close()
+
+    if "status" not in df.columns or df.empty:
+        # A table written before check-pointing existed has nothing outstanding
+        # by definition: every row in it describes a run that finished.
+        return pd.DataFrame()
+
+    pending = df[df["status"] == "Submitted"]
+    if pending.empty:
+        return pd.DataFrame()
+
+    by_hash = df.set_index("hash")
+
+    def _cache_dir_for(row):
+        """The cache directory recorded on this node's executor node."""
+        if cache_directory:
+            return cache_directory
+        executor_hash = row.get("executor")
+        if not executor_hash or executor_hash not in by_hash.index:
+            return ""
+        inputs = by_hash.loc[executor_hash, "inputs"]
+        if not isinstance(inputs, dict):
+            return ""
+        return inputs.get("cache_directory", "") or ""
+
+    records = []
+    for _, row in pending.iterrows():
+        cache_dir = _cache_dir_for(row)
+        node_hash = row["hash"]
+        # One implementation of "what does the queue say", shared with the
+        # Database panel's status column — the two must not be able to
+        # disagree about the same job.
+        report = queue_status_for(cache_dir, node_hash)
+
+        records.append(
+            {
+                # Position in the *full* table, which is what GetUpstreamGraph
+                # indexes into — not the position within this filtered view.
+                # Row order comes from an unordered SELECT, as everywhere else
+                # in this module; use ``hash`` with GetIdFromHash if that bites.
+                "node_id": int(df.index.get_loc(row.name)),
+                "hash": node_hash,
+                "qualname": row.get("qualname", ""),
+                "start_time": row.get("start_time"),
+                "cache_directory": cache_dir,
+                "queue_id": report["queue_id"],
+                "queue_status": report["queue_status"],
+                "result_ready": report["result_ready"],
+                "runtime": report["runtime"],
+            }
+        )
+
+    return pd.DataFrame(records)
