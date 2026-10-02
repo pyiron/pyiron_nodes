@@ -27,8 +27,8 @@ graph stays a DAG and the whole task suite can be swept with
 ``IterToDataFrame`` — optionally in parallel through a thread pool.  One sweep
 per arm, stacked row-wise by ``StackResults``.
 
-Two ways to run it
-------------------
+Three ways to run it
+--------------------
 **One node.**  ``RunBenchmarkSuite`` does the whole thing — task suite, library
 mirror, freeze manifest, both arms, repetitions, ``results.csv``, aggregation —
 with every option of the ``workflow_bench --run`` CLI exposed as a port:
@@ -67,9 +67,16 @@ source or watch the sweep progress:
 5. Run.  ``BenchmarkReport`` prints the statistics; ``PlotBenchmark`` draws the
    ladder pass-rates, the success-vs-repair-budget curve and the arm comparison.
 
-Both paths drive the same ``WorkflowAgent``, so they produce the same columns;
-repetitions and their per-cell confidence intervals are only available from
-``RunBenchmarkSuite`` (or afterwards from ``AggregateRepeats``).
+**One group.**  ``BenchmarkSuite`` is that same canvas folded into a single
+``@group_node``: every option above is a boundary port, and expanding the node
+puts all twelve inner nodes back on the canvas, so nothing is given up for the
+tidier picture.  ``Workflows/workflow_agent_benchmark_compact`` wires it to the
+report and the plot — three nodes for the whole experiment.  Unlike
+``RunBenchmarkSuite`` it has no ``repeats``: one group is one repetition.
+
+All three paths drive the same ``WorkflowAgent``, so they produce the same
+columns; repetitions and their per-cell confidence intervals are only available
+from ``RunBenchmarkSuite`` (or afterwards from ``AggregateRepeats``).
 
 Generated code is written to ``<workdir>/<arm>/<task-slug>/{workflow,solution}.py``
 and kept for inspection.  When a follow-up variant runs it edits that same file,
@@ -86,7 +93,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from core import Workflow, as_function_node
+from core import Workflow, as_function_node, group_node
 from pyiron_nodes.controls import IterToDataFrame
 from pyiron_nodes.executors import ThreadPoolExecutorNode
 
@@ -213,6 +220,7 @@ def BenchWorkDir(path: str = "bench_runs"):
         "run_variant",
         "run_optimize",
         "save_chat",
+        "verbose",
     ]
 )
 def BenchSettings(
@@ -227,6 +235,7 @@ def BenchSettings(
     run_variant: bool = True,
     run_optimize: bool = False,
     save_chat: bool = True,
+    verbose: bool = False,
 ):
     """Single source of truth for everything the two arms must share.
 
@@ -267,10 +276,14 @@ def BenchSettings(
         ``workflow_optimization_guide.md`` and re-validate (aiflow arm only).
     save_chat : bool
         Keep the per-turn chat logs (``chat_gen.jsonl`` and friends).
+    verbose : bool
+        Narrate each agent turn, tagged by arm and task.  A long task otherwise
+        prints nothing for minutes, which is what let a run that never reached
+        the agent at all look merely fast.
 
     Returns
     -------
-    model, arms, max_repairs, exec_timeout_s, max_budget_usd, agent_timeout_s, effort, run_variant, run_optimize, save_chat
+    model, arms, max_repairs, exec_timeout_s, max_budget_usd, agent_timeout_s, effort, run_variant, run_optimize, save_chat, verbose
         One port per setting, ready to wire into both ``WorkflowAgent`` nodes.
     """
     # Warn rather than raise: this node only configures the run, and a caller
@@ -301,6 +314,7 @@ def BenchSettings(
         run_variant,
         run_optimize,
         save_chat,
+        verbose,
     )
 
 
@@ -359,7 +373,6 @@ def TaskList(
     return [t for t in [task_1, task_2, task_3, task_4, task_5] if t.strip()]
 
 
-
 def _progress(verbose: bool, arm: str, label: str):
     """A reporter for ``progress_listener``, or ``None`` to stay quiet.
 
@@ -390,7 +403,9 @@ def warn_if_the_harness_never_ran(df) -> str:
         return ""
     if not (df["final_stage"] == "no_file").all():
         return ""
-    reasons = sorted({str(e).strip() for e in df.get("agent_error", []) if str(e).strip()})
+    reasons = sorted(
+        {str(e).strip() for e in df.get("agent_error", []) if str(e).strip()}
+    )
     if not reasons:
         return ""
     banner = "\n".join(
@@ -521,6 +536,8 @@ def GenerateWorkflow(
             chat_log_path=chat_log_path or None,
             env=agent_env(),
             on_event=progress_listener(_progress(verbose, arm, task)),
+            # Both arms, so a score cannot depend on the operator's CLAUDE.md.
+            bare=True,
         )
 
     def hit_wall(r):
@@ -703,6 +720,7 @@ def RepairWorkflow(
         chat_log_path=chat_log_path or None,
         env=agent_env(),
         on_event=progress_listener(_progress(verbose, arm, path)),
+        bare=True,
     )
     return (
         run.session_id or session_id,
@@ -778,6 +796,7 @@ def VaryWorkflow(
         chat_log_path=chat_log_path or None,
         env=agent_env(),
         on_event=progress_listener(_progress(verbose, arm, path)),
+        bare=True,
     )
     after = (
         target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
@@ -872,6 +891,7 @@ def OptimizeWorkflow(
         chat_log_path=chat_log_path or None,
         env=agent_env(),
         on_event=progress_listener(_progress(verbose, arm, path)),
+        bare=True,
     )
     after = (
         target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
@@ -1633,6 +1653,153 @@ def AggregateRepeats(run_dir: str = "bench_runs"):
     return stats, df
 
 
+# ── The whole sweep as one expandable node ──────────────────────────────────
+
+
+@group_node("df", "repair_budget")
+def BenchmarkSuite(
+    tier: Optional[
+        Literal["all", "generic", "pyiron_nodes", "atomistic", "atomistic_hard"]
+    ] = "generic",
+    limit: int = 0,
+    allow_reference_workflows: bool = False,
+    path: str = "bench_runs",
+    max_workers: int = 3,
+    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model_other: str = "",
+    arms: Optional[Literal["aiflow", "scratch", "both"]] = "both",
+    max_repairs: int = 3,
+    exec_timeout_s: int = 300,
+    max_budget_usd: float = 4.0,
+    agent_timeout_s: int = 1800,
+    effort: Optional[Literal["default", "low", "medium", "high", "max"]] = "default",
+    run_variant: bool = True,
+    run_optimize: bool = False,
+    save_chat: bool = True,
+    verbose: bool = False,
+):
+    """Both arms, every task, one node — with the graph still inside it.
+
+    The same pipeline the canvas at the bottom of this module spells out by
+    hand, collapsed to a single node whose every option is a boundary port.
+    Unlike ``RunBenchmarkSuite``, which does the sweep inside one Python
+    function, this is a real subgraph: expand it and the twelve nodes are
+    there to inspect, rewire and re-run individually.  Use it when you want the
+    canvas to show the experiment rather than the plumbing, and still be able
+    to open the plumbing.
+
+    Repetitions and their confidence intervals are not available here — one
+    group is one repetition.  Use ``RunBenchmarkSuite(repeats=n)`` for error
+    bars, or ``AggregateRepeats`` over a directory of finished runs.
+
+    Parameters
+    ----------
+    tier, limit
+        Which curated tasks to run — see ``TaskSuite``.
+    allow_reference_workflows
+        ``True`` points the aiflow arm at the real repository, reference
+        solutions and all.  See ``NodeLibraryMirror``; leave it off unless you
+        are deliberately measuring the retrieval-assisted case.
+    path
+        Output directory.  Use a dated one, or a rerun overwrites the last.
+    max_workers
+        Threads for the two sweeps.
+    model, model_other, arms, max_repairs, exec_timeout_s, max_budget_usd, agent_timeout_s, effort, run_variant, run_optimize, save_chat, verbose
+        Forwarded to ``BenchSettings``, which feeds both arms from one place so
+        they cannot drift apart.  ``arms`` switches a whole branch off.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        One row per task per arm — wire into ``BenchmarkReport``.
+    repair_budget : int
+        The ``max_repairs`` that was actually used, so the report's
+        repair-budget curve is drawn to the same scale without being told
+        twice.  Named apart from the input port of the same meaning so the
+        canvas cannot confuse the two sides of the node.
+    """
+    wf = Workflow("BenchmarkSuite")
+
+    wf.settings = BenchSettings(
+        model=model,
+        model_other=model_other,
+        arms=arms,
+        max_repairs=max_repairs,
+        exec_timeout_s=exec_timeout_s,
+        max_budget_usd=max_budget_usd,
+        agent_timeout_s=agent_timeout_s,
+        effort=effort,
+        run_variant=run_variant,
+        run_optimize=run_optimize,
+        save_chat=save_chat,
+        verbose=verbose,
+    )
+    wf.mirror = NodeLibraryMirror(allow_reference_workflows=allow_reference_workflows)
+    wf.suite = TaskSuite(tier=tier, limit=limit)
+    wf.dir = BenchWorkDir(path=path)
+    wf.pool = ThreadPoolExecutorNode(max_workers=max_workers)
+
+    wf.tasks_aiflow = ArmTasks(
+        tasks=wf.suite, arm="aiflow", arms=wf.settings.outputs.arms
+    )
+    wf.tasks_scratch = ArmTasks(
+        tasks=wf.suite, arm="scratch", arms=wf.settings.outputs.arms
+    )
+
+    wf.agent_aiflow = WorkflowAgent(
+        model=wf.settings.outputs.model,
+        max_repairs=wf.settings.outputs.max_repairs,
+        workdir=wf.dir,
+        exec_timeout_s=wf.settings.outputs.exec_timeout_s,
+        max_budget_usd=wf.settings.outputs.max_budget_usd,
+        agent_timeout_s=wf.settings.outputs.agent_timeout_s,
+        arm="aiflow",
+        lib_dir=wf.mirror,
+        run_variant=wf.settings.outputs.run_variant,
+        run_optimize=wf.settings.outputs.run_optimize,
+        effort=wf.settings.outputs.effort,
+        save_chat=wf.settings.outputs.save_chat,
+        verbose=wf.settings.outputs.verbose,
+    )
+    wf.agent_scratch = WorkflowAgent(
+        model=wf.settings.outputs.model,
+        max_repairs=wf.settings.outputs.max_repairs,
+        workdir=wf.dir,
+        exec_timeout_s=wf.settings.outputs.exec_timeout_s,
+        max_budget_usd=wf.settings.outputs.max_budget_usd,
+        agent_timeout_s=wf.settings.outputs.agent_timeout_s,
+        arm="scratch",
+        lib_dir=wf.mirror,
+        run_variant=wf.settings.outputs.run_variant,
+        run_optimize=wf.settings.outputs.run_optimize,
+        effort=wf.settings.outputs.effort,
+        save_chat=wf.settings.outputs.save_chat,
+        verbose=wf.settings.outputs.verbose,
+    )
+
+    wf.bench_aiflow = IterToDataFrame(
+        node=wf.agent_aiflow,
+        input_label="task",
+        values=wf.tasks_aiflow,
+        debug=False,
+        executor=wf.pool,
+        store=True,
+    )
+    wf.bench_scratch = IterToDataFrame(
+        node=wf.agent_scratch,
+        input_label="task",
+        values=wf.tasks_scratch,
+        debug=False,
+        executor=wf.pool,
+        store=True,
+    )
+
+    wf.stack = StackResults(
+        df_aiflow=wf.bench_aiflow, df_scratch=wf.bench_scratch, workdir=wf.dir
+    )
+    return wf.stack, wf.settings.outputs.max_repairs
+
+
 # ── Workflow ────────────────────────────────────────────────────────────────
 
 wf = Workflow("workflow_agent_benchmark")
@@ -1666,6 +1833,7 @@ wf.agent_aiflow = WorkflowAgent(
     run_optimize=wf.settings.outputs.run_optimize,
     effort=wf.settings.outputs.effort,
     save_chat=wf.settings.outputs.save_chat,
+    verbose=wf.settings.outputs.verbose,
 )
 
 wf.agent_scratch = WorkflowAgent(
@@ -1681,6 +1849,7 @@ wf.agent_scratch = WorkflowAgent(
     run_optimize=wf.settings.outputs.run_optimize,
     effort=wf.settings.outputs.effort,
     save_chat=wf.settings.outputs.save_chat,
+    verbose=wf.settings.outputs.verbose,
 )
 
 wf.bench_aiflow = IterToDataFrame(
