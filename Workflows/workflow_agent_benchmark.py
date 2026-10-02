@@ -66,6 +66,10 @@ source or watch the sweep progress:
 4. Set ``max_workers`` on the thread pool for parallel generation.
 5. Run.  ``BenchmarkReport`` prints the statistics; ``PlotBenchmark`` draws the
    ladder pass-rates, the success-vs-repair-budget curve and the arm comparison.
+   The report's third output, ``tasks``, is the per-task table: view that port
+   and every row offers two links — the workflow the agent wrote (opens as a
+   canvas tab) and ``reasoning.md``, the readable transcript of how it got
+   there.  ``results.csv`` keeps the same paths for later.
 
 **One group.**  ``BenchmarkSuite`` is that same canvas folded into a single
 ``@group_node``: every option above is a boundary port, and expanding the node
@@ -81,6 +85,9 @@ from ``RunBenchmarkSuite`` (or afterwards from ``AggregateRepeats``).
 Generated code is written to ``<workdir>/<arm>/<task-slug>/{workflow,solution}.py``
 and kept for inspection.  When a follow-up variant runs it edits that same file,
 so the graded version is first snapshotted alongside it as ``*_primary.py``.
+That directory is the audit trail for one row: a snapshot and the error text per
+attempt, the raw ``chat_*.jsonl`` per agent turn (``save_chat=True``), and the
+``reasoning.md`` rendered from them.  Its path is in the ``task_dir`` column.
 
 .. warning::
    This executes LLM-generated code.  It runs in a child process with a hard
@@ -993,6 +1000,7 @@ def WorkflowAgent(
         A dataclass with every measured field.  ``IterToDataFrame`` expands it
         into one DataFrame column per field.
     """
+    import datetime
     import json
     import shutil
     import time
@@ -1013,11 +1021,26 @@ def WorkflowAgent(
         model=model,
         arm=arm,
         scored=bool(expect_of(task)),
+        task_dir=str(scratch),
+        started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(
+            timespec="seconds"
+        ),
+        exec_timeout_s=timeout_s,
     )
 
     def say(msg):
         if verbose:
             print(f"[{arm}/{slugify(task, 24)}] {msg}", flush=True)
+
+    def _finish(outcome):
+        """Stamp the shared trailing fields and render the transcript."""
+        outcome.total_seconds = round(time.time() - t0, 1)
+        # Written last, so one file covers the generation turn and every repair
+        # it took; the results table links to it as the "reasoning" column.
+        outcome.reasoning_path = workflow_bench.write_reasoning_digest(
+            scratch, f"{arm}: {task}"
+        )
+        return outcome
 
     def _save_snapshot(path, n):
         src = Path(path)
@@ -1046,6 +1069,7 @@ def WorkflowAgent(
     path = gen.outputs.path.value
     session_id = gen.outputs.session_id.value
     out.workflow_path = path
+    out.session_id = session_id
     out.gen_seconds = gen.outputs.gen_seconds.value
     out.gen_cost_usd = gen.outputs.cost_usd.value
     out.gen_tokens_in = gen.outputs.tokens_in.value
@@ -1072,9 +1096,10 @@ def WorkflowAgent(
         # harness on the agent is how a broken run comes to look like a 0 %
         # pass rate instead of like a broken run.
         out.blamed_on = "harness" if (out.timed_out or out.agent_error) else "agent"
-        out.total_seconds = round(time.time() - t0, 1)
         say(f"no file produced ({out.blamed_on}: {out.last_error[:120]})")
-        return out
+        # The transcript matters most in exactly this case: there is no artifact
+        # to read, so what the agent did instead is the only evidence there is.
+        return _finish(out)
 
     # ── validate, then repair until it passes or the budget runs out ────────
     checker = ValidateWorkflow(path=path, timeout_s=timeout_s, arm=arm, task=task)
@@ -1120,6 +1145,7 @@ def WorkflowAgent(
         )
         fixer.run()
         session_id = fixer.outputs.session_id.value
+        out.session_id = session_id
         out.repair_cycles += 1
         repair_cost = fixer.outputs.cost_usd.value
         repair_tok_in = fixer.outputs.tokens_in.value
@@ -1275,8 +1301,7 @@ def WorkflowAgent(
 
     out.repair_seconds = round(out.repair_seconds, 1)
     out.cost_usd = round(out.cost_usd + out.variant_cost_usd, 4)
-    out.total_seconds = round(time.time() - t0, 1)
-    return out
+    return _finish(out)
 
 
 @as_function_node("df")
@@ -1324,27 +1349,36 @@ def StackResults(
     return df
 
 
-@as_function_node(["summary", "stats"])
+@as_function_node(["summary", "stats", "tasks"])
 def BenchmarkReport(df: pd.DataFrame = None, max_repairs: int = 3):
     """Aggregate the per-task results into the benchmark's headline metrics.
 
     Reports, overall and per tier: the pass rate at each tier of the validation
     ladder (first attempt and after repair), the success-vs-repair-budget curve
     ``P(executes | <= k repairs)``, the repair-cycle distribution, the share of
-    graph nodes reused from ``pyiron_nodes`` rather than newly written, and the
-    total wall-clock and cost.
+    graph nodes reused from ``pyiron_nodes`` rather than newly written, the
+    token budget (split by fresh input, cache writes, cache reads and output),
+    and the total wall-clock and cost — including cost per *completed* task,
+    which is the only cost number that compares two arms fairly.
 
     Returns
     -------
     summary : str
         Human-readable report (also printed).
     stats : pd.DataFrame
-        One row per group (``overall`` plus one per tier).
+        One row per group (``overall`` plus one per tier, and per arm when the
+        frame holds both).
+    tasks : pd.DataFrame
+        One row per task, with the paths that make every number checkable: the
+        artifact the agent wrote and its rendered reasoning.  Viewing this port
+        in the GUI renders both as clickable links — the workflow opens as a
+        canvas tab, the transcript in the file view.
     """
     stats = workflow_bench.summarize(df, max_repairs=max_repairs)
     summary = workflow_bench.format_summary(stats, df)
+    tasks = workflow_bench.task_table(df)
     print(summary)
-    return summary, stats
+    return summary, stats, tasks
 
 
 @as_function_node("figure")
