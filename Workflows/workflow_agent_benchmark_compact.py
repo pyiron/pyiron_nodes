@@ -57,7 +57,10 @@ from pyiron_nodes.Workflows.workflow_agent_benchmark import (
 wf = Workflow("workflow_agent_benchmark_compact")
 wf.storage_enabled = True
 
-wf.suite = BenchmarkSuite(
+# `benchmark`, not `suite`: expanding a group inlines its twelve inner nodes
+# into this graph, and a label shared with one of them would collapse the two
+# into a single node whose edges form a cycle.
+wf.benchmark = BenchmarkSuite(
     tier="generic",
     limit=1,
     arms="both",
@@ -69,11 +72,11 @@ wf.suite = BenchmarkSuite(
 )
 
 wf.report = BenchmarkReport(
-    df=wf.suite.outputs.df, max_repairs=wf.suite.outputs.repair_budget
+    df=wf.benchmark.outputs.df, max_repairs=wf.benchmark.outputs.repair_budget
 )
 
 wf.figure = PlotBenchmark(
-    df=wf.suite.outputs.df, max_repairs=wf.suite.outputs.repair_budget
+    df=wf.benchmark.outputs.df, max_repairs=wf.benchmark.outputs.repair_budget
 )
 
 

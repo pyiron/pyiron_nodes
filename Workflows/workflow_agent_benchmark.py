@@ -1735,15 +1735,20 @@ def BenchmarkSuite(
         verbose=verbose,
     )
     wf.mirror = NodeLibraryMirror(allow_reference_workflows=allow_reference_workflows)
-    wf.suite = TaskSuite(tier=tier, limit=limit)
+    # Inner labels must differ from every label on the canvas outside the
+    # group: expanding inlines them into the parent graph, and a collision
+    # silently drops the inner node and re-points its edges at the group node
+    # itself — which then feeds its own children, i.e. a cycle.  Hence
+    # `task_suite` and not `suite`.
+    wf.task_suite = TaskSuite(tier=tier, limit=limit)
     wf.dir = BenchWorkDir(path=path)
     wf.pool = ThreadPoolExecutorNode(max_workers=max_workers)
 
     wf.tasks_aiflow = ArmTasks(
-        tasks=wf.suite, arm="aiflow", arms=wf.settings.outputs.arms
+        tasks=wf.task_suite, arm="aiflow", arms=wf.settings.outputs.arms
     )
     wf.tasks_scratch = ArmTasks(
-        tasks=wf.suite, arm="scratch", arms=wf.settings.outputs.arms
+        tasks=wf.task_suite, arm="scratch", arms=wf.settings.outputs.arms
     )
 
     wf.agent_aiflow = WorkflowAgent(
