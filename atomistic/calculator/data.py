@@ -117,6 +117,9 @@ class InputCalcMD:
     )
     n_ionic_steps: int = 10_000
     n_print: int = 100
+    n_print_force: Optional[int] = (
+        None  # electrode-force sampling interval; None follows n_print.  Kept separate because a force sample is a few bytes and a trajectory frame is ~200 kB
+    )
     pressure: Optional[float] = None
     time_step: float = 1.0
     temperature_damping_timescale: Optional[float] = 100.0

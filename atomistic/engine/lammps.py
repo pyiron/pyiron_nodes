@@ -362,13 +362,101 @@ def CreateLammpsStructure(
 # )
 
 
+def _piston_barostat_lines(
+    structure: Atoms,
+    units: str,
+    piston_species: str,
+    piston_pressure: float,
+    piston_damping: float,
+) -> list[str]:
+    """LAMMPS fixes that hold one electrode at a constant normal pressure.
+
+    The piston species is pinned in xy and free in z (see
+    ``pyiron_nodes.electrochemistry.structure.build.FixElectrodes``), so the
+    ensemble fix integrates it.  Two commands turn that into a flat wall under
+    load:
+
+    * ``velocity ... set 0.0 0.0 0.0`` starts every piston atom at rest.  The
+      constraint only zeroes vx and vy, so without this each atom keeps its own
+      random vz from the Maxwell initialisation and the layer shears apart even
+      under identical forces.
+    * ``fix aveforce NULL NULL <load>`` gives every piston atom the group-average
+      z force *plus* the external load.  Same species, so same mass and the same
+      acceleration; with equal velocities too, the layer translates in z as one
+      rigid plane.
+
+      Note the two roles of the argument: ``fix aveforce`` only averages the
+      components it is given a value for — all-``NULL`` is a silent no-op — and
+      the value it is given is *added* to the average rather than replacing it.
+      So a single fix both rigidifies the layer and applies the load.
+
+    Damping comes from the thermostat; ``fix viscous`` is only emitted when
+    ``piston_damping`` is non-zero, as a way to reach the target faster.
+
+    Caveat: a *Langevin* thermostat (``InputCalcMD.langevin``) kicks each atom
+    independently, which breaks the shared velocity and lets the plane roughen.
+    Use the default Nosé-Hoover thermostat with the piston.
+    """
+    import numpy as np
+    from lammpsparser.units import LAMMPS_UNIT_CONVERSIONS
+
+    symbols = np.asarray(structure.get_chemical_symbols())
+    n_piston = int(np.count_nonzero(symbols == piston_species))
+    if n_piston == 0:
+        raise ValueError(
+            f"piston_species={piston_species!r} does not occur in the structure; "
+            f"present species are {sorted(set(symbols.tolist()))}"
+        )
+
+    area_ang2 = float(structure.cell[0, 0] * structure.cell[1, 1])
+
+    # P [bar] -> force on the whole piston [N] -> per atom [eV/A] -> native units.
+    #   bar -> Pa            : 1e5
+    #   A^2 -> m^2           : 1e-20
+    #   N   -> eV/A          : / 1.602176634e-9   (1 eV/A = 1.602176634e-9 N)
+    # Per atom, because aveforce adds the value to every atom in the group and
+    # the total external load has to come out as P * A.
+    # Negative: the load pushes the piston down onto the electrolyte.
+    f_ev_per_ang = (
+        -piston_pressure * 1e5 * area_ang2 * 1e-20 / 1.602176634e-9 / n_piston
+    )
+    f_native = f_ev_per_ang * LAMMPS_UNIT_CONVERSIONS[units]["force"]
+
+    group = f"frozen_{piston_species.lower()}"
+    lines = [
+        f"velocity {group} set 0.0 0.0 0.0",
+        f"fix piston_load {group} aveforce NULL NULL {f_native:.12g}",
+    ]
+    if piston_damping:
+        lines.append(f"fix piston_damp {group} viscous {piston_damping:.12g}")
+    return lines
+
+
 @as_function_node
 def CreateLammpsMDInput(
     io_bundle: LammpsIOBundle,
     calc_dataclass: InputCalcMD,
     read_restart_filename: Optional[str] = None,
     write_restart_filename: Optional[str] = None,
+    piston_species: Optional[str] = None,
+    piston_pressure: float = 1.0,
+    piston_damping: float = 0.0,
 ):
+    """Build the LAMMPS input for an MD run.
+
+    Parameters
+    ----------
+    piston_species:
+        Chemical symbol of an electrode to run as a constant-pressure piston, or
+        ``None`` for a fixed-volume run.  The species must be free in z — see
+        ``FixElectrodes`` — otherwise the ``setforce`` from its constraint keeps
+        it pinned and the load does nothing.
+    piston_pressure:
+        Normal pressure on the piston in bar.
+    piston_damping:
+        ``fix viscous`` damping coefficient on the piston group.  ``0`` omits the
+        fix and leaves the damping to the thermostat.
+    """
     from lammpsparser.compatibility.file import (
         lammps_file_initialization,
         _get_potential,
@@ -428,6 +516,14 @@ def CreateLammpsMDInput(
         lmp_str_lst += potential_lst
 
     lmp_str_lst += ["variable dumptime equal {} ".format(calc_kwargs.get("n_print", 1))]
+    # The electrode forces are three floats per sample, the trajectory is ~200 kB
+    # per frame, so tying them to one interval makes keeping the force resolution
+    # on a long run cost a multi-GB dump.  Popped, not read: calc_kwargs is
+    # splatted into calc_md below, which does not take this argument.
+    _n_print_force = calc_kwargs.pop("n_print_force", None) or calc_kwargs.get(
+        "n_print", 1
+    )
+    lmp_str_lst += ["variable forcetime equal {} ".format(_n_print_force)]
     lmp_str_lst += [
         "dump 1 all custom ${dumptime} dump.out id type xsu ysu zsu fx fy fz vx vy vz",
         'dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"',
@@ -450,16 +546,28 @@ def CreateLammpsMDInput(
         ).items()
     ]
 
-    # If any atoms are frozen, add per-species group/group computes so the force
-    # from the mobile phase on each electrode species is written to a separate
-    # electrode_force_{Species}.txt file.
+    # If any atoms are constrained, add per-species group/group computes so the
+    # force from the mobile phase on each electrode species is written to a
+    # separate electrode_force_{Species}.txt file.
     # compute group/group evaluates interactions before fix setforce zeroes them.
-    from ase.constraints import FixAtoms as _FixAtoms
+    #
+    # An atom counts as an electrode atom when *any* of its degrees of freedom is
+    # frozen, not only when it carries a full FixAtoms.  A piston electrode is
+    # pinned in xy and free in z (see FixElectrodes), and it is exactly the
+    # electrode whose force reading drives the barostat — reading only FixAtoms
+    # would drop it.
+    from lammpsparser.compatibility.constraints import (
+        _get_fixed_atom_boolean_vector as _frozen_dofs,
+    )
 
     _fixed_indices = []
-    for _c in io_bundle.structure.constraints:
-        if isinstance(_c, _FixAtoms):
-            _fixed_indices.extend(_c.get_indices().tolist())
+    if len(io_bundle.structure.constraints) > 0:
+        import numpy as _np
+
+        _fixed_indices = _np.argwhere(
+            _frozen_dofs(structure=io_bundle.structure).any(axis=1)
+        ).flatten()
+        _fixed_indices = [int(i) for i in _fixed_indices]
     if _fixed_indices:
         _symbols = io_bundle.structure.get_chemical_symbols()
         # Build per-species index lists for all fixed atoms
@@ -477,14 +585,28 @@ def CreateLammpsMDInput(
             _ids_str = " ".join(str(i + 1) for i in sorted(_el_indices))
             lmp_str_lst += [
                 f"group frozen_{_el_lower} id {_ids_str}",
-                f"compute f_{_el_lower} frozen_{_el_lower} group/group mobile_el",
+                # kspace yes: without it the PPPM part of the force is dropped,
+                # which on a charged electrode is most of the electrostatics.
+                f"compute f_{_el_lower} frozen_{_el_lower} group/group mobile_el kspace yes",
                 (
-                    f"fix out_{_el_lower} all ave/time 1 1 ${{dumptime}}"
+                    f"fix out_{_el_lower} all ave/time 1 1 ${{forcetime}}"
                     f" c_f_{_el_lower}[1] c_f_{_el_lower}[2] c_f_{_el_lower}[3]"
                     f' file electrode_force_{_el}.txt title1 "# step fx fy fz"'
                 ),
             ]
         io_bundle.has_electrode_force = True
+
+    # Piston barostat.  Must come after set_selective_dynamics so that its fixes
+    # take precedence over the `setforce` on the piston group, and after the
+    # group definitions above so `frozen_{species}` already exists.
+    if piston_species:
+        lmp_str_lst += _piston_barostat_lines(
+            structure=io_bundle.structure,
+            units=io_bundle.units,
+            piston_species=piston_species,
+            piston_pressure=piston_pressure,
+            piston_damping=piston_damping,
+        )
 
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
@@ -809,12 +931,21 @@ def ParseElectrodeForce(io_bundle: LammpsIOBundle):
     """Read per-species electrode_force_{Species}.txt files produced by fix ave/time.
 
     Returns a dict keyed by chemical symbol, each value a dict with keys
-    'steps', 'fx', 'fy', 'fz' (float arrays, eV/Å, LAMMPS metal units).
+    'steps', 'fx', 'fy', 'fz' (float arrays, eV/Å).
     Returns an empty dict if no electrode force files are found.
+
+    ``fix ave/time`` writes in whatever units the run uses, and the TIP3P water
+    potential switches the run to ``units real`` — so the raw columns are
+    kcal/mol/Å there, not eV/Å.  The same factor ``parse_lammps_output`` applies
+    to the trajectory is applied here, so every consumer sees eV/Å regardless of
+    the unit style.
     """
     import glob
     import os
     import numpy as np
+    from lammpsparser.units import LAMMPS_UNIT_CONVERSIONS
+
+    force_conversion = LAMMPS_UNIT_CONVERSIONS[io_bundle.units]["force"]
 
     electrode_forces = {}
     pattern = os.path.join(io_bundle.working_directory, "electrode_force_*.txt")
@@ -825,9 +956,9 @@ def ParseElectrodeForce(io_bundle: LammpsIOBundle):
             data = data[np.newaxis, :]
         electrode_forces[species] = {
             "steps": data[:, 0].astype(int),
-            "fx": data[:, 1],
-            "fy": data[:, 2],
-            "fz": data[:, 3],
+            "fx": data[:, 1] / force_conversion,
+            "fy": data[:, 2] / force_conversion,
+            "fz": data[:, 3] / force_conversion,
         }
     return electrode_forces
 

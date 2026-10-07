@@ -42,6 +42,83 @@ def ConfigurePBC(
     return structure
 
 
+@as_function_node("new_structure")
+def FixElectrodes(
+    structure: Atoms,
+    fixed_species: str = '["Al", "Ne"]',
+    piston_species: str = "",
+) -> Atoms:
+    """Freeze the electrodes, optionally leaving one of them free along z.
+
+    Every species in ``fixed_species`` gets a ``FixAtoms`` constraint, except
+    ``piston_species``, which instead gets a ``FixedPlane`` that pins it in xy
+    and leaves z free so a barostat can push it (see
+    ``pyiron_nodes.atomistic.engine.lammps.CreateLammpsMDInput``).
+
+    With ``piston_species=""`` this is equivalent to
+    ``FixSpecies(fixed_species=fixed_species)``.
+
+    Parameters
+    ----------
+    structure : ase.Atoms
+        Cell to constrain.  Copied; the original is untouched.
+    fixed_species : str
+        A single symbol (``"Al"``) or a string holding a list of them
+        (``'["Al", "Ne"]'``), matching ``FixSpecies``.
+    piston_species : str
+        Symbol of the electrode to leave free along z, or ``""`` for none.
+        It does not have to appear in ``fixed_species``.
+
+    Notes
+    -----
+    ``lammpsparser``'s ``_get_fixed_atom_boolean_vector`` reads
+    ``FixedPlane.direction`` as a *mask of frozen degrees of freedom*, not as
+    ASE's plane normal.  ``direction=[1, 1, 0]`` therefore means "x and y
+    frozen, z free" and becomes ``fix ... setforce 0.0 0.0 NULL``.  ASE
+    normalises the vector to ``[1/√2, 1/√2, 0]``, which that helper also
+    accepts, so the round-trip is stable.
+    """
+    import ast
+    from ase.constraints import FixAtoms, FixedPlane
+
+    try:
+        parsed = ast.literal_eval(fixed_species)
+    except (SyntaxError, ValueError):
+        parsed = fixed_species
+
+    if isinstance(parsed, str):
+        species_set = {parsed}
+    elif isinstance(parsed, (list, tuple, set)):
+        if not all(isinstance(item, str) for item in parsed):
+            raise ValueError("All entries in the element list must be strings.")
+        species_set = set(parsed)
+    else:
+        raise ValueError(
+            "fixed_species must be a single element symbol or a string "
+            "representation of a list/tuple of symbols."
+        )
+
+    symbols = structure.get_chemical_symbols()
+    piston_indices = [i for i, s in enumerate(symbols) if s == piston_species]
+    if piston_species and not piston_indices:
+        raise ValueError(
+            f"piston_species={piston_species!r} does not occur in the structure; "
+            f"present species are {sorted(set(symbols))}"
+        )
+    frozen_mask = [s in species_set and s != piston_species for s in symbols]
+
+    constraints = []
+    if any(frozen_mask):
+        constraints.append(FixAtoms(mask=frozen_mask))
+    if piston_indices:
+        constraints.append(FixedPlane(indices=piston_indices, direction=[1, 1, 0]))
+
+    new_structure = structure.copy()
+    if constraints:
+        new_structure.set_constraint(constraints)
+    return new_structure
+
+
 @as_function_node("water")
 def build_water(n_mols: int = 10) -> Atoms:
     """

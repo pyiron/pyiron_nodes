@@ -46,24 +46,13 @@ def _resolve_cache_directory(cache_directory):
     the result it is still waiting for, and resubmits.  Anchoring the path makes
     the cache the fixed, findable thing it has to be for recovery to work.
 
-    An absolute path is honoured as given.
+    Shared with the recovery path, which has to anchor the same way when it
+    reads the directory back out of the database (see
+    :func:`core.remote_cache.resolve_cache_directory`).
     """
-    import pathlib
+    from core.remote_cache import resolve_cache_directory
 
-    path = pathlib.Path(cache_directory)
-    if path.is_absolute():
-        return str(path)
-
-    try:
-        from core.config import paths
-
-        base = pathlib.Path(paths.DATA_STORAGE)
-    except (ImportError, AttributeError):
-        # No core config to anchor to: leave the caller's path alone rather
-        # than inventing a location they would then have to go looking for.
-        return str(path)
-
-    return str((base / "executorlib_cache" / path).resolve())
+    return resolve_cache_directory(cache_directory)
 
 
 def _make_stoppable(executor, cache_directory, config_directory, backend):
@@ -92,12 +81,28 @@ def _make_stoppable(executor, cache_directory, config_directory, backend):
     except ImportError:
         return
 
+    # executorlib renamed this parameter from ``config_directory`` to
+    # ``pysqa_config_directory`` (it is the latter in 1.9.x, the former in the
+    # 1.8.1 that environment.yml still pins).  Passing the wrong one raises
+    # TypeError at the moment Stop is pressed — the one moment the user cannot
+    # afford it — so bind the name the installed version actually accepts.
+    import inspect
+
+    try:
+        accepted = inspect.signature(terminate_tasks_in_cache).parameters
+    except (TypeError, ValueError):       # pragma: no cover - C or wrapped impl
+        accepted = {}
+    config_kwarg = (
+        "pysqa_config_directory" if "pysqa_config_directory" in accepted
+        else "config_directory"
+    )
+
     attach_stopper(
         executor,
         lambda: terminate_tasks_in_cache(
             cache_directory=cache_directory,
-            config_directory=config_directory,
             backend=backend,
+            **{config_kwarg: config_directory},
         ),
     )
 
@@ -151,12 +156,22 @@ def ForkExecutor(poll_interval: float = 0.1):
 
 
 # SLURM version - same interface, just swap the executor
+#: Submission script for the embedded (non-pysqa-configured) Slurm path.
+#:
+#: Note the absence of ``--get-user-env``: Slurm only accepts it without an
+#: argument on some builds, and ``--get-user-env=L`` makes ``sbatch`` exit 255
+#: with "option '--get-user-env' doesn't allow an argument".  That rejection is
+#: invisible from the workflow — executorlib raises it on a background thread,
+#: so the future never completes and the run simply hangs with an empty queue.
+#: It is not needed either: ``sbatch`` defaults to ``--export=ALL``, so the job
+#: already inherits the submitting process's environment, which is exactly the
+#: one holding this checkout's ``PYTHONPATH`` and the agent CLI on ``PATH``.
+#: Re-running the login scripts on top of that could only lose those.
 DEFAULT_SLURM_TEMPLATE = """\
 #!/bin/bash
 #SBATCH --output=time.out
 #SBATCH --job-name={{job_name}}
 #SBATCH --chdir={{working_directory}}
-#SBATCH --get-user-env=L
 #SBATCH --partition={{partition}}
 {%- if run_time_max %}
 #SBATCH --time={{ [1, run_time_max // 60]|max }}
@@ -175,15 +190,15 @@ DEFAULT_SLURM_TEMPLATE = """\
 
 @as_inp_dataclass_node
 class SlurmAdvancedSettings:
-    # Resource settings
-    threads_per_core: int = 1
+    # Resource settings — only the ones not exposed on SlurmExecutor itself.
+    # threads_per_core and pysqa_config_directory are now on SlurmExecutor so
+    # typical jobs don't need this node at all.
     gpus_per_core: int = 0
     cwd: Optional[str] = None
     openmpi_oversubscribe: bool = False
     slurm_cmd_args: list = field(default_factory=list)
     submission_template: str = DEFAULT_SLURM_TEMPLATE
     # Executor settings
-    pysqa_config_directory: Optional[str] = None
     hostname_localhost: Optional[bool] = None
     block_allocation: bool = False
     init_function: Optional[Callable] = None
@@ -198,11 +213,24 @@ def SlurmExecutor(
     partition: str = Literal["normal"],
     run_time_max: int = 180,  # in seconds
     memory_max: int = None,  # in GB
+    threads_per_core: int = 1,
+    pysqa_config_directory: Optional[str] = None,
     cache_directory: str = "./cache",
+    job_name: str = "",
     non_modal: bool = False,
     advanced: SlurmAdvancedSettings = None,
 ):
     """Run nodes as SLURM jobs.
+
+    ``threads_per_core`` is the effective parallelism of each task: executorlib
+    multiplies it by the slot count before writing the batch script (so
+    ``threads_per_core=4`` yields ``--cpus-per-task=4``).
+
+    ``pysqa_config_directory`` points to a site's pysqa queue configuration.
+    When set, the embedded submission template is automatically cleared so that
+    pysqa's own templates are used; to keep the built-in template alongside pysqa,
+    pass a custom ``SlurmAdvancedSettings(submission_template=...)`` via
+    ``advanced``.
 
     With ``non_modal`` the workflow does not wait: each node wired to this
     executor is submitted, reported, and left in the queue, and the run ends.
@@ -222,12 +250,21 @@ def SlurmExecutor(
 
     resource_dict = {
         # "cores": cores,
-        "threads_per_core": advanced.threads_per_core,
+        "threads_per_core": threads_per_core,
         "gpus_per_core": advanced.gpus_per_core,
         "submission_template": advanced.submission_template,
         "partition": partition,
         "run_time_max": run_time_max,
     }
+    # An explicit job_name overrides executorlib's default (the cache-directory
+    # basename, which produces "cache" for every job and makes squeue unreadable).
+    if job_name:
+        resource_dict["job_name"] = job_name
+    # When using pysqa, the site's own template is authoritative — the embedded
+    # Python-side template should step aside unless the user has already set a
+    # custom one via advanced.submission_template.
+    if pysqa_config_directory and resource_dict["submission_template"] == DEFAULT_SLURM_TEMPLATE:
+        resource_dict["submission_template"] = ""
     if advanced.cwd is not None:
         resource_dict["cwd"] = advanced.cwd
     if memory_max is not None:
@@ -237,10 +274,14 @@ def SlurmExecutor(
     if advanced.slurm_cmd_args:
         resource_dict["slurm_cmd_args"] = advanced.slurm_cmd_args
 
+    # advanced.pysqa_config_directory is kept as a fallback so that any
+    # existing workflow that passed a directory via advanced continues to work.
+    _pysqa_dir = pysqa_config_directory or getattr(advanced, "pysqa_config_directory", None)
+
     executor = SlurmClusterExecutor(
         cache_directory=cache_directory,
         resource_dict=resource_dict,
-        pysqa_config_directory=advanced.pysqa_config_directory,
+        pysqa_config_directory=_pysqa_dir,
         hostname_localhost=advanced.hostname_localhost,
         block_allocation=advanced.block_allocation,
         init_function=advanced.init_function,
@@ -254,9 +295,9 @@ def SlurmExecutor(
         # result into cache_directory either way.
         wait=not non_modal,
     )
-    # Pressing Stop scancels the jobs in `cache_directory` — see _make_stoppable
+    # Pressing Stop cancels the jobs in `cache_directory` — see _make_stoppable
     # for why that is the whole directory rather than just this node's job.
-    _make_stoppable(executor, cache_directory, advanced.pysqa_config_directory, "slurm")
+    _make_stoppable(executor, cache_directory, _pysqa_dir, "slurm")
     if non_modal:
         _make_non_modal(executor)
     return executor

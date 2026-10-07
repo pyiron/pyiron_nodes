@@ -1,5 +1,10 @@
 from core import Workflow, group_node
-from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
+from pyiron_nodes.atomistic.diffusion import (
+    AddInterstitialH,
+    FindLowEnergyInterstitialSite,
+    PlotNEBPath,
+    RunNEB,
+)
 from pyiron_nodes.atomistic.structure.view import Animate
 from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
@@ -43,15 +48,31 @@ wf.Bulk = Bulk(name="Al", cubic=True, repeat_scalar=2)
 
 wf.opt_settings = GenericOptimizerSettings(max_steps=300, force_tolerance=0.02)
 
-wf.h_initial = AddInterstitialH(
+# Probe structure at a fixed O-site position, used only for potential species filtering.
+wf.h_probe = AddInterstitialH(
     structure=wf.Bulk, frac_pos=[0.5, 0.0, 0.0], repeat_scalar=2
 )
 
-wf.h_final = AddInterstitialH(
-    structure=wf.Bulk, frac_pos=[0.0, 0.0, 0.5], repeat_scalar=2
+wf.LammpsEngine = LammpsEngine(structure=wf.h_probe, index=0)
+
+# Determine which site type (O or T) is lower energy for this potential.
+wf.site_selection = FindLowEnergyInterstitialSite(
+    structure=wf.Bulk,
+    engine=wf.LammpsEngine,
+    repeat_scalar=2,
 )
 
-wf.LammpsEngine = LammpsEngine(structure=wf.h_initial, index=0)
+wf.h_initial = AddInterstitialH(
+    structure=wf.Bulk,
+    frac_pos=wf.site_selection.outputs.initial_pos,
+    repeat_scalar=2,
+)
+
+wf.h_final = AddInterstitialH(
+    structure=wf.Bulk,
+    frac_pos=wf.site_selection.outputs.final_pos,
+    repeat_scalar=2,
+)
 
 wf.initial_relaxed = Relax(
     structure=wf.h_initial,

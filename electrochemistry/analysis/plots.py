@@ -40,17 +40,25 @@ def ElementDensityFromTrajectory(trajectory, metal: str = "Al", initial_step: in
 
 
 @as_function_node
-def BuildDensityContext(density_data: dict, initial_structure, charges: dict):
+def BuildDensityContext(
+    density_data: dict, initial_structure, charges: dict, initial_step: int = 0
+):
     """Bundle density data, structure, and charges into a single context dict.
 
     Downstream plot nodes each accept this single object instead of three
     separate input ports, keeping the workflow graph free of long-range edges.
-    Keys: 'density_data', 'initial_structure', 'charges'.
+    Keys: 'density_data', 'initial_structure', 'charges', 'initial_step'.
+
+    ``initial_step`` is the first trajectory frame that went into
+    ``density_data``.  It travels with the context so that nodes which re-read
+    the raw trajectory average over the same frames as the density profile,
+    instead of each carrying its own copy of the setting.
     """
     context = {
         "density_data": density_data,
         "initial_structure": initial_structure,
         "charges": charges,
+        "initial_step": initial_step,
     }
     return context
 
@@ -271,6 +279,7 @@ def PlotElectrostaticPotential(
     import numpy as np
     import matplotlib.pyplot as plt
     from ase.units import Bohr
+    from pyiron_nodes.electrochemistry.analysis.dielectric import _charge_map
 
     Data = context["density_data"]
     initial_structure = context["initial_structure"]
@@ -279,14 +288,7 @@ def PlotElectrostaticPotential(
     z = np.array(Data["Na"][0])
 
     metal = charges["metal"]
-    charge_map = {
-        charges["cation"]: charges["cation_charge"],
-        charges["anion"]: charges["anion_charge"],
-        "O": charges["O_charge"],
-        "H": charges["H_charge"],
-        metal: charges["metal_charge"],
-        "Ne": charges["neon_charge"],
-    }
+    charge_map = _charge_map(charges)
     rho_e = sum(
         charge * np.array(Data[el][1])
         for el, charge in charge_map.items()
@@ -331,7 +333,7 @@ def PlotBulkElectricField(
     bulk_fraction_lo: float = 0.35,
     bulk_fraction_hi: float = 0.65,
     n_bins: int = 200,
-    initial_step: int = 0,
+    initial_step: int = None,
     smooth: bool = True,
     xlabel: str = "MD step",
     ylabel: str = "Mean electric field (V/Å)",
@@ -380,18 +382,26 @@ def PlotBulkElectricField(
       the bin it occupies.
     * Periodic boundary conditions along z are *not* applied; the Poisson
       integration starts at z_bot and runs toward z_top.
+
+    ``initial_step=None`` takes the value the density context was built with, so
+    this average covers the same frames as the density profile.
     """
     import numpy as np
     import matplotlib.pyplot as plt
+    from pyiron_nodes.electrochemistry.analysis.dielectric import (
+        _charge_map,
+        _frame_charge_density,
+        _poisson_potential,
+        _resolve_initial_step,
+    )
 
     initial_structure = context["initial_structure"]
     charges = context["charges"]
+    start = _resolve_initial_step(context, initial_step)
 
     species_array = np.asarray(trajectory.species)
-    positions = np.asarray(trajectory.positions)[
-        initial_step:
-    ]  # (n_frames, n_atoms, 3)
-    steps = np.asarray(trajectory.steps)[initial_step:]
+    positions = np.asarray(trajectory.positions)[start:]  # (n_frames, n_atoms, 3)
+    steps = np.asarray(trajectory.steps)[start:]
     n_frames = positions.shape[0]
 
     A_xy = initial_structure.cell[0, 0] * initial_structure.cell[1, 1]  # Å²
@@ -403,47 +413,22 @@ def PlotBulkElectricField(
     z_bot = float(np.max(first[ind_metal, 2]))
     z_top = float(np.max(first[ind_Ne, 2]))
 
-    charge_map = {
-        charges["cation"]: charges["cation_charge"],
-        charges["anion"]: charges["anion_charge"],
-        "O": charges["O_charge"],
-        "H": charges["H_charge"],
-        charges["metal"]: charges["metal_charge"],
-        "Ne": charges["neon_charge"],
-    }
-
-    bin_edges = np.linspace(z_bot, z_top, n_bins + 1)
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    dz = float(bin_edges[1] - bin_edges[0])
-    V_bin = A_xy * dz  # Å³
+    bin_centers, rho_all, dz = _frame_charge_density(
+        positions=positions,
+        species_array=species_array,
+        charge_map=_charge_map(charges),
+        z_min=z_bot,
+        z_max=z_top,
+        n_bins=n_bins,
+        area_ang2=A_xy,
+    )
 
     z_extent = z_top - z_bot
     z_lo = z_bot + bulk_fraction_lo * z_extent
     z_hi = z_bot + bulk_fraction_hi * z_extent
     bulk_mask = (bin_centers >= z_lo) & (bin_centers <= z_hi)
 
-    epsilon_0 = 8.854187817e-12  # F/m
-    e_charge = 1.602176634e-19  # C
-    ang_to_m = 1e-10  # Å → m
-
-    # Accumulate charge density: rho_all[t, z_bin] in e/Å³
-    rho_all = np.zeros((n_frames, n_bins))
-    for el, q in charge_map.items():
-        idx = np.where(species_array == el)[0]
-        if len(idx) == 0 or q == 0.0:
-            continue
-        z_el = positions[:, idx, 2]  # (n_frames, n_el)
-        bin_idx = np.clip(
-            np.searchsorted(bin_edges[1:], z_el), 0, n_bins - 1
-        )  # (n_frames, n_el)
-        frame_idx = np.broadcast_to(np.arange(n_frames)[:, None], z_el.shape)
-        np.add.at(rho_all.ravel(), (frame_idx * n_bins + bin_idx).ravel(), q / V_bin)
-
-    # Poisson integration: E(z, t) in V/Å
-    rho_c = rho_all * e_charge / ang_to_m**3  # C/m³
-    dz_m = dz * ang_to_m
-    E_z = np.cumsum(rho_c * dz_m, axis=1) / epsilon_0  # V/m, shape (n_frames, n_bins)
-    E_z_per_ang = E_z * ang_to_m  # V/Å
+    E_z_per_ang, _ = _poisson_potential(rho_all, dz)  # V/Å, (n_frames, n_bins)
 
     E_bulk_series = np.mean(E_z_per_ang[:, bulk_mask], axis=1)  # (n_frames,)
 
@@ -474,6 +459,7 @@ def PlotBulkElectricField(
 def DoublLayerCapacitance(context: dict):
     import numpy as np
     from ase.units import Bohr
+    from pyiron_nodes.electrochemistry.analysis.dielectric import _charge_map
 
     Data = context["density_data"]
     initial_structure = context["initial_structure"]
@@ -482,14 +468,7 @@ def DoublLayerCapacitance(context: dict):
     z = np.array(Data[metal][0])
     e_charge = 1.602176634e-19
     angstrom_to_meter = 1e-10
-    charge_map = {
-        charges["cation"]: charges["cation_charge"],
-        charges["anion"]: charges["anion_charge"],
-        "O": charges["O_charge"],
-        "H": charges["H_charge"],
-        metal: charges["metal_charge"],
-        "Ne": charges["neon_charge"],
-    }
+    charge_map = _charge_map(charges)
     rho_e = sum(
         charge * np.array(Data[el][1])
         for el, charge in charge_map.items()
@@ -531,7 +510,13 @@ from core import group_node
 
 
 @group_node("context")
-def EnrichDensityContext(trajectory, sim_setup):
+def EnrichDensityContext(trajectory, sim_setup, initial_step=0):
+    """Bundle the trajectory densities with the simulation setup.
+
+    ``initial_step`` is the first frame used for the densities and every average
+    derived from them; earlier frames are dropped as equilibration.  It is also
+    stored in the context so trajectory-based analysis nodes inherit it.
+    """
     from pyiron_nodes.atomistic.calculator.data import SimSetupBundle
     from pyiron_nodes.electrochemistry.analysis.plots import (
         BuildDensityContext,
@@ -540,11 +525,14 @@ def EnrichDensityContext(trajectory, sim_setup):
     from core import Workflow
 
     inner_wf = Workflow("EnrichDensityContext")
-    inner_wf.density = ElementDensityFromTrajectory(trajectory=trajectory)
+    inner_wf.density = ElementDensityFromTrajectory(
+        trajectory=trajectory, initial_step=initial_step
+    )
     inner_wf.unpacked = SimSetupBundle(input=sim_setup)
     inner_wf.bundle = BuildDensityContext(
         density_data=inner_wf.density,
         initial_structure=inner_wf.unpacked.outputs.structure,
         charges=inner_wf.unpacked.outputs.charges,
+        initial_step=initial_step,
     )
     return inner_wf.bundle.outputs.context

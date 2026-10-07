@@ -11,29 +11,45 @@ from core.data_fields import DataArray, EmptyArrayField
 
 
 @as_function_node
-def InterstitialHPositions(path_type: Literal["O-T-O", "T-O-T"] = "T-O-T"):
-    """Return fractional initial/final positions for a nearest-neighbour H hop.
+def FindLowEnergyInterstitialSite(
+    structure,
+    engine,
+    interstitial_symbol: str = "H",
+    repeat_scalar: int = 1,
+):
+    """Pick the lower-energy FCC interstitial site type and return NEB endpoint positions.
 
-    path_type='O-T-O': endpoints at octahedral sites; tetrahedral site is the
-        transition-state saddle (use for potentials where O is the stable site).
-    path_type='T-O-T': endpoints at tetrahedral sites; the body-centre octahedral
-        site lies exactly at the path midpoint (use for potentials where T is stable).
-
-    Positions are given in fractional coordinates of the FCC conventional unit cell
-    and should be passed with repeat_scalar matching the supercell build.
+    Runs single-point calculations at one representative O-site [0.5,0,0] and
+    T-site [0.25,0.25,0.25].  Whichever is lower selects the hop path:
+      O lower → O-T-O path: initial=[0.5,0,0],   final=[0,0,0.5]
+      T lower → T-O-T path: initial=[0.25,0.25,0.25], final=[0.25,0.25,0.75]
     """
-    _sites = {
-        # O1=[0.5,0,0] and O2=[0,0,0.5]: nearest-neighbour O–O pair in FCC,
-        # connected via a T-site saddle at ~[0.25,0.25,0.25].
-        "O-T-O": ([0.5, 0.0, 0.0], [0.0, 0.0, 0.5]),
-        # T1=[0.25,0.25,0.25] and T2=[0.75,0.75,0.75]: the body-centre O at
-        # [0.5,0.5,0.5] lies exactly at the midpoint of this T–T vector.
-        "T-O-T": ([0.25, 0.25, 0.25], [0.25, 0.25, 0.75]),
+    import numpy as np
+
+    _probe = {"O": [0.5, 0.0, 0.0], "T": [0.25, 0.25, 0.25]}
+    _paths = {
+        "O": ([0.5, 0.0, 0.0], [0.0, 0.0, 0.5]),
+        "T": ([0.25, 0.25, 0.25], [0.25, 0.25, 0.75]),
     }
-    if path_type not in _sites:
-        raise ValueError(f"path_type must be 'O-T-O' or 'T-O-T', got {path_type!r}")
-    initial_pos, final_pos = _sites[path_type]
-    return initial_pos, final_pos
+
+    if engine is None:
+        from ase.calculators.emt import EMT
+        calc = EMT()
+    else:
+        calc = engine.calculator
+
+    def _static_energy(frac_pos):
+        atoms = structure.copy()
+        unit_cell = atoms.cell / repeat_scalar
+        cart = np.dot(frac_pos, unit_cell)
+        atoms.append(interstitial_symbol)
+        atoms.positions[-1] = cart
+        atoms.calc = calc
+        return atoms.get_potential_energy()
+
+    site_type = "O" if _static_energy(_probe["O"]) <= _static_energy(_probe["T"]) else "T"
+    initial_pos, final_pos = _paths[site_type]
+    return initial_pos, final_pos, site_type
 
 
 @as_function_node

@@ -1,25 +1,28 @@
+from typing import Optional
+
 from core import group_node
 
 
 @group_node("new_structure")
 def ElectrochemicalCell(
-    element,
-    size="1 1 1",
-    vacuum=1.0,
-    orthogonal=False,
-    water_width=10.0,
-    cation="Cl",
-    number=0,
-    seed=1234,
-    density=1e-24,
+    element: str,
+    size: str = "1 1 1",
+    vacuum: float = 1.0,
+    orthogonal: bool = False,
+    water_width: float = 10.0,
+    cation: str = "Cl",
+    number: int = 0,
+    seed: int = 1234,
+    density: float = 1e-24,
+    piston_species: str = "",
 ):
-    from pyiron_nodes.atomistic.structure.build import Surface
-    from pyiron_nodes.atomistic.structure.transform import FixSpecies
     from pyiron_nodes.electrochemistry.structure.build import (
         AddIonPair,
+        FixElectrodes,
         add_neon_layer,
         add_water_film,
     )
+    from pyiron_nodes.atomistic.structure.build import Surface
     from core import Workflow
 
     inner_wf = Workflow("ElectrochemicalCell")
@@ -33,26 +36,29 @@ def ElectrochemicalCell(
         structure=inner_wf.water_cell, cation=cation, no_of_pairs=number, seed=seed
     )
     inner_wf.full_cell = add_neon_layer(structure=inner_wf.electrolyte_with_ions)
-    inner_wf.fixed_cell_inner = FixSpecies(
-        structure=inner_wf.full_cell, fixed_species='["Al", "Ne"]'
+    inner_wf.fixed_cell_inner = FixElectrodes(
+        structure=inner_wf.full_cell,
+        fixed_species='["Al", "Ne"]',
+        piston_species=piston_species,
     )
     return inner_wf.fixed_cell_inner.outputs.new_structure
 
 
 @group_node("sim_setup", "structure")
 def SimulationSetup(
-    element,
-    size="1 1 1",
-    vacuum=1.0,
-    orthogonal=False,
-    water_width=10.0,
-    cation="Cl",
-    number=0,
-    seed=1234,
-    density=1e-24,
-    metal_charge=0.0,
-    neon_charge=0.0,
-    quasi_2d=False,
+    element: str,
+    size: str = "1 1 1",
+    vacuum: float = 1.0,
+    orthogonal: bool = False,
+    water_width: float = 10.0,
+    cation: str = "Cl",
+    number: int = 0,
+    seed: int = 1234,
+    density: float = 1e-24,
+    metal_charge: float = 0.0,
+    neon_charge: float = 0.0,
+    quasi_2d: bool = False,
+    piston_species: str = "",
 ):
     from pyiron_nodes.atomistic.calculator.data import SimSetupBundleInp
     from pyiron_nodes.electrochemistry.structure.build import ConfigurePBC
@@ -70,6 +76,7 @@ def SimulationSetup(
         number=number,
         seed=seed,
         density=density,
+        piston_species=piston_species,
     )
     inner_wf.potential = IonPotential(
         metal_charge=metal_charge, neon_charge=neon_charge, quasi_2d=quasi_2d
@@ -87,7 +94,14 @@ def SimulationSetup(
 
 
 @group_node("out", "sim_setup")
-def Lammps(sim_setup, calc_dataclass, threads_per_core=1):
+def Lammps(
+    sim_setup,
+    calc_dataclass,
+    threads_per_core: int = 1,
+    piston_species: Optional[str] = None,
+    piston_pressure: float = 1.0,
+    piston_damping: float = 0.0,
+):
     from pyiron_nodes.atomistic.calculator.data import SimSetupBundle, SimSetupBundleInp
     from pyiron_nodes.atomistic.engine.lammps import (
         CreateLammpsMDInput,
@@ -106,7 +120,11 @@ def Lammps(sim_setup, calc_dataclass, threads_per_core=1):
         bond_dict=inner_wf.unpacked.outputs.bond_dict,
     )
     inner_wf.md_input = CreateLammpsMDInput(
-        io_bundle=inner_wf.lammps_structure, calc_dataclass=calc_dataclass
+        io_bundle=inner_wf.lammps_structure,
+        calc_dataclass=calc_dataclass,
+        piston_species=piston_species,
+        piston_pressure=piston_pressure,
+        piston_damping=piston_damping,
     )
     inner_wf.md_run = RunLammpsCalculation(
         io_bundle=inner_wf.md_input,
