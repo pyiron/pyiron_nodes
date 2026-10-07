@@ -15,7 +15,7 @@ from pyiron_nodes.atomistic.diffusion import (
 )
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+from pyiron_nodes.atomistic.structure.transform import Repeat
 from pyiron_nodes.plotting import Plot
 
 wf = Workflow("h_diffusion_GRACE_md")

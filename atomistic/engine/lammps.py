@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 from dataclasses import asdict
 from typing import Optional, Literal
 
@@ -17,7 +16,7 @@ from pyiron_nodes.atomistic.calculator.data import (
     InputCalcStatic,
 )
 
-from core import as_function_node
+from core import as_function_node, run_external
 
 import pandas as pd
 
@@ -42,21 +41,218 @@ class LammpsIOBundle:
     write_restart_filename: Optional[str] = None
     units: str = "metal"
     resource_path: Optional[str] = None
+    has_bonds: bool = True
+    has_electrode_force: bool = False
+
+
+def _has_potential_files(filenames) -> bool:
+    """Whether a potential entry ships at least one real parameter file.
+
+    OpenKIM entries in the LAMMPS potential catalogue carry ``Filename == ['']``
+    because the model comes from the KIM API rather than from a file on disk.
+    ``pyiron_lammps.potential.update_potential_paths`` cannot cope with that: the
+    blank name becomes an empty key in its substitution dict, and
+    ``line.replace("", resource_path)`` then splices the resource path in between
+    *every character* of the ``pair_style`` and ``pair_coeff`` lines, e.g.::
+
+        >>> "pair_style kim".replace("", "/RES/")
+        '/RES/p/RES/a/RES/i/RES/r/RES/_/RES/s/RES/t/RES/y/RES/l/RES/e/RES/ ...'
+
+    The damage is done inside ``get_potential_by_name``, so callers never see an
+    intact ``Config`` to check.  ``Filename`` is left alone, which makes it the
+    only reliable way to spot an affected entry.
+    """
+    return bool(filenames) and all(str(f).strip() for f in filenames)
+
+
+def _basenames_collide(filenames) -> bool:
+    """Whether one parameter-file name is a substring of another.
+
+    The same blind ``str.replace`` loop described in :func:`_has_potential_files`
+    walks the file names in order, so once it has expanded ``library-Al.meam``
+    into an absolute path, the later pass for ``Al.meam`` matches *inside* that
+    path and rewrites it again::
+
+        pair_coeff * * /…/library-/…/Al.meam
+
+    The result points at a file that does not exist.  MEAM potentials whose
+    library file embeds the element file name — ``library-Al.meam`` + ``Al.meam``,
+    ``library.AlCu.meam`` + ``AlCu.meam`` — trip this.
+    """
+    import os
+
+    names = [os.path.basename(str(f)) for f in filenames]
+    return any(
+        a != b and a in b
+        for i, a in enumerate(names)
+        for b in names[i + 1 :] + names[:i]
+    )
+
+
+def _potential_rejection_reason(filenames) -> Optional[str]:
+    """Why this potential cannot yield valid LAMMPS input, or None if it can."""
+    if not _has_potential_files(filenames):
+        return (
+            "it ships no parameter file.  This is an OpenKIM entry, which needs a "
+            "model installed through the KIM API rather than a file from the "
+            "potential catalogue"
+        )
+    if _basenames_collide(filenames):
+        return (
+            "one of its parameter file names is a substring of another "
+            f"({list(filenames)}), which corrupts the generated pair_coeff path"
+        )
+    return None
+
+
+def get_usable_potential_by_name(
+    potential_name: str, resource_path: Optional[str] = None
+):
+    """Look up a potential by name, rejecting ones that cannot produce valid input.
+
+    Same return value as ``pyiron_lammps.potential.get_potential_by_name`` (a row
+    of the potential dataframe), but raises instead of handing back a silently
+    corrupted ``Config``.  See :func:`_has_potential_files` and
+    :func:`_basenames_collide` for the two ways that happens.
+    """
+    from pyiron_lammps.potential import get_potential_by_name, get_potential_dataframe
+
+    try:
+        potential = get_potential_by_name(
+            potential_name=potential_name, resource_path=resource_path
+        )
+    except (IndexError, KeyError):
+        # get_potential_by_name does .iloc[0] on the filtered DataFrame without
+        # checking whether it is empty first, so an unknown name raises IndexError.
+        from pyiron_lammps.potential import (
+            LammpsPotentialFile,
+            get_resource_path_from_conda,
+        )
+
+        rp = resource_path or get_resource_path_from_conda()
+        all_names = LammpsPotentialFile(resource_path=rp).list()["Name"]
+        keyword = (
+            potential_name.split("--")[1] if "--" in potential_name else potential_name
+        )
+        candidates = all_names[
+            all_names.str.contains(keyword, case=False, na=False)
+        ].tolist()[:5]
+        hint = f"  Closest matches: {candidates}" if candidates else ""
+        raise ValueError(
+            f"Potential {potential_name!r} not found in the catalog.{hint}\n"
+            "Use ListPotentials(structure) to see what is available."
+        ) from None
+    reason = _potential_rejection_reason(potential["Filename"])
+    if reason is not None:
+        raise ValueError(
+            f"potential {potential_name!r} cannot be used to build LAMMPS input: "
+            f"{reason}.  Use `ListPotentials` to see the potentials that do work "
+            "here."
+        )
+    return potential
 
 
 @as_function_node
 def ListPotentials(structure: Atoms, resource_path: Optional[str] = None):
+    """List the potentials available for *structure* that can actually be run."""
 
     from lammpsparser.potential import get_resource_path_from_conda, view_potentials
 
     if resource_path is None:
         resource_path = get_resource_path_from_conda()
 
-    potentials = list(
-        view_potentials(structure, resource_path=resource_path)["Name"].values
+    df = view_potentials(structure, resource_path=resource_path)
+    potentials = [
+        name
+        for name, filenames in zip(df["Name"], df["Filename"])
+        if _potential_rejection_reason(filenames) is None
+    ]
+    return potentials
+
+
+def _pair_style_of(config_lines) -> str:
+    """Extract the ``pair_style`` family from a potential's Config lines."""
+    for line in config_lines:
+        s = line.strip()
+        if s.startswith("pair_style"):
+            return s.split()[1].lower()
+    return ""
+
+
+@as_function_node
+def GetPotential(
+    structure: Atoms,
+    resource_path: Optional[str] = None,
+    type_filter: Literal[
+        "all", "eam", "meam", "adp", "tersoff", "bop", "comb", "agni", "pinn"
+    ] = "all",
+    name_filter: str = "",
+    index: int = 0,
+):
+    """Return a single potential name for *structure*.
+
+    Combines the filtering of :func:`ListPotentials` with direct index selection,
+    so no intermediate selection node is needed.
+
+    Parameters
+    ----------
+    type_filter:
+        Restrict candidates to a particular potential family.  Matched against
+        the ``pair_style`` keyword via a prefix check, so ``"eam"`` covers
+        ``eam``, ``eam/alloy`` and ``eam/fs``; ``"comb"`` covers ``comb3``;
+        etc.  ``"all"`` (default) applies no filter.  For single-element LAMMPS
+        calculations with calphy, prefer ``"eam/alloy"`` over plain ``"eam"``:
+        the eam/alloy format maps all atom types in one ``pair_coeff`` line,
+        which calphy requires.  Plain ``"eam"`` (funcfl) entries carry one line
+        per element and cannot be used by calphy's reversible-scaling routine.
+    name_filter:
+        Case-insensitive substring search on the potential name.  All
+        space-separated terms must appear in the name.  Examples:
+
+        - ``"Mishin"``       → all Mishin potentials
+        - ``"Mishin 99"``    → requires both ``"Mishin"`` and ``"99"``, matching
+                               ``1999--Mishin-Y--Al--LAMMPS--ipr1``
+        - ``"eam/alloy"``    → names containing that pair_style string
+        - ``""`` (default)   → no name filter; all type_filter matches included
+
+        Use ``ListPotentials`` to see the full catalogue and pick a name.
+    index:
+        Position in the filtered list to return (default ``0`` — the first
+        match).  When ``name_filter`` targets a specific publication the list
+        usually has one entry and ``index=0`` is correct; without a filter
+        ``index`` selects from potentially many candidates.
+    """
+
+    from pyiron_lammps.potential import (
+        get_resource_path_from_conda,
+        view_potentials,
     )
 
-    return potentials
+    if resource_path is None:
+        resource_path = get_resource_path_from_conda()
+
+    df = view_potentials(structure, resource_path=resource_path)
+    filter_terms = name_filter.lower().split() if name_filter.strip() else []
+    candidates = [
+        name
+        for name, filenames, config in zip(df["Name"], df["Filename"], df["Config"])
+        if _potential_rejection_reason(filenames) is None
+        and (type_filter == "all" or _pair_style_of(config).startswith(type_filter))
+        and all(term in name.lower() for term in filter_terms)
+    ]
+
+    if not candidates:
+        parts = [f"type_filter={type_filter!r}"]
+        if name_filter.strip():
+            parts.append(f"name_filter={name_filter!r}")
+        raise ValueError(
+            f"No usable potential found for {', '.join(parts)}. "
+            "Use ListPotentials to see what is available."
+        )
+
+    potentials = candidates
+    potential_name = potentials[index]
+    return potentials, potential_name
 
 
 @as_function_node
@@ -136,7 +332,7 @@ def CreateLammpsStructure(
         structure_string = write_lammps_data_full(
             structure=structure,
             specorder=potential_elements,
-            bond_dict=bond_dict,
+            bond_dict=bond_dict if bond_dict is not None else {},
             potential=potential,
         )
 
@@ -150,6 +346,7 @@ def CreateLammpsStructure(
         structure_string = lammps_str._string_input
 
     io_bundle.lammps_structure_string = structure_string
+    io_bundle.has_bonds = bool(bond_dict)
 
     return io_bundle
 
@@ -165,13 +362,101 @@ def CreateLammpsStructure(
 # )
 
 
+def _piston_barostat_lines(
+    structure: Atoms,
+    units: str,
+    piston_species: str,
+    piston_pressure: float,
+    piston_damping: float,
+) -> list[str]:
+    """LAMMPS fixes that hold one electrode at a constant normal pressure.
+
+    The piston species is pinned in xy and free in z (see
+    ``pyiron_nodes.electrochemistry.structure.build.FixElectrodes``), so the
+    ensemble fix integrates it.  Two commands turn that into a flat wall under
+    load:
+
+    * ``velocity ... set 0.0 0.0 0.0`` starts every piston atom at rest.  The
+      constraint only zeroes vx and vy, so without this each atom keeps its own
+      random vz from the Maxwell initialisation and the layer shears apart even
+      under identical forces.
+    * ``fix aveforce NULL NULL <load>`` gives every piston atom the group-average
+      z force *plus* the external load.  Same species, so same mass and the same
+      acceleration; with equal velocities too, the layer translates in z as one
+      rigid plane.
+
+      Note the two roles of the argument: ``fix aveforce`` only averages the
+      components it is given a value for — all-``NULL`` is a silent no-op — and
+      the value it is given is *added* to the average rather than replacing it.
+      So a single fix both rigidifies the layer and applies the load.
+
+    Damping comes from the thermostat; ``fix viscous`` is only emitted when
+    ``piston_damping`` is non-zero, as a way to reach the target faster.
+
+    Caveat: a *Langevin* thermostat (``InputCalcMD.langevin``) kicks each atom
+    independently, which breaks the shared velocity and lets the plane roughen.
+    Use the default Nosé-Hoover thermostat with the piston.
+    """
+    import numpy as np
+    from lammpsparser.units import LAMMPS_UNIT_CONVERSIONS
+
+    symbols = np.asarray(structure.get_chemical_symbols())
+    n_piston = int(np.count_nonzero(symbols == piston_species))
+    if n_piston == 0:
+        raise ValueError(
+            f"piston_species={piston_species!r} does not occur in the structure; "
+            f"present species are {sorted(set(symbols.tolist()))}"
+        )
+
+    area_ang2 = float(structure.cell[0, 0] * structure.cell[1, 1])
+
+    # P [bar] -> force on the whole piston [N] -> per atom [eV/A] -> native units.
+    #   bar -> Pa            : 1e5
+    #   A^2 -> m^2           : 1e-20
+    #   N   -> eV/A          : / 1.602176634e-9   (1 eV/A = 1.602176634e-9 N)
+    # Per atom, because aveforce adds the value to every atom in the group and
+    # the total external load has to come out as P * A.
+    # Negative: the load pushes the piston down onto the electrolyte.
+    f_ev_per_ang = (
+        -piston_pressure * 1e5 * area_ang2 * 1e-20 / 1.602176634e-9 / n_piston
+    )
+    f_native = f_ev_per_ang * LAMMPS_UNIT_CONVERSIONS[units]["force"]
+
+    group = f"frozen_{piston_species.lower()}"
+    lines = [
+        f"velocity {group} set 0.0 0.0 0.0",
+        f"fix piston_load {group} aveforce NULL NULL {f_native:.12g}",
+    ]
+    if piston_damping:
+        lines.append(f"fix piston_damp {group} viscous {piston_damping:.12g}")
+    return lines
+
+
 @as_function_node
 def CreateLammpsMDInput(
     io_bundle: LammpsIOBundle,
     calc_dataclass: InputCalcMD,
     read_restart_filename: Optional[str] = None,
     write_restart_filename: Optional[str] = None,
+    piston_species: Optional[str] = None,
+    piston_pressure: float = 1.0,
+    piston_damping: float = 0.0,
 ):
+    """Build the LAMMPS input for an MD run.
+
+    Parameters
+    ----------
+    piston_species:
+        Chemical symbol of an electrode to run as a constant-pressure piston, or
+        ``None`` for a fixed-volume run.  The species must be free in z — see
+        ``FixElectrodes`` — otherwise the ``setforce`` from its constraint keeps
+        it pinned and the load does nothing.
+    piston_pressure:
+        Normal pressure on the piston in bar.
+    piston_damping:
+        ``fix viscous`` damping coefficient on the piston group.  ``0`` omits the
+        fix and leaves the damping to the thermostat.
+    """
     from lammpsparser.compatibility.file import (
         lammps_file_initialization,
         _get_potential,
@@ -209,6 +494,20 @@ def CreateLammpsMDInput(
         else:
             lmp_str_lst.append(l)
 
+    # Strip bond/angle coefficient lines when the structure has no bonds.
+    if not io_bundle.has_bonds:
+        _bond_angle_prefixes = (
+            "bond_style",
+            "bond_coeff",
+            "angle_style",
+            "angle_coeff",
+        )
+        potential_lst = [
+            l
+            for l in potential_lst
+            if not any(l.strip().startswith(p) for p in _bond_angle_prefixes)
+        ]
+
     # Handle potential: write to file if DataFrame, else inline
     if isinstance(io_bundle.potential, pd.DataFrame):
         lmp_str_lst += [f"include {io_bundle.lammps_potential_filename}\n"]
@@ -217,6 +516,14 @@ def CreateLammpsMDInput(
         lmp_str_lst += potential_lst
 
     lmp_str_lst += ["variable dumptime equal {} ".format(calc_kwargs.get("n_print", 1))]
+    # The electrode forces are three floats per sample, the trajectory is ~200 kB
+    # per frame, so tying them to one interval makes keeping the force resolution
+    # on a long run cost a multi-GB dump.  Popped, not read: calc_kwargs is
+    # splatted into calc_md below, which does not take this argument.
+    _n_print_force = calc_kwargs.pop("n_print_force", None) or calc_kwargs.get(
+        "n_print", 1
+    )
+    lmp_str_lst += ["variable forcetime equal {} ".format(_n_print_force)]
     lmp_str_lst += [
         "dump 1 all custom ${dumptime} dump.out id type xsu ysu zsu fx fy fz vx vy vz",
         'dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"',
@@ -239,8 +546,67 @@ def CreateLammpsMDInput(
         ).items()
     ]
 
-    calc_kwargs["units"] = io_bundle.units
-    lmp_str_lst += calc_md(**calc_kwargs)
+    # If any atoms are constrained, add per-species group/group computes so the
+    # force from the mobile phase on each electrode species is written to a
+    # separate electrode_force_{Species}.txt file.
+    # compute group/group evaluates interactions before fix setforce zeroes them.
+    #
+    # An atom counts as an electrode atom when *any* of its degrees of freedom is
+    # frozen, not only when it carries a full FixAtoms.  A piston electrode is
+    # pinned in xy and free in z (see FixElectrodes), and it is exactly the
+    # electrode whose force reading drives the barostat — reading only FixAtoms
+    # would drop it.
+    from lammpsparser.compatibility.constraints import (
+        _get_fixed_atom_boolean_vector as _frozen_dofs,
+    )
+
+    _fixed_indices = []
+    if len(io_bundle.structure.constraints) > 0:
+        import numpy as _np
+
+        _fixed_indices = _np.argwhere(
+            _frozen_dofs(structure=io_bundle.structure).any(axis=1)
+        ).flatten()
+        _fixed_indices = [int(i) for i in _fixed_indices]
+    if _fixed_indices:
+        _symbols = io_bundle.structure.get_chemical_symbols()
+        # Build per-species index lists for all fixed atoms
+        _species_groups: dict = {}
+        for _i in _fixed_indices:
+            _species_groups.setdefault(_symbols[_i], []).append(_i)
+        # Single mobile group: everything that is not frozen
+        _all_fixed_ids = " ".join(str(i + 1) for i in sorted(_fixed_indices))
+        lmp_str_lst += [
+            f"group frozen_all id {_all_fixed_ids}",
+            "group mobile_el subtract all frozen_all",
+        ]
+        for _el, _el_indices in _species_groups.items():
+            _el_lower = _el.lower()
+            _ids_str = " ".join(str(i + 1) for i in sorted(_el_indices))
+            lmp_str_lst += [
+                f"group frozen_{_el_lower} id {_ids_str}",
+                # kspace yes: without it the PPPM part of the force is dropped,
+                # which on a charged electrode is most of the electrostatics.
+                f"compute f_{_el_lower} frozen_{_el_lower} group/group mobile_el kspace yes",
+                (
+                    f"fix out_{_el_lower} all ave/time 1 1 ${{forcetime}}"
+                    f" c_f_{_el_lower}[1] c_f_{_el_lower}[2] c_f_{_el_lower}[3]"
+                    f' file electrode_force_{_el}.txt title1 "# step fx fy fz"'
+                ),
+            ]
+        io_bundle.has_electrode_force = True
+
+    # Piston barostat.  Must come after set_selective_dynamics so that its fixes
+    # take precedence over the `setforce` on the piston group, and after the
+    # group definitions above so `frozen_{species}` already exists.
+    if piston_species:
+        lmp_str_lst += _piston_barostat_lines(
+            structure=io_bundle.structure,
+            units=io_bundle.units,
+            piston_species=piston_species,
+            piston_pressure=piston_pressure,
+            piston_damping=piston_damping,
+        )
 
     if read_restart_file:
         lmp_str_lst += ["reset_timestep 0"]
@@ -429,30 +795,17 @@ def RunLammpsCalculation(
                 )
                 + f" -in {io_bundle.lammps_input_filename}"
             )
-        if executor is None:
-            result = subprocess.run(
-                lmp_command,
-                cwd=io_bundle.working_directory,
-                shell=True,
-                universal_newlines=True,
-                env=os.environ.copy(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-        else:
-            # Use the provided executor to run the command
-            future = executor.submit(
-                subprocess.run,
-                lmp_command,
-                cwd=io_bundle.working_directory,
-                shell=True,
-                universal_newlines=True,
-                env=os.environ.copy(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            result = future.result()
-
+        # run_external, not subprocess.run: `shell=True` means the direct
+        # child is /bin/sh and the MPI ranks are its children, so pressing Stop
+        # has to kill the whole process group or lmp_mpi runs on regardless.
+        # Raises GraphCancelled if it does, which reports this node as
+        # Cancelled rather than Failed.
+        result = run_external(
+            lmp_command,
+            cwd=io_bundle.working_directory,
+            env=os.environ.copy(),
+            label=f"LAMMPS ({lmp_command})",
+        )
         if result.returncode != 0:
             error_path = os.path.join(io_bundle.working_directory, "error.msg")
             with open(error_path, "w") as f:
@@ -571,6 +924,43 @@ def ParseLammpsOutput(
         raise ValueError(f"Unknown io_bundle.mode: {io_bundle.mode!r}")
 
     return out
+
+
+@as_function_node
+def ParseElectrodeForce(io_bundle: LammpsIOBundle):
+    """Read per-species electrode_force_{Species}.txt files produced by fix ave/time.
+
+    Returns a dict keyed by chemical symbol, each value a dict with keys
+    'steps', 'fx', 'fy', 'fz' (float arrays, eV/Å).
+    Returns an empty dict if no electrode force files are found.
+
+    ``fix ave/time`` writes in whatever units the run uses, and the TIP3P water
+    potential switches the run to ``units real`` — so the raw columns are
+    kcal/mol/Å there, not eV/Å.  The same factor ``parse_lammps_output`` applies
+    to the trajectory is applied here, so every consumer sees eV/Å regardless of
+    the unit style.
+    """
+    import glob
+    import os
+    import numpy as np
+    from lammpsparser.units import LAMMPS_UNIT_CONVERSIONS
+
+    force_conversion = LAMMPS_UNIT_CONVERSIONS[io_bundle.units]["force"]
+
+    electrode_forces = {}
+    pattern = os.path.join(io_bundle.working_directory, "electrode_force_*.txt")
+    for path in sorted(glob.glob(pattern)):
+        species = os.path.basename(path)[len("electrode_force_") : -len(".txt")]
+        data = np.loadtxt(path, comments="#")
+        if data.ndim == 1:
+            data = data[np.newaxis, :]
+        electrode_forces[species] = {
+            "steps": data[:, 0].astype(int),
+            "fx": data[:, 1] / force_conversion,
+            "fy": data[:, 2] / force_conversion,
+            "fz": data[:, 3] / force_conversion,
+        }
+    return electrode_forces
 
 
 # temporary here, should be included in LammpsStructure?
@@ -742,17 +1132,20 @@ def write_lammps_data_full(
         )
     lines.append("")
 
-    # Bonds
-    lines.append("Bonds\n")
-    for b_id, (i, j, btype) in enumerate(bond_list, start=1):
-        lines.append(f"{b_id:6d} {btype:4d} {i+1:6d} {j+1:6d}")
-    lines.append("")
+    # Bonds — omit the section entirely when there are none; LAMMPS rejects an
+    # empty Bonds section even when the header says "0 bonds".
+    if bond_list:
+        lines.append("Bonds\n")
+        for b_id, (i, j, btype) in enumerate(bond_list, start=1):
+            lines.append(f"{b_id:6d} {btype:4d} {i+1:6d} {j+1:6d}")
+        lines.append("")
 
     # Angles
-    lines.append("Angles\n")
-    for a_id, (i, j, k, atype) in enumerate(angle_list, start=1):
-        lines.append(f"{a_id:6d} {atype:4d} {i+1:6d} {j+1:6d} {k+1:6d}")
-    lines.append("")
+    if angle_list:
+        lines.append("Angles\n")
+        for a_id, (i, j, k, atype) in enumerate(angle_list, start=1):
+            lines.append(f"{a_id:6d} {atype:4d} {i+1:6d} {j+1:6d} {k+1:6d}")
+        lines.append("")
 
     return "\n".join(lines)  # ← caller decides what to do with it
 

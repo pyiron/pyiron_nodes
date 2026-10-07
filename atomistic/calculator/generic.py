@@ -1,20 +1,8 @@
 from typing import Optional
 import numpy as np
 
-from pyiron_nodes.atomistic.calculator.data import (
-    InputCalcStatic,
-    OutputSEFS,
-)
-from core import Node, as_function_node
-
-
-@as_function_node("generic")
-def Static(structure=None, engine=None):  # , keys_to_store=None):
-    output = engine(
-        structure=structure,
-        calculator=InputCalcStatic(),  # keys_to_store=keys_to_store)
-    )
-    return output.generic
+from pyiron_nodes.atomistic.calculator.data import OutputSEFS
+from core import as_function_node
 
 
 @as_function_node

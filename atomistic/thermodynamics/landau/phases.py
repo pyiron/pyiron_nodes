@@ -43,9 +43,6 @@ def IdealSolution(
 
 def make_phase(dd, temperature_parameters, concentration_parameters):
     name = dd.phase.iloc[0]
-    # minus 2 for terminals
-    # minus 1 to be not exactly interpolating
-    interp_params = min(len(dd) - 2 - 1, concentration_parameters)
     sub = [
         landau.phases.TemperatureDependentLinePhase(
             f"{row.phase}_{c:.03}",
@@ -59,6 +56,13 @@ def make_phase(dd, temperature_parameters, concentration_parameters):
     # only a single concentration
     if len(sub) == 1:
         return replace(sub[0], name=name)
+    if concentration_parameters is None:
+        # do not interpolate in concentration: keep the individual line phases,
+        # whose names already carry their concentration
+        return sub
+    # minus 2 for terminals
+    # minus 1 to be not exactly interpolating
+    interp_params = min(len(dd) - 2 - 1, concentration_parameters)
     # terminals are present
     if len({0, 1}.intersection([s.line_concentration for s in sub])) == 2:
         if len(sub) == 2:  # only terminals are present
@@ -75,7 +79,7 @@ def make_phase(dd, temperature_parameters, concentration_parameters):
 def PhasesFromDataFrame(
     dataframe,
     temperature_parameters: int = 4,
-    concentration_parameters: int = 1,
+    concentration_parameters: int | None = 1,
 ):
     """Convert a dataframe of free energies to list of phase objects.
 
@@ -89,20 +93,24 @@ def PhasesFromDataFrame(
                     `free_energy`: corresponding free energies
         temperature_parameters (int): how many parameters to use when
                     interpolating free energies in temperature
-        concentration_parameters (int): how many parameters to use when
-                    interpolating free energies in concentration
+        concentration_parameters (int, optional): how many parameters to use
+                    when interpolating free energies in concentration; if None,
+                    output the individual line phases instead, whose names
+                    include their concentration
 
     Returns:
         list of Phase objects
         dict of Phase objects, where the dict keys are the names of the phases
     """
-    from IPython.display import display
-
     phases = dataframe.groupby("phase")[dataframe.columns].apply(
         make_phase,
         include_groups=False,
         temperature_parameters=temperature_parameters,
         concentration_parameters=concentration_parameters,
     )
-    display("Found phases:", *phases.index.tolist())
-    return phases.tolist(), phases.to_dict()
+    # explode() flattens the concentration_parameters=None case, where make_phase
+    # returns a list of line phases rather than a single solution phase
+    phase_dict = {p.name: p for p in phases.explode()}
+    print("Found phases:", *phase_dict.keys(), sep="\n")
+    phase_list = list(phase_dict.values())
+    return phase_list, phase_dict

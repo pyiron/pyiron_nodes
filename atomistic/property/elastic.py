@@ -1,25 +1,29 @@
+"""Elastic constants from stress-strain slopes.
+
+The elastic tensor is obtained by straining the cell along each of the six
+Voigt directions, reading the stress from the calculator, and taking the
+central-difference slope ``C[i, j] = dsigma_i / d eps_j``.  No symmetry
+analysis is required, which makes the approach applicable to any structure
+whose calculator provides stresses (EMT, GRACE, M3GNet, LAMMPS, ...).
+"""
+
 from dataclasses import field
 from typing import Optional
 
-import atomistics.workflows.elastic.symmetry as sym
 import numpy as np
 
 from core import (
     Node,
     as_function_node,
     as_inp_dataclass_node,
-    group_node,
     as_out_dataclass_node,
 )
 
+# eV/Angstrom^3 -> GPa
+EV_PER_ANG3_TO_GPA = 160.21766208
 
-@as_out_dataclass_node
-class OutputElasticSymmetryAnalysis:
-    Lag_strain_list: list = field(default_factory=lambda: [])
-    epss: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    SGN: int = 0
-    v0: float = 0.0
-    LC: int = 1
+# Voigt index -> pair of Cartesian indices
+_VOIGT_PAIRS = ((0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1))
 
 
 @as_inp_dataclass_node
@@ -85,205 +89,172 @@ def ExtractFinalEnergy(df):
     return [e.energy[-1] for e in df["out"].tolist()]
 
 
+def voigt_strain_matrix(component: int, magnitude: float) -> np.ndarray:
+    """Return the 3x3 strain tensor for one Voigt component.
+
+    Components 0-2 are the normal strains ``eps_xx, eps_yy, eps_zz``;
+    components 3-5 are the *engineering* shear strains
+    ``gamma_yz, gamma_xz, gamma_xy``, so the corresponding tensor entries are
+    ``magnitude / 2``.
+    """
+    if not 0 <= int(component) <= 5:
+        raise ValueError(f"Voigt component must be in 0..5, got {component}")
+    component = int(component)
+    eps = np.zeros((3, 3))
+    i, j = _VOIGT_PAIRS[component]
+    if component < 3:
+        eps[i, j] = magnitude
+    else:
+        eps[i, j] = eps[j, i] = magnitude / 2.0
+    return eps
+
+
+@as_function_node("structure")
+def ApplyVoigtStrain(structure, component: int = 0, magnitude: float = 0.005):
+    """Strain a structure along a single Voigt direction.
+
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        Reference structure.
+    component : int
+        Voigt index 0..5, i.e. ``xx, yy, zz, yz, xz, xy``.  Components 3-5
+        apply an engineering shear strain.
+    magnitude : float
+        Strain amplitude; may be negative.
+
+    Returns
+    -------
+    Atoms
+        A copy of *structure* with the cell deformed by ``I + eps`` and the
+        atomic positions scaled along with it.
+    """
+    from pyiron_nodes.atomistic.structure._atoms import _resolve_atoms
+
+    atoms = _resolve_atoms(structure).copy()
+    deformation = np.eye(3) + voigt_strain_matrix(component, magnitude)
+    atoms.set_cell(atoms.get_cell() @ deformation, scale_atoms=True)
+    return atoms
+
+
+def _relax_cell(atoms, fmax: float = 1e-4, steps: int = 200):
+    """Relax cell and positions to (nearly) zero stress, in place."""
+    from ase.optimize import LBFGS
+
+    try:  # ase >= 3.23
+        from ase.filters import FrechetCellFilter as CellFilter
+    except ImportError:  # pragma: no cover - older ase
+        from ase.constraints import ExpCellFilter as CellFilter
+
+    opt = LBFGS(CellFilter(atoms), logfile=None)
+    opt.run(fmax=fmax, steps=steps)
+    return atoms
+
+
 @as_function_node
-def SymmetryAnalysis(
-    structure, parameters: Optional[InputElasticTensor] = None
-) -> OutputElasticSymmetryAnalysis:
-    parameters = InputElasticTensor() if parameters is None else parameters
-    out = OutputElasticSymmetryAnalysis.pure_dataclass()  # structure)
-
-    out.SGN = sym.find_symmetry_group_number(structure)
-    out.v0 = structure.get_volume()
-    out.LC = sym.get_symmetry_family_from_SGN(out.SGN)
-    out.Lag_strain_list = sym.get_LAG_Strain_List(out.LC)
-
-    out.epss = np.linspace(
-        -parameters.eps_range, parameters.eps_range, parameters.num_of_point
-    )
-    return out
-
-
-@as_function_node("structures")
-def GenerateStructures(
+def StressStrainElasticConstants(
     structure,
-    analysis: OutputElasticSymmetryAnalysis,
-    parameters: Optional[InputElasticTensor] = None,
+    engine=None,
+    eps: float = 0.005,
+    relax_reference: bool = False,
 ):
-    structure_dict = {}
-    structures = []
+    """Elastic constants from the stress-strain slopes.
 
-    zero_strain_job_name = "s_e_0"
-    if 0.0 in analysis.epss:
-        structure_dict[zero_strain_job_name] = structure.copy()
-        structures.append(structure.copy())
+    For each Voigt component ``j`` the cell is strained by ``+eps`` and
+    ``-eps`` and the full stress tensor is read from the calculator, giving
+    the central-difference slope ``C[:, j] = (sigma(+eps) - sigma(-eps)) /
+    (2 eps)``.  The result is symmetrised as ``0.5 * (C + C.T)``.
 
-    for lag_strain in analysis.Lag_strain_list:
-        Ls_list = sym.Ls_Dic[lag_strain]
-        for eps in analysis.epss:
-            if eps == 0.0:
-                continue
+    Parameters
+    ----------
+    structure : Atoms or OutputAtoms
+        Reference structure.  Residual stress in the reference cell biases
+        the slopes, so either supply a relaxed cell or set
+        *relax_reference*.
+    engine : OutputEngine or None
+        Calculator engine; defaults to EMT when ``None``.
+    eps : float
+        Strain amplitude used for the central difference.
+    relax_reference : bool
+        Relax cell and positions to zero stress before straining.
 
-            Ls = np.zeros(6)
-            for ii in range(6):
-                Ls[ii] = Ls_list[ii]
-            Lv = eps * Ls
-
-            eta_matrix = np.zeros((3, 3))
-
-            eta_matrix[0, 0] = Lv[0]
-            eta_matrix[0, 1] = Lv[5] / 2.0
-            eta_matrix[0, 2] = Lv[4] / 2.0
-
-            eta_matrix[1, 0] = Lv[5] / 2.0
-            eta_matrix[1, 1] = Lv[1]
-            eta_matrix[1, 2] = Lv[3] / 2.0
-
-            eta_matrix[2, 0] = Lv[4] / 2.0
-            eta_matrix[2, 1] = Lv[3] / 2.0
-            eta_matrix[2, 2] = Lv[2]
-
-            norm = 1.0
-            eps_matrix = eta_matrix
-            if np.linalg.norm(eta_matrix) > 0.7:
-                raise Exception(f"Too large deformation {eps}")
-
-            if parameters.sqrt_eta:
-                while norm > 1.0e-10:
-                    x = eta_matrix - np.dot(eps_matrix, eps_matrix) / 2.0
-                    norm = np.linalg.norm(x - eps_matrix)
-                    eps_matrix = x
-
-            # --- Calculating the M_new matrix ---
-            i_matrix = np.eye(3)
-            def_matrix = i_matrix + eps_matrix
-            scell = np.dot(structure.get_cell(), def_matrix)
-            struct = structure.copy()
-            struct.set_cell(scell, scale_atoms=True)
-
-            jobname = subjob_name(lag_strain, eps)
-
-            structures.append(struct.copy())
-            structure_dict[jobname] = struct
-    job_names = list(structure_dict.keys())
-    return structures, job_names
-
-
-@group_node("elastic_constants")
-def ComputeElasticConstantsMacro(
-    structure,
-    engine,
-    calculator: Node,
-    input_elastic_tensor=None,
-):
+    Returns
+    -------
+    elastic_analysis : OutputElasticAnalysis
+        Full 6x6 tensor ``C`` in GPa plus the Voigt-Reuss-Hill moduli.
+    C11 : float
+        ``C[0, 0]`` in GPa.
+    C12 : float
+        ``C[0, 1]`` in GPa.
+    C44 : float
+        ``C[3, 3]`` in GPa.
     """
-    Get the elastic constants of a structure using an ASE calculator.
-    """
-    input_elastic_tensor = (
-        InputElasticTensor() if input_elastic_tensor is None else input_elastic_tensor
-    )
-    from pyiron_nodes.controls import Print, iterate
-    from core import Workflow
+    from pyiron_nodes.atomistic.engine.generic import OutputEngine
+    from pyiron_nodes.atomistic.structure._atoms import _resolve_atoms
 
-    wf = Workflow("elastic_constants")
+    if engine is None:
+        from ase.calculators.emt import EMT
 
-    wf.calculator = calculator
+        engine = OutputEngine(calculator=EMT())
 
-    wf.print = Print(f"calculator: {calculator}")
-    wf.symmetry = SymmetryAnalysis(structure=structure, parameters=input_elastic_tensor)
-    wf.structures = GenerateStructures(
-        structure=structure, analysis=wf.symmetry, parameters=input_elastic_tensor
-    )
-    wf.energies = iterate(
-        node=wf.calculator,
-        values=wf.structures.outputs.structures,
-        input_label="structure",
-    )
+    reference = _resolve_atoms(structure).copy()
+    reference.calc = engine.calculator
+    if relax_reference:
+        _relax_cell(reference)
 
-    wf.elastic_constants = AnalyseStructures(
-        energies=wf.energies,
-        job_names=wf.structures.outputs.job_names,
-        analysis=wf.symmetry,
-        parameters=input_elastic_tensor,
-    )
-    return wf.elastic_constants
+    C = np.zeros((6, 6))
+    for component in range(6):
+        stresses = []
+        for sign in (+1, -1):
+            strained = reference.copy()
+            deformation = np.eye(3) + voigt_strain_matrix(component, sign * eps)
+            strained.set_cell(reference.get_cell() @ deformation, scale_atoms=True)
+            strained.calc = engine.calculator
+            stresses.append(np.asarray(strained.get_stress(voigt=True), dtype=float))
+        C[:, component] = (stresses[0] - stresses[1]) / (2 * eps)
+
+    C = 0.5 * (C + C.T) * EV_PER_ANG3_TO_GPA
+
+    elastic_analysis = OutputElasticAnalysis.pure_dataclass()
+    elastic_analysis.C = C
+    elastic_analysis.energy_0 = float(reference.get_potential_energy())
+    calculate_modulus(elastic_analysis)
+
+    C11 = float(C[0, 0])
+    C12 = float(C[0, 1])
+    C44 = float(C[3, 3])
+    return elastic_analysis, C11, C12, C44
 
 
 @as_function_node
 def ComputeElasticConstants(
     structure,
-    engine,
-    calculator: str = "StaticEnergy",
-    input_elastic_tensor: InputElasticTensor = None,
+    engine=None,
+    input_elastic_tensor: Optional[InputElasticTensor] = None,
+    relax_reference: bool = False,
 ):
-    from pyiron_nodes.atomistic.calculator.ase import StaticEnergy
-    from pyiron_nodes.atomistic.property.phonons import GetFreeEnergy
-    from pyiron_nodes.controls import iterate
-    from core import Workflow
+    """Elastic constants of *structure* from the stress-strain slopes.
 
-    wf = Workflow("elastic_constants")
-    if input_elastic_tensor is None:
-        input_elastic_tensor = InputElasticTensor().run()
+    Thin wrapper around :func:`StressStrainElasticConstants` that takes the
+    strain amplitude from an :class:`InputElasticTensor` when one is given.
 
-    if calculator == "StaticEnergy":
-        wf.calculator = StaticEnergy(structure=structure, engine=engine)
-    elif calculator == "GetFreeEnergy":
-        wf.calculator = GetFreeEnergy(structure=structure, engine=engine)
-    else:
-        test1, test2 = (calculator == "StaticEnergy"), (calculator == "GetFreeEnergy")
-        raise ValueError(f"Unknown calculator: '{calculator}' {test1} {test2}")
+    Returns
+    -------
+    elastic_analysis : OutputElasticAnalysis
+    C11 : float
+    C12 : float
+    C44 : float
+    """
+    eps = 0.005 if input_elastic_tensor is None else input_elastic_tensor.eps_range
 
-    wf.symmetry = SymmetryAnalysis(structure=structure, parameters=input_elastic_tensor)
-    wf.structures = GenerateStructures(
-        structure=structure, analysis=wf.symmetry, parameters=input_elastic_tensor
-    )
-    wf.energies = iterate(
-        node=wf.calculator,
-        values=wf.structures.outputs.structures,
-        input_label="structure",
-    )
+    elastic_analysis, C11, C12, C44 = StressStrainElasticConstants(
+        structure=structure,
+        engine=engine,
+        eps=eps,
+        relax_reference=relax_reference,
+    ).run()
 
-    wf.elastic_constants = AnalyseStructures(
-        energies=wf.energies,
-        job_names=wf.structures.outputs.job_names,
-        analysis=wf.symmetry,
-        parameters=input_elastic_tensor,
-    )
-
-    elastic_constants = wf.elastic_constants.pull()
-    return elastic_constants
-
-
-@as_function_node("structures")
-def AnalyseStructures(
-    energies,
-    job_names,
-    analysis: OutputElasticSymmetryAnalysis,
-    parameters: Optional[InputElasticTensor] = None,
-) -> OutputElasticAnalysis:
-    zero_strain_job_name = "s_e_0"
-
-    epss = analysis.epss
-    Lag_strain_list = analysis.Lag_strain_list
-
-    out = OutputElasticAnalysis.pure_dataclass()
-    energy_dict = dict(zip(job_names, energies, strict=True))
-
-    if 0.0 in epss:
-        out.energy_0 = energy_dict[zero_strain_job_name]
-
-    strain_energy = []
-    for lag_strain in Lag_strain_list:
-        strain_energy.append([])
-        for eps in epss:
-            if not eps == 0.0:
-                job_name = subjob_name(lag_strain, eps)
-                ene = energy_dict[job_name]
-            else:
-                ene = out.energy_0
-            strain_energy[-1].append((eps, ene))
-    out.strain_energy = strain_energy
-    out = fit_elastic_matrix(out, parameters.fit_order, v0=analysis.v0, LC=analysis.LC)
-    return out
+    return elastic_analysis, C11, C12, C44
 
 
 def calculate_modulus(out: OutputElasticAnalysis):
@@ -341,36 +312,3 @@ def calculate_modulus(out: OutputElasticAnalysis):
     out.C_eigvec = eigvec
 
     return out
-
-
-def fit_elastic_matrix(out: OutputElasticAnalysis, fit_order, v0, LC):
-    import scipy
-
-    A2 = []
-    fit_order = int(fit_order)
-    for s_e in out.strain_energy:
-        ss = np.transpose(s_e)
-        coeffs = np.polyfit(ss[0], ss[1] / v0, fit_order)
-        A2.append(coeffs[fit_order - 2])
-
-    A2 = np.array(A2)
-    C = sym.get_C_from_A2(A2, LC)
-
-    for i in range(5):
-        for j in range(i + 1, 6):
-            C[j, i] = C[i, j]
-
-    CONV = (
-        1e21 / scipy.constants.physical_constants["joule-electron volt relationship"][0]
-    )  # From eV/Ang^3 to GPa
-
-    C *= CONV
-    out.C = C
-    out.A2 = A2
-    calculate_modulus(out)
-
-    return out
-
-
-def subjob_name(i, eps):
-    return f"s_{i}_e{eps:.5f}".replace(".", "_").replace("-", "m")

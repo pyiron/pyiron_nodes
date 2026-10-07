@@ -8,15 +8,16 @@ def GetChemicalPotential(
     element: str,
     engine=None,
 ):
-    from pyiron_core import Workflow
-    import pyiron_core.pyiron_nodes.atomistic as atomistic
+    from core import Workflow
+    from pyiron_nodes.atomistic.calculator.ase import Minimize
+    from pyiron_nodes.atomistic.calculator.output import GetEnergyLast
+    from pyiron_nodes.atomistic.structure.build import Bulk
+    from pyiron_nodes.atomistic.structure.calc import NumberOfAtoms
 
     wf = Workflow("GetChemicalPotential")
-    wf.bulk = atomistic.structure.build.Bulk(name=element)
-    wf.minimize = atomistic.calculator.ase.Minimize(
-        structure=wf.bulk, engine=engine
-    )  # pressure = 0
-    wf.n_atoms = atomistic.structure.calc.NumberOfAtoms(structure=wf.bulk)
-    wf.energy = atomistic.calculator.output.GetEnergyLast(calculator=wf.minimize)
+    wf.bulk = Bulk(name=element)
+    wf.minimize = Minimize(structure=wf.bulk, engine=engine)  # pressure = 0
+    wf.n_atoms = NumberOfAtoms(structure=wf.bulk)
+    wf.energy = GetEnergyLast(calculator=wf.minimize)
 
     return wf.energy / wf.n_atoms

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Literal
 
 import numpy as np
 from ase import Atoms
@@ -20,6 +20,40 @@ def Volume(structure: Optional[Atoms] = None, per_atom: bool = False) -> float:
 def NumberOfAtoms(structure: Optional[Atoms] = None) -> int:
     number_of_atoms = structure.get_number_of_atoms()
     return number_of_atoms
+
+
+@as_function_node("energy_per_fu")
+def EnergyPerFormulaUnit(
+    total_energy: float,
+    n_atoms: int,
+    atoms_per_fu: int = 2,
+) -> float:
+    """
+    Convert a total DFT/ML energy to an energy per formula unit.
+
+    For a binary compound AB (two atoms per formula unit), use
+    ``atoms_per_fu=2``.  For an elemental reference (one atom per formula
+    unit), use ``atoms_per_fu=1``.
+
+    .. math::
+
+        E_{\\text{fu}} = E_{\\text{total}} \\times \\frac{\\text{atoms\\_per\\_fu}}{n_{\\text{atoms}}}
+
+    **Required inputs**
+    - ``total_energy``:  Total energy of the relaxed structure (eV).
+    - ``n_atoms``:       Number of atoms in the simulation cell.
+    - ``atoms_per_fu``:  Atoms per formula unit (default 2 for binary AB).
+
+    **Typical use-cases**
+    * Compute μ_compound / f.u. for the stoichiometric constraint in a
+      binary surface-phase-diagram workflow.
+    * Normalise bulk reference energies to per-atom values (``atoms_per_fu=1``).
+
+    Returns
+    -------
+    float — energy per formula unit in eV.
+    """
+    return float(total_energy) * int(atoms_per_fu) / int(n_atoms)
 
 
 @as_function_node
@@ -47,6 +81,22 @@ def GetDistances(
 
 
 @as_function_node
+def DefectEnergyPerArea(
+    energy_defect: float,
+    energy_ref: float,
+    structure: Atoms,
+    vec_index: int = 2,
+    unit: Literal["meV/A^2", "mJ/m^2"] = "mJ/m^2",
+):
+    area = structure.cell.area(vec_index)
+    delta_erg = (energy_defect - energy_ref) / area * 1000
+    if unit == "mJ/m^2":
+        delta_erg *= 16.02176634
+
+    return delta_erg, area
+
+
+@as_function_node
 def SplineDescriptor(
     structure: Optional[Atoms] = None,
     r_min: float = 2.5,
@@ -62,7 +112,7 @@ def SplineDescriptor(
     :param r_max: Stop value for interpolation.
     :return: Interpolated values of the descriptor.
     """
-    from pyiron_nodes.math import BSpline
+    from pyiron_nodes.math_utils import BSpline
 
     if structure is None:
         descriptor = None
@@ -98,7 +148,7 @@ def LinearInterpolationDescriptor(
     :param r_max: Stop value for interpolation.
     :return: Interpolated values of the descriptor.
     """
-    from pyiron_nodes.math import LinearBin
+    from pyiron_nodes.math_utils import LinearBin
 
     if structure is None:
         counts = None
@@ -305,7 +355,7 @@ def FitDiffPotential2(
         GetRowsFromDataFrame,
         MergeDataFrames,
     )
-    from pyiron_nodes.math import (
+    from pyiron_nodes.math_utils import (
         Divide,
         DotProduct,
         PseudoInverse,

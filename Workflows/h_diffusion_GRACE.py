@@ -1,18 +1,18 @@
 from core import Workflow
 from pyiron_nodes.atomistic.diffusion import (
     AddInterstitialH,
-    InterstitialHPositions,
+    FindLowEnergyInterstitialSite,
     PlotNEBPath,
     RunNEB,
 )
 from pyiron_nodes.atomistic.engine.ase import GRACE
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.atomistic.structure.view import Animate
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
 )
-from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+from pyiron_nodes.atomistic.structure.transform import Repeat
 
 wf = Workflow("h_diffusion_GRACE")
 
@@ -22,9 +22,13 @@ wf.al_unit = Bulk(name="Al", cubic=True)
 
 wf.opt_settings = GenericOptimizerSettings(max_steps=300, force_tolerance=0.02)
 
-wf.site_positions = InterstitialHPositions()
-
 wf.al_supercell = Repeat(structure=wf.al_unit, repeat_scalar=2)
+
+wf.site_positions = FindLowEnergyInterstitialSite(
+    structure=wf.al_supercell,
+    engine=wf.GRACE,
+    repeat_scalar=2,
+)
 
 wf.h_initial = AddInterstitialH(
     structure=wf.al_supercell,

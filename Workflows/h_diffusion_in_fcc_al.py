@@ -1,18 +1,18 @@
 from core import Workflow
-from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
-from pyiron_nodes.atomistic.structure.build import Bulk
-from pyiron_nodes.dpg2026.atomistic.calculator.optimize import (
+from pyiron_nodes.atomistic.calculator.ase import (
     GenericOptimizerSettings,
     Relax,
 )
-from pyiron_nodes.dpg2026.atomistic.engine.grace import Grace
-from pyiron_nodes.dpg2026.atomistic.structure.transform import Repeat
+from pyiron_nodes.atomistic.engine.ase import GRACE
+from pyiron_nodes.atomistic.structure.build import Bulk
+from pyiron_nodes.atomistic.structure.transform import Repeat
+from pyiron_nodes.atomistic.diffusion import AddInterstitialH, PlotNEBPath, RunNEB
 
 wf = Workflow("h_diffusion_in_fcc_al")
 
 wf.al_unit = Bulk(name="Al", crystalstructure="fcc", a=4.05, cubic=True)
 
-wf.grace = Grace(model="GRACE-2L-OAM")
+wf.grace = GRACE(model="GRACE-2L-OAM")
 
 wf.opt_settings = GenericOptimizerSettings(max_steps=300, force_tolerance=0.02)
 

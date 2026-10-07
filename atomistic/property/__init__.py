@@ -1,5 +1,8 @@
 from pyiron_nodes.atomistic.property import (
     calphy,
+    defects,
     elastic,
     phonons,
-)  # , thermodynamics
+    surface,
+    thermodynamics,
+)
