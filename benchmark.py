@@ -1219,6 +1219,7 @@ def WorkflowAgent(
     # than recording a meaningless zero-reuse "result".
     if arm == "aiflow":
         out.n_reused_nodes, out.n_new_nodes = workflow_bench.count_node_reuse(source)
+
     # ── everything below here edits `path` in place ──────────────────────────
     # Both the optimization turn and the follow-up variant rewrite the agent's
     # file.  Snapshot it once, now, and point the row at the snapshot: the
@@ -1442,7 +1443,11 @@ def SingleBenchmarkReport(result=None, max_repairs: int = 3):
         print(msg)
         return msg, empty, empty
 
-    row = asdict(result) if hasattr(result, "__dataclass_fields__") else dict(vars(result))
+    row = (
+        asdict(result)
+        if hasattr(result, "__dataclass_fields__")
+        else dict(vars(result))
+    )
     df = pd.DataFrame([row])
     max_repairs = workflow_bench.resolve_max_repairs(max_repairs, df)
     stats = workflow_bench.summarize(df, max_repairs=max_repairs)
@@ -1766,16 +1771,22 @@ def _plot_headline(df, stats, overall, arms, max_repairs):
         ax_r.set_xticks(x)
         ax_r.set_xticklabels(stages, rotation=20, ha="right")
         ax_r.set_ylim(0, 105)
-        _style(ax_r, f"aiflow vs. from scratch (<= {max_repairs} repairs)",
-               ylabel="tasks passing (%)")
+        _style(
+            ax_r,
+            f"aiflow vs. from scratch (<= {max_repairs} repairs)",
+            ylabel="tasks passing (%)",
+        )
         ax_r.legend(frameon=False, fontsize=8)
 
     n = int(overall["n_tasks"])
     models = (
         ", ".join(sorted(set(df["model"]))) if df is not None and "model" in df else ""
     )
-    fig.suptitle(f"Agentic workflow generation — {n} runs, {models}", fontsize=10,
-                 color=INK_SECONDARY)
+    fig.suptitle(
+        f"Agentic workflow generation — {n} runs, {models}",
+        fontsize=10,
+        color=INK_SECONDARY,
+    )
     fig.tight_layout()
     return fig
 
@@ -1802,22 +1813,45 @@ def _repair_curve_panel(ax, df, arms, max_repairs, overall):
         drew = True
         color = _arm_color(arm) if arm else LADDER_RAMP[4]
         rate = curve["rate"] * 100
-        ax.plot(curve["k"], rate, marker="o", markersize=5, linewidth=2,
-                color=color, label=str(arm) if arm else None,
-                markeredgecolor=SURFACE, markeredgewidth=1.5)
-        ax.fill_between(curve["k"], curve["lo95"] * 100, curve["hi95"] * 100,
-                        color=color, alpha=0.15, linewidth=0)
+        ax.plot(
+            curve["k"],
+            rate,
+            marker="o",
+            markersize=5,
+            linewidth=2,
+            color=color,
+            label=str(arm) if arm else None,
+            markeredgecolor=SURFACE,
+            markeredgewidth=1.5,
+        )
+        ax.fill_between(
+            curve["k"],
+            curve["lo95"] * 100,
+            curve["hi95"] * 100,
+            color=color,
+            alpha=0.15,
+            linewidth=0,
+        )
 
     if not drew:
         # The frame predates the columns the curve needs; fall back to the
         # point estimates rather than leaving the panel blank.
-        ax.plot(ks, [overall.get(f"executes_le_{k}_repairs_pct", np.nan) for k in ks],
-                marker="o", color=LADDER_RAMP[4], linewidth=2)
+        ax.plot(
+            ks,
+            [overall.get(f"executes_le_{k}_repairs_pct", np.nan) for k in ks],
+            marker="o",
+            color=LADDER_RAMP[4],
+            linewidth=2,
+        )
 
     ax.set_xticks(ks)
     ax.set_ylim(0, 105)
-    _style(ax, "Success vs. repair budget", xlabel="repair cycles allowed",
-           ylabel="solutions that execute (%)")
+    _style(
+        ax,
+        "Success vs. repair budget",
+        xlabel="repair cycles allowed",
+        ylabel="solutions that execute (%)",
+    )
     if len(arms) > 1:
         ax.legend(frameon=False, fontsize=8)
 
@@ -1873,12 +1907,18 @@ def _plot_failures(df, stats, arms):
     ax_l.set_yticklabels(rows)
     ax_l.set_xlim(0, 100)
     ax_l.set_ylim(-0.6, len(rows) - 0.4)
-    _style(ax_l, "Where tasks stopped on the ladder", xlabel="tasks (%)",
-           grid_axis="x")
+    _style(ax_l, "Where tasks stopped on the ladder", xlabel="tasks (%)", grid_axis="x")
     handles, labels = ax_l.get_legend_handles_labels()
     if handles:
-        ax_l.legend(handles, labels, frameon=False, fontsize=7, ncol=4,
-                    loc="upper center", bbox_to_anchor=(0.5, -0.22))
+        ax_l.legend(
+            handles,
+            labels,
+            frameon=False,
+            fontsize=7,
+            ncol=4,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.22),
+        )
 
     # Who is to blame — identity, so categorical slots, every bar labelled
     # because slot 3 sits under the 3:1 contrast bar.
@@ -1917,10 +1957,19 @@ def _plot_failures(df, stats, arms):
         if "timed_out" in df.columns:
             notes.append(f"{int(df['timed_out'].sum())} timed out")
         if "hit_repair_cap" in df.columns:
-            notes.append(f"{int(df['hit_repair_cap'].sum())} exhausted the repair budget")
+            notes.append(
+                f"{int(df['hit_repair_cap'].sum())} exhausted the repair budget"
+            )
         if notes:
-            ax_r.text(0.5, -0.22, " · ".join(notes), transform=ax_r.transAxes,
-                      ha="center", fontsize=8, color=INK_MUTED)
+            ax_r.text(
+                0.5,
+                -0.22,
+                " · ".join(notes),
+                transform=ax_r.transAxes,
+                ha="center",
+                fontsize=8,
+                color=INK_MUTED,
+            )
 
     fig.tight_layout()
     return fig
@@ -1952,14 +2001,18 @@ def _plot_cost(df, stats, arms, max_repairs):
     for arm in rows:
         sub = df if arm == "all tasks" else df[df["arm"].astype(str) == arm]
         per_task.append(float(sub["cost_usd"].mean()) if len(sub) else float("nan"))
-        solved = int((sub["final_stage"] == "complete").sum()) if "final_stage" in sub else 0
+        solved = (
+            int((sub["final_stage"] == "complete").sum()) if "final_stage" in sub else 0
+        )
         per_solved.append(
             float(sub["cost_usd"].sum()) / solved if solved else float("nan")
         )
-    b1 = ax_l.bar(x - 0.2, per_task, width=0.4, color=LADDER_RAMP[1],
-                  label="per task attempted")
-    b2 = ax_l.bar(x + 0.2, per_solved, width=0.4, color=LADDER_RAMP[5],
-                  label="per task solved")
+    b1 = ax_l.bar(
+        x - 0.2, per_task, width=0.4, color=LADDER_RAMP[1], label="per task attempted"
+    )
+    b2 = ax_l.bar(
+        x + 0.2, per_solved, width=0.4, color=LADDER_RAMP[5], label="per task solved"
+    )
     _label_bars(ax_l, b1, per_task, fmt="${:.2f}")
     _label_bars(ax_l, b2, per_solved, fmt="${:.2f}")
     ax_l.set_xticks(x)
@@ -1968,8 +2021,15 @@ def _plot_cost(df, stats, arms, max_repairs):
     _headroom(ax_l, 1.45)
     ax_l.legend(frameon=False, fontsize=8, loc="upper left")
     if any(np.isnan(per_solved)):
-        ax_l.text(0.5, -0.2, "a missing bar means the arm solved nothing",
-                  transform=ax_l.transAxes, ha="center", fontsize=8, color=INK_MUTED)
+        ax_l.text(
+            0.5,
+            -0.2,
+            "a missing bar means the arm solved nothing",
+            transform=ax_l.transAxes,
+            ha="center",
+            fontsize=8,
+            color=INK_MUTED,
+        )
 
     # Panel 2 — one point per task; two series at most, so colour is safe here.
     if "total_seconds" not in df.columns:
@@ -1977,11 +2037,19 @@ def _plot_cost(df, stats, arms, max_repairs):
     else:
         for arm in rows:
             sub = df if arm == "all tasks" else df[df["arm"].astype(str) == arm]
-            ax_m.scatter(sub["total_seconds"], sub["cost_usd"], s=60,
-                         color=_arm_color(arm), label=str(arm),
-                         edgecolor=SURFACE, linewidth=2, zorder=3)
-        _style(ax_m, "Cost against wall clock, per task",
-               xlabel="seconds", ylabel="USD")
+            ax_m.scatter(
+                sub["total_seconds"],
+                sub["cost_usd"],
+                s=60,
+                color=_arm_color(arm),
+                label=str(arm),
+                edgecolor=SURFACE,
+                linewidth=2,
+                zorder=3,
+            )
+        _style(
+            ax_m, "Cost against wall clock, per task", xlabel="seconds", ylabel="USD"
+        )
         if len(rows) > 1:
             ax_m.legend(frameon=False, fontsize=8)
 
@@ -1998,13 +2066,32 @@ def _plot_cost(df, stats, arms, max_repairs):
         )
         solved = [int(((df["repair_cycles"] == k) & solved_mask).sum()) for k in ks]
         unsolved = [int(((df["repair_cycles"] == k) & ~solved_mask).sum()) for k in ks]
-        ax_r.bar(ks, solved, width=0.6, color=LADDER_RAMP[4], label="solved",
-                 edgecolor=SURFACE, linewidth=2)
-        ax_r.bar(ks, unsolved, width=0.6, bottom=solved, color=GRID,
-                 label="unsolved", edgecolor=SURFACE, linewidth=2)
+        ax_r.bar(
+            ks,
+            solved,
+            width=0.6,
+            color=LADDER_RAMP[4],
+            label="solved",
+            edgecolor=SURFACE,
+            linewidth=2,
+        )
+        ax_r.bar(
+            ks,
+            unsolved,
+            width=0.6,
+            bottom=solved,
+            color=GRID,
+            label="unsolved",
+            edgecolor=SURFACE,
+            linewidth=2,
+        )
         ax_r.set_xticks(ks)
-        _style(ax_r, "How the repair budget was spent",
-               xlabel="repair cycles used", ylabel="tasks")
+        _style(
+            ax_r,
+            "How the repair budget was spent",
+            xlabel="repair cycles used",
+            ylabel="tasks",
+        )
         top = max((s + u for s, u in zip(solved, unsolved)), default=0)
         if top:
             ax_r.set_ylim(0, top * 1.25)
@@ -2063,27 +2150,58 @@ def _plot_reliability(df, arms):
     height = 0.8 / len(rows)
     for i, arm in enumerate(rows):
         offset = (i - (len(rows) - 1) / 2) * height
-        rates = [100 * cells[(t, arm)][0] if (t, arm) in cells else np.nan for t in tasks]
-        lo = [100 * (cells[(t, arm)][0] - cells[(t, arm)][1]) if (t, arm) in cells else 0
-              for t in tasks]
-        hi = [100 * (cells[(t, arm)][2] - cells[(t, arm)][0]) if (t, arm) in cells else 0
-              for t in tasks]
-        ax.barh(y + offset, rates, height=height, color=_arm_color(arm),
-                label=str(arm), edgecolor=SURFACE, linewidth=2)
-        ax.errorbar(rates, y + offset, xerr=[lo, hi], fmt="none",
-                    ecolor=INK_SECONDARY, elinewidth=1, capsize=3, zorder=4)
+        rates = [
+            100 * cells[(t, arm)][0] if (t, arm) in cells else np.nan for t in tasks
+        ]
+        lo = [
+            100 * (cells[(t, arm)][0] - cells[(t, arm)][1]) if (t, arm) in cells else 0
+            for t in tasks
+        ]
+        hi = [
+            100 * (cells[(t, arm)][2] - cells[(t, arm)][0]) if (t, arm) in cells else 0
+            for t in tasks
+        ]
+        ax.barh(
+            y + offset,
+            rates,
+            height=height,
+            color=_arm_color(arm),
+            label=str(arm),
+            edgecolor=SURFACE,
+            linewidth=2,
+        )
+        ax.errorbar(
+            rates,
+            y + offset,
+            xerr=[lo, hi],
+            fmt="none",
+            ecolor=INK_SECONDARY,
+            elinewidth=1,
+            capsize=3,
+            zorder=4,
+        )
 
     ax.set_yticks(y)
-    ax.set_yticklabels([t[:52] + ("…" if len(t) > 52 else "") for t in tasks],
-                       fontsize=8)
+    ax.set_yticklabels(
+        [t[:52] + ("…" if len(t) > 52 else "") for t in tasks], fontsize=8
+    )
     ax.set_xlim(0, 105)
-    _style(ax, "Pass rate per task, hardest first", xlabel="repetitions reaching complete (%)",
-           grid_axis="x")
+    _style(
+        ax,
+        "Pass rate per task, hardest first",
+        xlabel="repetitions reaching complete (%)",
+        grid_axis="x",
+    )
     if len(rows) > 1:
         # Outside the axes: with one row per task there is no empty corner left
         # for it to sit in without covering a bar.
-        ax.legend(frameon=False, fontsize=8, loc="lower right",
-                  bbox_to_anchor=(1.0, 1.01), ncol=len(rows))
+        ax.legend(
+            frameon=False,
+            fontsize=8,
+            loc="lower right",
+            bbox_to_anchor=(1.0, 1.01),
+            ncol=len(rows),
+        )
 
     reps = max(n for *_, n in cells.values())
     note = (
@@ -2094,8 +2212,15 @@ def _plot_reliability(df, arms):
     )
     if capped:
         note += "  ·  showing the 25 hardest tasks"
-    ax.text(0.5, -0.13, note, transform=ax.transAxes, ha="center", fontsize=8,
-            color=INK_MUTED)
+    ax.text(
+        0.5,
+        -0.13,
+        note,
+        transform=ax.transAxes,
+        ha="center",
+        fontsize=8,
+        color=INK_MUTED,
+    )
     fig.tight_layout()
     return fig
 
@@ -2150,9 +2275,15 @@ def _plot_reuse(df, stats, arms):
             for j in range(len(tiers)):
                 if np.isnan(grid[i, j]):
                     continue
-                ax_l.text(j + 0.5, i + 0.5, f"{grid[i, j]:.0f}%", ha="center",
-                          va="center", fontsize=9,
-                          color=SURFACE if grid[i, j] > 55 else INK_SECONDARY)
+                ax_l.text(
+                    j + 0.5,
+                    i + 0.5,
+                    f"{grid[i, j]:.0f}%",
+                    ha="center",
+                    va="center",
+                    fontsize=9,
+                    color=SURFACE if grid[i, j] > 55 else INK_SECONDARY,
+                )
         ax_l.set_xticks(np.arange(len(tiers)) + 0.5)
         ax_l.set_xticklabels(tiers, rotation=20, ha="right")
         ax_l.set_yticks(np.arange(len(rows)) + 0.5)
@@ -2173,26 +2304,53 @@ def _plot_reuse(df, stats, arms):
             if not total:
                 continue
             pct = 100.0 * reused / total
-            ax_r.barh(i, pct, height=0.42, color=LADDER_RAMP[4],
-                      edgecolor=SURFACE, linewidth=2,
-                      label="reused from pyiron_nodes" if i == 0 else None)
-            ax_r.barh(i, 100 - pct, left=pct, height=0.42, color=GRID,
-                      edgecolor=SURFACE, linewidth=2,
-                      label="written fresh" if i == 0 else None)
-            ax_r.text(101, i, f"{pct:.0f}%  ({int(reused)}/{int(total)})",
-                      va="center", fontsize=8, color=INK_SECONDARY)
+            ax_r.barh(
+                i,
+                pct,
+                height=0.42,
+                color=LADDER_RAMP[4],
+                edgecolor=SURFACE,
+                linewidth=2,
+                label="reused from pyiron_nodes" if i == 0 else None,
+            )
+            ax_r.barh(
+                i,
+                100 - pct,
+                left=pct,
+                height=0.42,
+                color=GRID,
+                edgecolor=SURFACE,
+                linewidth=2,
+                label="written fresh" if i == 0 else None,
+            )
+            ax_r.text(
+                101,
+                i,
+                f"{pct:.0f}%  ({int(reused)}/{int(total)})",
+                va="center",
+                fontsize=8,
+                color=INK_SECONDARY,
+            )
         ax_r.set_yticks(y)
         ax_r.set_yticklabels(rows)
         ax_r.set_xlim(0, 100)
         # Top-down, matching the heatmap beside it: the same two arms listed in
         # opposite orders on one figure is a misreading waiting to happen.
         ax_r.set_ylim(len(rows) - 0.4, -0.6)
-        _style(ax_r, "Where the graph nodes came from", xlabel="nodes (%)",
-               grid_axis="x")
+        _style(
+            ax_r, "Where the graph nodes came from", xlabel="nodes (%)", grid_axis="x"
+        )
         handles, labels = ax_r.get_legend_handles_labels()
         if handles:
-            ax_r.legend(handles, labels, frameon=False, fontsize=8,
-                        loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2)
+            ax_r.legend(
+                handles,
+                labels,
+                frameon=False,
+                fontsize=8,
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.18),
+                ncol=2,
+            )
 
     fig.tight_layout()
     return fig
@@ -2210,15 +2368,15 @@ FIGURE_MARKER = "{{figure:%s}}"
 #: unplaced figure is appended.
 FIGURE_CAPTIONS = {
     "figure": "the headline — ladder pass rates, the repair-budget curve and "
-              "the arm comparison",
+    "the arm comparison",
     "failures": "where tasks stopped on the ladder, and who each failure is "
-                "blamed on",
+    "blamed on",
     "cost": "cost per attempt and per solved task, cost against wall clock, "
-            "and how the repair budget was spent",
+    "and how the repair budget was spent",
     "reliability": "per-task pass rate with 95 % Wilson intervals, hardest "
-                   "task first",
+    "task first",
     "reuse": "pass rate by arm and tier, and how many graph nodes were reused "
-             "from the library rather than written fresh",
+    "from the library rather than written fresh",
 }
 
 
@@ -2231,8 +2389,9 @@ def _figure_png(fig, dpi: int = 100) -> bytes:
     import io
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
-                facecolor=fig.get_facecolor())
+    fig.savefig(
+        buf, format="png", dpi=dpi, bbox_inches="tight", facecolor=fig.get_facecolor()
+    )
     return buf.getvalue()
 
 
@@ -2321,24 +2480,30 @@ def SummarizeBenchmark(
     have_rows = df is not None and len(df)
     have_stats = stats is not None and len(stats)
     if not have_rows and not have_stats and not str(summary).strip():
-        return _note(
-            "Nothing to summarise",
-            "No results were wired in, so there is nothing for the agent to "
-            "read and no reason to pay for a turn.",
-            "Wire `summary` and `stats` from `BenchmarkReport`, and `df` from "
-            "`RunBenchmarkSuite`.",
-        ), ""
+        return (
+            _note(
+                "Nothing to summarise",
+                "No results were wired in, so there is nothing for the agent to "
+                "read and no reason to pay for a turn.",
+                "Wire `summary` and `stats` from `BenchmarkReport`, and `df` from "
+                "`RunBenchmarkSuite`.",
+            ),
+            "",
+        )
 
     claude = workflow_bench.claude_bin()
     if claude is None:
-        return _note(
-            "No `claude` CLI, so no summary",
-            "The agent could not be reached, so nothing was written and nothing "
-            "was spent. Reporting a benchmark without the write-up is better "
-            "than reporting a write-up nobody produced.",
-            f"Looked on PATH, in ${workflow_bench.CLAUDE_BIN_ENV}, and in "
-            f"{', '.join(workflow_bench.CLAUDE_BIN_GLOBS)}.",
-        ), ""
+        return (
+            _note(
+                "No `claude` CLI, so no summary",
+                "The agent could not be reached, so nothing was written and nothing "
+                "was spent. Reporting a benchmark without the write-up is better "
+                "than reporting a write-up nobody produced.",
+                f"Looked on PATH, in ${workflow_bench.CLAUDE_BIN_ENV}, and in "
+                f"{', '.join(workflow_bench.CLAUDE_BIN_GLOBS)}.",
+            ),
+            "",
+        )
 
     with tempfile.TemporaryDirectory(prefix="bench_summary_") as tmp:
         work = Path(tmp)
@@ -2348,7 +2513,9 @@ def SummarizeBenchmark(
             stats.to_markdown(index=False) if have_stats else "no per-group statistics"
         )
         (work / "provenance.txt").write_text(
-            "\n".join(workflow_bench.format_provenance(df)) if have_rows else "unrecorded"
+            "\n".join(workflow_bench.format_provenance(df))
+            if have_rows
+            else "unrecorded"
         )
 
         if figures:
@@ -2384,12 +2551,15 @@ def SummarizeBenchmark(
 
         written = work / "SUMMARY.md"
         if not written.is_file():
-            return _note(
-                "The agent wrote no summary",
-                f"`{model}` was asked for `SUMMARY.md` and produced nothing.",
-                f"Reported error: {run.error or 'none'}",
-                f"Its reply was: {(run.text or '').strip()[:400] or '(empty)'}",
-            ), ""
+            return (
+                _note(
+                    "The agent wrote no summary",
+                    f"`{model}` was asked for `SUMMARY.md` and produced nothing.",
+                    f"Reported error: {run.error or 'none'}",
+                    f"Its reply was: {(run.text or '').strip()[:400] or '(empty)'}",
+                ),
+                "",
+            )
         body = written.read_text()
 
     say(f"{len(body.split())} words, ${run.cost_usd:.3f}, {run.seconds:.0f}s")
@@ -2399,15 +2569,16 @@ def SummarizeBenchmark(
     # disk, which stays diffable and legible that way.
     inline = {
         name: f"![{FIGURE_CAPTIONS[name]}]"
-              f"(data:image/png;base64,{base64.b64encode(_figure_png(fig)).decode()})"
+        f"(data:image/png;base64,{base64.b64encode(_figure_png(fig)).decode()})"
         for name, fig in figures.items()
     }
     linked = {
         name: f"![{FIGURE_CAPTIONS[name]}](figures/{name}.png)" for name in figures
     }
     report = _compose_report(body, inline)
-    path = _write_summary_files(run_dir, report, _compose_report(body, linked),
-                                figures, say)
+    path = _write_summary_files(
+        run_dir, report, _compose_report(body, linked), figures, say
+    )
     return report, path
 
 
@@ -2606,7 +2777,9 @@ def _BenchmarkSuiteCore(
     # Build on shared NFS (inside workdir), not node-local /tmp, so every
     # Slurm compute node that picks up a WorkflowAgent task can reach the
     # library files the agent needs to read and the NODE_INDEX to index.
-    library = lib_dir or str(build_node_library_mirror(allow_reference_workflows, dest=root))
+    library = lib_dir or str(
+        build_node_library_mirror(allow_reference_workflows, dest=root)
+    )
 
     print(
         f"running {len(task_list)} task(s) × {len(arm_list)} arm(s) × {n_reps} rep(s) "
@@ -2990,14 +3163,28 @@ def RunBenchmarkSuite(
     """
     wf = Workflow("RunBenchmarkSuite")
     wf.suite = _BenchmarkSuiteCore(
-        tier=tier, limit=limit, tasks=tasks, arms=arms,
-        model=model, model_other=model_other, max_repairs=max_repairs,
-        repeats=repeats, workdir=workdir, exec_timeout_s=exec_timeout_s,
-        max_budget_usd=max_budget_usd, agent_timeout_s=agent_timeout_s,
-        effort=effort, allow_reference_workflows=allow_reference_workflows,
-        lib_dir=lib_dir, run_variant=run_variant, run_optimize=run_optimize,
-        save_chat=save_chat, max_workers=max_workers, verbose=verbose,
-        resume=resume, task_executor=task_executor,
+        tier=tier,
+        limit=limit,
+        tasks=tasks,
+        arms=arms,
+        model=model,
+        model_other=model_other,
+        max_repairs=max_repairs,
+        repeats=repeats,
+        workdir=workdir,
+        exec_timeout_s=exec_timeout_s,
+        max_budget_usd=max_budget_usd,
+        agent_timeout_s=agent_timeout_s,
+        effort=effort,
+        allow_reference_workflows=allow_reference_workflows,
+        lib_dir=lib_dir,
+        run_variant=run_variant,
+        run_optimize=run_optimize,
+        save_chat=save_chat,
+        max_workers=max_workers,
+        verbose=verbose,
+        resume=resume,
+        task_executor=task_executor,
     )
     return (
         wf.suite.outputs.df,

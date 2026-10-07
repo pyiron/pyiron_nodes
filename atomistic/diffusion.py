@@ -34,6 +34,7 @@ def FindLowEnergyInterstitialSite(
 
     if engine is None:
         from ase.calculators.emt import EMT
+
         calc = EMT()
     else:
         calc = engine.calculator
@@ -47,7 +48,9 @@ def FindLowEnergyInterstitialSite(
         atoms.calc = calc
         return atoms.get_potential_energy()
 
-    site_type = "O" if _static_energy(_probe["O"]) <= _static_energy(_probe["T"]) else "T"
+    site_type = (
+        "O" if _static_energy(_probe["O"]) <= _static_energy(_probe["T"]) else "T"
+    )
     initial_pos, final_pos = _paths[site_type]
     return initial_pos, final_pos, site_type
 

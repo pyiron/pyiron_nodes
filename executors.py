@@ -90,10 +90,11 @@ def _make_stoppable(executor, cache_directory, config_directory, backend):
 
     try:
         accepted = inspect.signature(terminate_tasks_in_cache).parameters
-    except (TypeError, ValueError):       # pragma: no cover - C or wrapped impl
+    except (TypeError, ValueError):  # pragma: no cover - C or wrapped impl
         accepted = {}
     config_kwarg = (
-        "pysqa_config_directory" if "pysqa_config_directory" in accepted
+        "pysqa_config_directory"
+        if "pysqa_config_directory" in accepted
         else "config_directory"
     )
 
@@ -263,7 +264,10 @@ def SlurmExecutor(
     # When using pysqa, the site's own template is authoritative — the embedded
     # Python-side template should step aside unless the user has already set a
     # custom one via advanced.submission_template.
-    if pysqa_config_directory and resource_dict["submission_template"] == DEFAULT_SLURM_TEMPLATE:
+    if (
+        pysqa_config_directory
+        and resource_dict["submission_template"] == DEFAULT_SLURM_TEMPLATE
+    ):
         resource_dict["submission_template"] = ""
     if advanced.cwd is not None:
         resource_dict["cwd"] = advanced.cwd
@@ -276,7 +280,9 @@ def SlurmExecutor(
 
     # advanced.pysqa_config_directory is kept as a fallback so that any
     # existing workflow that passed a directory via advanced continues to work.
-    _pysqa_dir = pysqa_config_directory or getattr(advanced, "pysqa_config_directory", None)
+    _pysqa_dir = pysqa_config_directory or getattr(
+        advanced, "pysqa_config_directory", None
+    )
 
     executor = SlurmClusterExecutor(
         cache_directory=cache_directory,
@@ -414,7 +420,7 @@ def SubgraphExecutorNode(
         executor_type=executor_type,
         working_directory=working_directory,
         data_directory=data_directory,
-        **kwargs
+        **kwargs,
     )
 
     return executor
