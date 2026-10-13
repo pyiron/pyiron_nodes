@@ -12,8 +12,14 @@ Entry points
 ------------
 ``RunSingleBenchmark``
     One (model, task, arm, rep) cell — sets up all directories, builds the
-    library mirror, and runs ``WorkflowAgent``.  For notebooks and one-off
-    re-runs.
+    library mirror, and runs ``WorkflowAgent``.  Shared settings come in as one
+    ``BenchConfig``.  For notebooks and one-off re-runs, or as the template of
+    an ``IterToDataFrame`` sweep.
+``BenchmarkGrid``
+    Tasks × models × arms × repetitions as the ``values`` of an
+    ``IterToDataFrame`` over ``RunSingleBenchmark`` whose ``input_label`` is
+    ``BENCHMARK_GRID_LABELS`` — with a ``SlurmExecutor`` on the sweep, one
+    batch job per cell.
 ``RunBenchmarkSuite``
     The whole benchmark as one function node, including ``repeats`` and the
     confidence intervals that need them.  Cannot be expanded.
@@ -36,9 +42,10 @@ Building blocks
 ---------------
 ``TaskSuite``, ``TaskList``, ``ArmTasks``
     Where the tasks come from, and which arm sees them.
-``BenchSettings``, ``NodeLibraryMirror``, ``BenchWorkDir``
-    The settings both arms must share, the library the agent may read, and
-    where everything is written.
+``BenchSettings``, ``BenchConfig``, ``NodeLibraryMirror``, ``BenchWorkDir``
+    The settings both arms must share — as ports, or as one dataclass for
+    ``RunSingleBenchmark`` — the library the agent may read, and where
+    everything is written.
 ``WorkflowAgent``
     Generate → validate → repair for one task in one arm; the higher-order
     node the sweeps are built on.
@@ -57,7 +64,7 @@ from typing import Literal, Optional
 
 import pandas as pd
 
-from core import Workflow, as_function_node, group_node
+from core import Workflow, as_function_node, as_inp_dataclass_node, group_node
 from pyiron_nodes.controls import IterToDataFrame
 from pyiron_nodes.executors import ThreadPoolExecutorNode
 
@@ -133,7 +140,7 @@ def TaskSuite(
 
 
 @as_function_node("lib_dir")
-def NodeLibraryMirror(allow_reference_workflows: bool = False):
+def NodeLibraryMirror(allow_reference_workflows: bool = False, dest: str = ""):
     """Build the node library the agent is allowed to read.
 
     ``pyiron_nodes/Workflows/`` holds finished reference workflows for several
@@ -151,13 +158,21 @@ def NodeLibraryMirror(allow_reference_workflows: bool = False):
     ----------
     allow_reference_workflows : bool
         ``False`` (default) mirrors the library without ``Workflows/``.
+    dest : str
+        Where to build the mirror; empty uses a fresh temporary directory.
+        Slurm jobs need it on shared storage, so wire ``BenchWorkDir`` here
+        when the cells run on the cluster.  Building it once, up front, also
+        keeps concurrent cells from re-copying it under each other's feet.
 
     Returns
     -------
     lib_dir : str
         Directory to hand the agent via ``--add-dir``.
     """
-    return str(build_node_library_mirror(allow_reference_workflows))
+    from pathlib import Path
+
+    target = Path(dest).resolve() if dest else None
+    return str(build_node_library_mirror(allow_reference_workflows, dest=target))
 
 
 @as_function_node("workdir")
@@ -168,8 +183,14 @@ def BenchWorkDir(path: str = "bench_runs"):
     and where ``results.csv`` lands — without having to update three separate
     nodes.  Use a dated subdirectory (e.g. ``bench_runs/generic_2026-08-28``)
     to avoid overwriting a previous run.
+
+    The path is returned absolute: a node shipped to a Slurm job resolves a
+    relative one against the job's working directory, which is the executor's
+    cache, not where the run was started.
     """
-    return path
+    from pathlib import Path
+
+    return str(Path(path).resolve())
 
 
 @as_function_node(
@@ -188,7 +209,7 @@ def BenchWorkDir(path: str = "bench_runs"):
     ]
 )
 def BenchSettings(
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     model_other: str = "",
     arms: Optional[Literal["aiflow", "scratch", "both"]] = "both",
     max_repairs: int = 3,
@@ -335,6 +356,144 @@ def TaskList(
         Non-empty task strings, in order.
     """
     return [t for t in [task_1, task_2, task_3, task_4, task_5] if t.strip()]
+
+
+@as_inp_dataclass_node
+class BenchConfig:
+    """The settings every cell of a benchmark sweep shares.
+
+    Wire one ``BenchConfig`` into ``RunSingleBenchmark.config`` so that what a
+    sweep varies — task, model, arm, repetition — stays on the cell's own
+    ports, and everything that must *not* vary between cells lives in one
+    place.  All but ``save_chat``, ``verbose`` and ``resume`` enter the
+    configuration tag that names the run directory.
+
+    Attributes
+    ----------
+    max_repairs : int
+        Repair budget; ``0`` measures raw first-attempt quality.
+    exec_timeout_s : int
+        Hard limit per validation run; hard tasks may raise this automatically.
+    max_budget_usd : float
+        Spend cap per agent turn.
+    agent_timeout_s : int
+        Wall-clock ceiling per agent turn.
+    effort : str
+        Reasoning effort forwarded to ``claude --effort``; ``"default"`` omits
+        the flag.
+    allow_reference_workflows : bool
+        Expose ``pyiron_nodes/Workflows/`` to the agent.  Useful as a second
+        experimental condition but breaks the aiflow-vs-scratch comparison.
+    run_variant : bool
+        Run the declared follow-up edit after a task passes.
+    run_optimize : bool
+        Spend one extra turn applying the optimization guide (aiflow arm only).
+    save_chat : bool
+        Write per-turn chat logs alongside the artifact.
+    verbose : bool
+        Print per-attempt progress.
+    resume : bool
+        Reuse a finished result from the task directory rather than re-running.
+    """
+
+    max_repairs: int = 3
+    exec_timeout_s: int = 300
+    max_budget_usd: float = AGENT_BUDGET_USD
+    agent_timeout_s: int = AGENT_TIMEOUT_S
+    effort: Optional[Literal["default", "low", "medium", "high", "max"]] = "default"
+    allow_reference_workflows: bool = False
+    run_variant: bool = True
+    run_optimize: bool = False
+    save_chat: bool = True
+    verbose: bool = True
+    resume: bool = True
+
+
+def _parse_indices(spec: str, n: int) -> list[int]:
+    """``""`` → all of ``range(n)``; otherwise ``"0,3,5"``, ``"0-4"`` or a mix."""
+    if not str(spec).strip():
+        return list(range(n))
+    indices = []
+    for part in str(spec).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, hi = (int(x) for x in part.split("-", 1))
+            indices.extend(range(lo, hi + 1))
+        else:
+            indices.append(int(part))
+    bad = [i for i in indices if not 0 <= i < n]
+    if bad:
+        raise IndexError(f"task indices {bad} out of range 0..{n - 1}")
+    return list(dict.fromkeys(indices))
+
+
+#: The ``input_label`` of an ``IterToDataFrame`` fed by ``BenchmarkGrid``: the
+#: ports of the ``RunSingleBenchmark`` template that every cell sets.  Typed on
+#: the sweep rather than wired from the grid, so the canvas knows them before
+#: anything has run and can hide them on the template.
+BENCHMARK_GRID_LABELS = "tier,task_index,model_other,arm,rep"
+
+
+@as_function_node("cells")
+def BenchmarkGrid(
+    tier: Optional[
+        Literal["generic", "pyiron_nodes", "atomistic", "atomistic_hard"]
+    ] = "generic",
+    task_indices: str = "",
+    models: str = "sonnet",
+    repeats: int = 1,
+    arms: Optional[Literal["aiflow", "scratch", "both"]] = "aiflow",
+):
+    """Every (task, model, arm, repetition) cell of a sweep, for ``IterToDataFrame``.
+
+    Wire it into ``IterToDataFrame.values`` with a ``RunSingleBenchmark``
+    template, and type ``"tier,task_index,model_other,arm,rep"`` into the
+    sweep's ``input_label`` (``BENCHMARK_GRID_LABELS``).  Each cell is a dict
+    keyed by those labels; the sweep refuses to start if the keys and
+    ``input_label`` disagree, so the two cannot drift apart silently.  With a
+    ``SlurmExecutor`` on the sweep, every cell becomes its own batch job.
+
+    Parameters
+    ----------
+    tier : str
+        Curated task tier the indices refer to.
+    task_indices : str
+        Which tasks of *tier*: ``""`` for all, else ``"0,3,5"``, ``"0-4"`` or a
+        mix such as ``"0-2,7"``.
+    models : str
+        Comma-separated model aliases or full ids (``"sonnet,opus"``).  They are
+        swept on ``model_other``, the free-text port, so ids the ``model``
+        dropdown does not list work too.
+    repeats : int
+        Independent repetitions per cell, numbered from 1.
+    arms : str
+        ``"aiflow"``, ``"scratch"`` or ``"both"``.
+
+    Returns
+    -------
+    cells : list[dict]
+        The cartesian product, one dict per cell, keyed by
+        ``BENCHMARK_GRID_LABELS``.
+    """
+    from itertools import product
+
+    n_tasks = len(get_tasks(tier=tier, limit=0))
+    if not n_tasks:
+        raise ValueError(f"Task tier {tier!r} is empty.")
+    indices = _parse_indices(task_indices, n_tasks)
+    model_list = [m.strip() for m in str(models).split(",") if m.strip()]
+    if not model_list:
+        raise ValueError("no models given — e.g. models='sonnet,opus'")
+    arm_list = list(ARMS) if arms == "both" else [arms]
+    reps = range(1, max(1, int(repeats)) + 1)
+
+    cells = [
+        {"tier": tier, "task_index": index, "model_other": model, "arm": arm, "rep": rep}
+        for model, rep, arm, index in product(model_list, reps, arm_list, indices)
+    ]
+    return cells
 
 
 def _progress(verbose: bool, arm: str, label: str):
@@ -484,6 +643,9 @@ def GenerateWorkflow(
     target = workdir / ARM_ARTIFACT[arm]
     if arm == "aiflow":
         write_node_index(lib_dir or PYIRON_NODES_ROOT, workdir)
+        # aiflow only: the catalogue is what the library's GetPotential sees,
+        # so the scratch arm must not get it for free.
+        workflow_bench.write_potential_index(workdir)
 
     prompt = generation_prompt(task, exec_timeout_s, arm=arm, lib_dir=lib_dir or None)
 
@@ -890,7 +1052,7 @@ def OptimizeWorkflow(
 @as_function_node("result")
 def WorkflowAgent(
     task: str = "",
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     max_repairs: int = 3,
     workdir: str = "bench_runs",
     exec_timeout_s: int = 300,
@@ -1037,8 +1199,11 @@ def WorkflowAgent(
         outcome.total_seconds = round(time.time() - t0, 1)
         # Written last, so one file covers the generation turn and every repair
         # it took; the results table links to it as the "reasoning" column.
+        # Pass the outcome dict directly so write_reasoning_digest can build
+        # the verdict block without needing outcome.json to exist yet.
+        import dataclasses as _dc
         outcome.reasoning_path = workflow_bench.write_reasoning_digest(
-            scratch, f"{arm}: {task}"
+            scratch, f"{arm}: {task}", outcome=_dc.asdict(outcome)
         )
         # The record a later run resumes from.  Harness failures write nothing,
         # so a run that never reached the agent is retried rather than frozen.
@@ -1327,11 +1492,44 @@ def WorkflowAgent(
     return _finish(out)
 
 
+def _workdir_of_runs(df) -> str:
+    """The work dir every row of *df* ran in, from its ``task_dir`` column.
+
+    ``task_dir`` is ``<workdir>/<config_tag>/rep_NNN/<arm>/<task>``, so the work
+    dir is three levels above the task.  Several models give several config
+    tags under one work dir, so the rows still agree on it.
+    """
+    from pathlib import Path
+
+    if "task_dir" not in df.columns:
+        raise ValueError("next_to_runs needs a `task_dir` column — wire `workdir`")
+    roots = set()
+    for task_dir in df["task_dir"].dropna().astype(str):
+        if not task_dir.strip():
+            continue
+        path = Path(task_dir)
+        if len(path.parents) < 4 or not path.parents[1].name.startswith("rep_"):
+            raise ValueError(
+                f"task_dir {task_dir!r} is not <workdir>/<tag>/rep_NNN/<arm>/<task> "
+                "— rows not from RunSingleBenchmark; wire `workdir` instead"
+            )
+        roots.add(str(path.parents[3]))
+    if not roots:
+        # Every cell failed before the agent made a directory; nothing to anchor
+        # the file to, and the failure is the news, not the missing CSV.
+        print("no row has a task_dir — results.csv not written")
+        return ""
+    if len(roots) != 1:
+        raise ValueError(f"rows ran in {len(roots)} work dirs {sorted(roots)}; wire `workdir`")
+    return roots.pop()
+
+
 @as_function_node("df")
 def StackResults(
     df_aiflow: pd.DataFrame = None,
     df_scratch: pd.DataFrame = None,
     workdir: str = "bench_runs",
+    next_to_runs: bool = False,
 ):
     """Stack the two arms' result frames row-wise into one table.
 
@@ -1350,6 +1548,12 @@ def StackResults(
     workdir : str
         Where to write ``results.csv``; wire the same value the ``WorkflowAgent``
         nodes use.  Empty disables the write.
+    next_to_runs : bool
+        Ignore *workdir* and write into the directory the rows themselves ran
+        in, read off their ``task_dir`` column
+        (``<workdir>/<config_tag>/rep_NNN/<arm>/<task>``, the layout
+        ``RunSingleBenchmark`` produces).  Saves wiring the work dir across a
+        whole sweep a second time — the rows already know where they live.
 
     Returns
     -------
@@ -1368,6 +1572,8 @@ def StackResults(
     df = workflow_bench.expand_measured(df)
     warn_if_the_harness_never_ran(df)
 
+    if next_to_runs:
+        workdir = _workdir_of_runs(df)
     if workdir:
         target = Path(workdir).resolve()
         target.mkdir(parents=True, exist_ok=True)
@@ -2416,7 +2622,7 @@ def SummarizeBenchmark(
     reliability=None,
     reuse=None,
     run_dir: str = "",
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     effort: str = "",
     max_words: int = 700,
     max_budget_usd: float = 1.0,
@@ -2669,7 +2875,7 @@ def _BenchmarkSuiteCore(
     limit: int = 0,
     tasks: list = None,
     arms: Optional[Literal["aiflow", "scratch", "both"]] = "both",
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     model_other: str = "",
     max_repairs: int = 3,
     repeats: int = 1,
@@ -2932,24 +3138,13 @@ def RunSingleBenchmark(
         Literal["generic", "pyiron_nodes", "atomistic", "atomistic_hard"]
     ] = "generic",
     task_index: int = 0,
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     model_other: str = "",
     arm: Optional[Literal["aiflow", "scratch"]] = "aiflow",
     rep: int = 1,
     workdir: str = "bench_runs",
-    max_repairs: int = 3,
-    exec_timeout_s: int = 300,
-    max_budget_usd: float = AGENT_BUDGET_USD,
-    agent_timeout_s: int = AGENT_TIMEOUT_S,
-    effort: Optional[Literal["default", "low", "medium", "high", "max"]] = "default",
-    allow_reference_workflows: bool = False,
     lib_dir: str = "",
-    run_variant: bool = True,
-    run_optimize: bool = False,
-    save_chat: bool = True,
-    verbose: bool = True,
-    resume: bool = True,
-    store: bool = False,
+    config: BenchConfig = None,
 ):
     """Run one (model, task, arm, rep) benchmark cell end-to-end.
 
@@ -2959,8 +3154,17 @@ def RunSingleBenchmark(
     ``WorkflowAgent`` for the actual agent turn.  Use it to run or re-run a
     specific cell from a notebook without the full suite machinery.
 
-    For a full sweep over tasks, arms, and repetitions use
-    ``RunBenchmarkSuite`` instead.
+    The ports are what identifies a cell; everything shared between cells is
+    one ``BenchConfig`` on ``config``.  To sweep cells, use this node as the
+    ``IterToDataFrame`` template and feed it from ``BenchmarkGrid`` — with a
+    ``SlurmExecutor`` on the sweep each cell is its own batch job.  The sweep
+    then sets ``tier``, ``task_index``, ``model_other``, ``arm`` and ``rep``
+    for every cell (``BENCHMARK_GRID_LABELS``); the canvas hides them here, and
+    they are changed on ``BenchmarkGrid``.  Wire
+    ``BenchWorkDir`` into ``workdir`` and ``NodeLibraryMirror`` into
+    ``lib_dir`` then, so the path is absolute and the mirror built only once.
+
+    For the whole suite in one node use ``RunBenchmarkSuite`` instead.
 
     Parameters
     ----------
@@ -2984,32 +3188,13 @@ def RunSingleBenchmark(
     workdir : str
         Root output directory.  The config-tag subdirectory and the rep
         directory are added automatically.
-    max_repairs : int
-        Repair budget; ``0`` measures raw first-attempt quality.
-    exec_timeout_s : int
-        Hard limit per validation run; hard tasks may raise this automatically.
-    max_budget_usd : float
-        Spend cap per agent turn.
-    agent_timeout_s : int
-        Wall-clock ceiling per agent turn.
-    effort : str
-        Reasoning effort forwarded to ``claude --effort``; ``"default"`` omits
-        the flag.
-    allow_reference_workflows : bool
-        Expose ``pyiron_nodes/Workflows/`` to the agent.  Useful as a second
-        experimental condition but breaks the aiflow-vs-scratch comparison.
     lib_dir : str
         Pre-built node-library directory; leave empty to build it automatically.
-    run_variant : bool
-        Run the declared follow-up edit after a task passes.
-    run_optimize : bool
-        Spend one extra turn applying the optimization guide (aiflow arm only).
-    save_chat : bool
-        Write per-turn chat logs alongside the artifact.
-    verbose : bool
-        Print per-attempt progress.
-    resume : bool
-        Reuse a finished result from the task directory rather than re-running.
+        Ignored when ``config.allow_reference_workflows`` is set, which always
+        means the real repository.
+    config : BenchConfig
+        Repair budget, timeouts, spend cap, effort and the other shared
+        settings.  Unwired, the ``BenchConfig`` defaults apply.
 
     Returns
     -------
@@ -3018,8 +3203,11 @@ def RunSingleBenchmark(
     """
     from pathlib import Path
 
+    if config is None:
+        config = BenchConfig().run()
+
     resolved_model = model_other.strip() or model
-    effort_flag = "" if effort in (None, "", "default") else effort
+    effort_flag = "" if config.effort in (None, "", "default") else config.effort
 
     # Resolve the task text when not supplied directly.
     actual_task = task.strip()
@@ -3038,13 +3226,13 @@ def RunSingleBenchmark(
     tag = workflow_bench.run_config_tag(
         model=resolved_model,
         effort=effort_flag,
-        max_repairs=max_repairs,
-        exec_timeout_s=exec_timeout_s,
-        agent_timeout_s=agent_timeout_s,
-        max_budget_usd=max_budget_usd,
-        run_variant=run_variant,
-        run_optimize=run_optimize,
-        allow_reference_workflows=allow_reference_workflows,
+        max_repairs=config.max_repairs,
+        exec_timeout_s=config.exec_timeout_s,
+        agent_timeout_s=config.agent_timeout_s,
+        max_budget_usd=config.max_budget_usd,
+        run_variant=config.run_variant,
+        run_optimize=config.run_optimize,
+        allow_reference_workflows=config.allow_reference_workflows,
     )
     root = Path(workdir).resolve() / tag
     rep_dir = root / f"rep_{max(1, int(rep)):03d}"
@@ -3055,31 +3243,34 @@ def RunSingleBenchmark(
         model=resolved_model,
         tier="custom" if task.strip() else tier,
         arms=[arm],
-        max_repairs=max_repairs,
-        exec_timeout=exec_timeout_s,
+        max_repairs=config.max_repairs,
+        exec_timeout=config.exec_timeout_s,
         effort=effort_flag or None,
     )
 
-    library = lib_dir or str(
-        build_node_library_mirror(allow_reference_workflows, dest=root)
-    )
+    # The reference condition is the real repository whatever lib_dir says,
+    # so a mirror wired in for the clean condition cannot contradict the tag.
+    if config.allow_reference_workflows:
+        library = str(build_node_library_mirror(True))
+    else:
+        library = lib_dir or str(build_node_library_mirror(False, dest=root))
 
     agent = WorkflowAgent(
         task=actual_task,
         model=resolved_model,
-        max_repairs=max_repairs,
+        max_repairs=config.max_repairs,
         workdir=str(rep_dir),
-        exec_timeout_s=exec_timeout_s,
-        max_budget_usd=max_budget_usd,
-        agent_timeout_s=agent_timeout_s,
+        exec_timeout_s=config.exec_timeout_s,
+        max_budget_usd=config.max_budget_usd,
+        agent_timeout_s=config.agent_timeout_s,
         arm=arm,
         lib_dir=library,
-        run_variant=run_variant,
-        run_optimize=run_optimize,
-        verbose=verbose,
+        run_variant=config.run_variant,
+        run_optimize=config.run_optimize,
+        verbose=config.verbose,
         effort=effort_flag,
-        save_chat=save_chat,
-        resume=resume,
+        save_chat=config.save_chat,
+        resume=config.resume,
     )
     agent.run()
     result = agent.outputs.result.value
@@ -3094,7 +3285,7 @@ def RunBenchmarkSuite(
     limit: int = 0,
     tasks: list = None,
     arms: Optional[Literal["aiflow", "scratch", "both"]] = "both",
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     model_other: str = "",
     max_repairs: int = 3,
     repeats: int = 1,
@@ -3243,7 +3434,7 @@ def BenchmarkSuite(
     allow_reference_workflows: bool = False,
     path: str = "bench_runs",
     max_workers: int = 3,
-    model: Optional[Literal["sonnet", "opus", "haiku"]] = "sonnet",
+    model: Optional[Literal["sonnet", "opus", "fable"]] = "sonnet",
     model_other: str = "",
     arms: Optional[Literal["aiflow", "scratch", "both"]] = "both",
     max_repairs: int = 3,
@@ -3385,10 +3576,14 @@ def BenchmarkSuite(
 
 __all__ = [
     # Entry points
+    "RunSingleBenchmark",
+    "BenchmarkGrid",
+    "BENCHMARK_GRID_LABELS",
     "RunBenchmarkSuite",
     "BenchmarkSuite",
     "AggregateRepeats",
     "BenchmarkReport",
+    "SingleBenchmarkReport",
     "PlotBenchmark",
     "SummarizeBenchmark",
     # Task sources and gating
@@ -3397,6 +3592,7 @@ __all__ = [
     "ArmTasks",
     # Shared configuration
     "BenchSettings",
+    "BenchConfig",
     "NodeLibraryMirror",
     "BenchWorkDir",
     # The agentic loop

@@ -209,6 +209,28 @@ class SlurmAdvancedSettings:
     plot_dependency_graph_filename: Optional[str] = None
 
 
+def _pysqa_queue(config_directory: str, partition: str) -> str:
+    """The queue in *config_directory*'s ``queue.yaml`` that *partition* names.
+
+    Accepts the queue name itself (``"s_cmmg"``) or the Slurm partition it
+    stands for (``"s.cmmg"``): queue names cannot contain dots, so sites spell
+    the partition with an underscore.
+    """
+    import os
+
+    import yaml
+
+    with open(os.path.join(config_directory, "queue.yaml")) as f:
+        queues = list((yaml.safe_load(f) or {}).get("queues", {}))
+    for name in (partition, str(partition).replace(".", "_")):
+        if name in queues:
+            return name
+    raise ValueError(
+        f"partition {partition!r} is not a queue in "
+        f"{os.path.join(config_directory, 'queue.yaml')}; choose one of {queues}"
+    )
+
+
 @as_function_node("Executor")
 def SlurmExecutor(
     partition: str = Literal["normal"],
@@ -228,8 +250,10 @@ def SlurmExecutor(
     ``threads_per_core=4`` yields ``--cpus-per-task=4``).
 
     ``pysqa_config_directory`` points to a site's pysqa queue configuration.
-    When set, the embedded submission template is automatically cleared so that
-    pysqa's own templates are used; to keep the built-in template alongside pysqa,
+    ``partition`` then names one of its queues — ``"s.cmmg"`` and ``"s_cmmg"``
+    both select the ``s_cmmg`` queue — and the site's script for that queue is
+    used.  When set, the embedded submission template is automatically cleared
+    so that pysqa's own templates are used; to keep the built-in template alongside pysqa,
     pass a custom ``SlurmAdvancedSettings(submission_template=...)`` via
     ``advanced``.
 
@@ -283,6 +307,12 @@ def SlurmExecutor(
     _pysqa_dir = pysqa_config_directory or getattr(
         advanced, "pysqa_config_directory", None
     )
+    # pysqa picks the batch script by *queue* and never looks at "partition";
+    # without a queue it silently uses the site's queue_primary — another
+    # group's partition, typically.  Translate it here, where a bad name still
+    # fails on the canvas instead of on executorlib's background thread.
+    if _pysqa_dir:
+        resource_dict["queue"] = _pysqa_queue(_pysqa_dir, partition)
 
     executor = SlurmClusterExecutor(
         cache_directory=cache_directory,

@@ -189,7 +189,7 @@ def GetPotential(
     name_filter: str = "",
     index: int = 0,
 ):
-    """Return a single potential name for *structure*.
+    """Return a runnable potential covering every species in *structure* (pass it with all elements present).
 
     Combines the filtering of :func:`ListPotentials` with direct index selection,
     so no intermediate selection node is needed.

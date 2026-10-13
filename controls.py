@@ -18,12 +18,21 @@ from core.node import _node_wants_storage
 # per swept value.  When the template opts into storage (``store=True``) and a
 # database is reachable, each executed instance is persisted as its own node —
 # distinct input value -> distinct content hash -> separate stored row — with a
-# ``master_hash`` link back to the iterating template (its "generator").  This
-# recovers full per-iteration provenance on demand.
+# ``master_hash`` link back to the sweep that ran it.  This recovers full
+# per-iteration provenance on demand, and the Database panel lists a sweep's
+# cells by that link.
 #
-# All of this is gated behind ``_node_wants_storage(template)`` AND a reachable
-# ``db``.  When ``store`` is False (the default) the code path is byte-for-byte
-# the legacy ``node.run()`` — no db lookup, no storage, identical results.
+# The database is the one of the graph *running the sweep*, published as
+# ``core.remote_cache.current_run_node()`` — not ``template._graph``, which after
+# ``Graph.copy()`` (the GUI always runs a copy) points at a graph without one.
+# ``storage_enabled = False`` on the workflow turns all of this off.
+#
+# With an out-of-process executor (Slurm, Flux, process pools) the database
+# never travels with the task — it cannot be pickled and carries credentials.
+# Restore and storage then run on the client, around each submission; see
+# ``_restore_on_client`` / ``_store_on_client``.  On a cluster executor every
+# cell is also check-pointed and submitted under its own hash, whether or not
+# the template stores, so a crashed client loses nothing: see ``_submit_cells``.
 #
 # NOTE: storage is mirrored from the Graph path (db.read + restore_node_outputs
 # + store_node_in_database), NOT from Node.run(db): the latter's restore branch
@@ -31,14 +40,25 @@ from core.node import _node_wants_storage
 
 
 def _storage_context(node):
-    """Return (db, storage_path) reachable from a template node, or (None, None).
+    """Return (db, storage_path) the sweep of *node* may store into, or (None, None).
 
-    ``Graph.copy()`` propagates ``_db``, so a template node copied into a
-    higher-order node reaches the database via ``node._graph._db``.
+    The graph executing the sweep publishes itself (``current_run_node``); that
+    is where the database is.  ``node._graph`` is only a fallback for sweeps run
+    outside a graph: nodes are shared between a graph and its copies, and the
+    GUI runs a copy, so the template's back-reference points at a graph without
+    the database.  ``storage_enabled = False`` on the workflow turns it off.
     """
+    from core.remote_cache import current_run_node
+
+    run = current_run_node()
+    if run is not None and run.db is not None:
+        if not run.recording:
+            return None, None
+        return run.db, run.storage_path
+
     graph = getattr(node, "_graph", None)
     db = getattr(graph, "_db", None)
-    if db is None:
+    if db is None or not getattr(graph, "_recording_enabled", True):
         return None, None
     storage_path = getattr(db, "storage_path", None)
     if storage_path is None:
@@ -64,16 +84,18 @@ def _restore_instance(node, db, storage_path) -> bool:
     return False
 
 
-def _store_instance(node, db, storage_path) -> None:
-    """Persist an executed instance as its own database row + HDF5 output."""
+def _store_instance(node, db, storage_path, outputs=True, node_hash=None, executor_hash=None) -> None:
+    """Persist an executed instance as its own database row (+ HDF5 output)."""
     import pyiron_database as _pdb
 
     _pdb.store_node_in_database(
         db,
         node,
-        store_outputs=True,
+        store_outputs=outputs,
         store_input_nodes_recursively=False,
         storage_path=storage_path,
+        node_hash=node_hash,
+        executor_hash=executor_hash,
     )
 
 
@@ -111,9 +133,85 @@ def _run_instance(node, db, storage_path, parent_hash) -> Any:
     return out
 
 
+def _sweep_labels(input_label: str) -> list[str]:
+    """Split a comma-separated ``input_label`` into the swept port names.
+
+    ``"x"`` sweeps one port; ``"task_index, model, rep"`` sweeps three at once,
+    in which case every swept value is a tuple with one entry per label, or a
+    dict keyed by label.  It stays a plain string so the GUI can render it as
+    an editable text field — and so the canvas knows, without running anything,
+    which ports of the template the sweep sets (it hides them).
+    """
+    return [label.strip() for label in str(input_label).split(",") if label.strip()]
+
+
+def _check_sweep_values(labels: list[str], values) -> None:
+    """Fail before the first iteration — and before anything is queued — when a
+    multi-label sweep is handed values of the wrong shape."""
+    if len(labels) < 2:
+        return
+    for idx, value in enumerate(values):
+        if isinstance(value, dict):
+            missing = [label for label in labels if label not in value]
+            extra = [key for key in value if key not in labels]
+            if missing or extra:
+                raise ValueError(
+                    f"values[{idx}] has keys {sorted(value)} but input_label is "
+                    f"{', '.join(labels)!r} (missing {missing}, extra {extra})"
+                )
+        elif not isinstance(value, (tuple, list, np.ndarray)) or len(value) != len(
+            labels
+        ):
+            raise ValueError(
+                f"values[{idx}] = {value!r} does not match input_label "
+                f"{', '.join(labels)!r}: expected a tuple of {len(labels)} entries "
+                "or a dict keyed by label"
+            )
+
+
+def _sweep_items(labels: list[str], value) -> list:
+    """The per-label entries of one multi-label sweep value, in label order."""
+    if isinstance(value, dict):
+        return [value[label] for label in labels]
+    return list(value)
+
+
+def _set_sweep_inputs(node, input_label: str, value) -> None:
+    """Set the swept port(s) of *node* — one value per label in *input_label*."""
+    labels = _sweep_labels(input_label)
+    if len(labels) == 1:
+        node.inputs.__setattr__(labels[0], value)
+        return
+    for label, item in zip(labels, _sweep_items(labels, value)):
+        node.inputs.__setattr__(label, item)
+
+
+def _warn_about_set_swept_ports(node, labels: list[str]) -> None:
+    """Say so when a port the sweep overwrites was given a value on the template.
+
+    The value never reaches a computation — every cell sets the port — so an
+    edit there silently does nothing.  The canvas hides these ports; code that
+    sets them anyway gets this warning.
+    """
+    from core.node import NotData, _differs_from_default
+
+    for label in labels:
+        port = node.inputs.ports.get(label)
+        if port is None or port.connected or port._value is NotData:
+            continue
+        if _differs_from_default(port._value, port.default):
+            logging.warning(
+                "'%s.%s' = %r is ignored: the sweep sets it for every cell. "
+                "Change it where the sweep values come from.",
+                getattr(node, "label", node),
+                label,
+                port._value,
+            )
+
+
 def _run_instance_closure(node, input_label, value, db, storage_path, parent_hash):
     """Module-level (picklable) worker for the parallel iteration path."""
-    node.inputs.__setattr__(input_label, value)
+    _set_sweep_inputs(node, input_label, value)
     return _run_instance(node, db, storage_path, parent_hash)
 
 
@@ -173,7 +271,342 @@ def branch(condition: bool, then_node: Node, else_node: Node):
     return result
 
 
+def _cell_copy(node):
+    """A copy of *node* for one cell run concurrently with others in-process."""
+    try:
+        return node.copy()
+    except Exception as exc:  # noqa: BLE001 — fall back to the old behaviour
+        logging.warning(
+            "Could not copy '%s' for a parallel cell (%s); cells share one "
+            "node and may see each other's inputs.",
+            getattr(node, "label", node),
+            exc,
+        )
+        return node
+
+
+def _runs_in_process(executor) -> bool:
+    """Whether *executor* runs tasks in threads of this process.
+
+    Only then may a task share objects that cannot be pickled — the database
+    handle above all.  Every other executor (process pools, executorlib's
+    Slurm and Flux executors) serialises what it is given.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    return isinstance(executor, ThreadPoolExecutor)
+
+
+def _check_picklable(node, values) -> None:
+    """Raise now, on the canvas, if a sweep cannot be sent to its executor.
+
+    executorlib serialises a task in a background thread; when that fails the
+    thread dies without a trace and the sweep hangs.  One trial serialisation
+    turns that into an error naming the template.
+    """
+    import cloudpickle
+
+    try:
+        cloudpickle.dumps((node, list(values)))
+    except Exception as exc:
+        raise TypeError(
+            f"cannot send '{getattr(node, 'label', node)}' to the executor: one "
+            f"of its inputs or swept values cannot be pickled ({exc})"
+        ) from exc
+
+
+def _restore_on_client(node, input_label, value, db, storage_path):
+    """A completed future holding the stored outputs of this cell, or ``None``."""
+    from concurrent.futures import Future
+
+    _set_sweep_inputs(node, input_label, value)
+    try:
+        if not _restore_instance(node, db, storage_path):
+            return None
+    except Exception as exc:  # noqa: BLE001 — cache miss must never be fatal
+        logging.warning(
+            "per-iteration restore failed for '%s': %s",
+            getattr(node, "label", None),
+            exc,
+        )
+        return None
+    future = Future()
+    future.set_result(node._collect_outputs())
+    return future
+
+
+def _store_on_client(
+    out,
+    node,
+    input_label,
+    value,
+    db,
+    storage_path,
+    parent_hash,
+    outputs=True,
+    node_hash=None,
+    executor_hash=None,
+):
+    """Persist one remotely computed cell, as ``_run_instance`` does in-process.
+
+    With ``outputs=False`` only the row is written — the completion of a cell
+    that was check-pointed for recovery but whose template does not store.
+    """
+    from core.node import set_node_outputs
+
+    try:
+        _set_sweep_inputs(node, input_label, value)
+        set_node_outputs(node, out)
+        node._hash_parent = parent_hash
+        _store_instance(
+            node,
+            db,
+            storage_path,
+            outputs=outputs,
+            node_hash=node_hash,
+            executor_hash=executor_hash,
+        )
+    except Exception as exc:  # noqa: BLE001 — storage must never crash a sweep
+        logging.warning(
+            "per-iteration storage failed for '%s': %s",
+            getattr(node, "label", None),
+            exc,
+        )
+
+
+def _parent_hash(node):
+    """Hash of the sweep running *node* — what each cell row links to.
+
+    Falls back to the template's own hash outside a graph run, where nothing
+    names the sweep.
+    """
+    from core.remote_cache import current_run_node
+
+    run = current_run_node()
+    if run is not None and run.node is not node and run.node_hash:
+        return run.node_hash
+    try:
+        import pyiron_database as _pdb
+
+        return _pdb.get_hash(node)
+    except Exception:  # noqa: BLE001 — provenance link is best-effort
+        return None
+
+
+def _executor_hash():
+    """Hash of the executor node wired into the running sweep, or ``None``."""
+    from core.remote_cache import current_run_node
+
+    run = current_run_node()
+    return run.executor_hash if run is not None else None
+
+
+def _cells_are_recoverable(node, executor) -> bool:
+    """Whether cells of *node* can be check-pointed and collected later.
+
+    That needs an executorlib executor with a cache directory to come back to,
+    and a function node — its function, called with its resolved inputs, is
+    what goes to the queue, so the cache holds exactly what a node-level
+    submission would and the Database panel can collect it the same way.
+    """
+    from core.remote_cache import executor_cache_directory, is_recoverable_executor
+
+    return (
+        is_recoverable_executor(executor)
+        and bool(executor_cache_directory(executor))
+        and callable(getattr(node, "func", None))
+        and callable(getattr(node, "_call_inputs", None))
+    )
+
+
+def _submit_cells(
+    node, input_label, values, executor, db, storage_path, parent_hash, stores, to_store
+) -> dict:
+    """Submit every cell of a sweep so that it survives the client.
+
+    Per cell, keyed on the cell's own hash (the template with the swept inputs
+    set — the key per-cell storage uses too):
+
+    * outputs already stored, or a result already in the executor cache —
+      use it, submit nothing;
+    * the last job under this key died — report it for this cell instead of
+      submitting a second doomed job (``retry=True`` clears the way);
+    * otherwise check-point a ``Submitted`` row (linked to the sweep and to
+      the executor node, so the Database panel can collect it) and submit
+      under that key.  A job still out from an earlier session is re-attached
+      by executorlib itself, which finds the key's queue id in the cache.
+
+    A non-modal run (``SlurmExecutor(non_modal=True)``, ``wf.run(wait=False)``)
+    does not wait: once every cell is either done or in the queue, the sweep
+    is check-pointed and :class:`~core.remote_cache.NodeSubmitted` raised.  A
+    later run picks up what has finished.
+
+    Returns ``{future: (index, value)}``; completed rows are registered in
+    *to_store* for the result loop.
+    """
+    from concurrent.futures import Future
+
+    import pyiron_database as _pdb
+    from core.cancellation import _submit
+    from core.remote_cache import (
+        NodeSubmitted,
+        QueueJobFailed,
+        _guard_dead_submission,
+        _note_executor,
+        collect_from_cache,
+        current_run_node,
+        executor_cache_directory,
+        is_non_modal,
+        queue_status_for,
+        record_submission,
+        run_is_non_modal,
+        wait_for_queue_id,
+    )
+
+    run = current_run_node()
+    executor_hash = run.executor_hash if run is not None else None
+    cache_directory = executor_cache_directory(executor)
+    non_modal = is_non_modal(executor) or run_is_non_modal()
+
+    def done(result):
+        future = Future()
+        future.set_result(result)
+        return future
+
+    def failed(exc):
+        future = Future()
+        future.set_exception(exc)
+        return future
+
+    futures: dict = {}
+    pending: list[str] = []
+    submitted_now = False
+    for idx, value in enumerate(values):
+        _set_sweep_inputs(node, input_label, value)
+        label = f"{getattr(node, 'label', 'cell')}[{idx}]"
+        try:
+            cell_hash = _pdb.get_hash(node)
+        except Exception:  # noqa: BLE001 — unhashable: run it unrecoverably
+            cell_hash = None
+        if cell_hash is None:
+            futures[
+                executor.submit(
+                    _run_instance_closure, node, input_label, value, None, None, None
+                )
+            ] = (idx, value)
+            continue
+
+        if stores:
+            restored = _restore_on_client(node, input_label, value, db, storage_path)
+            if restored is not None:
+                futures[restored] = (idx, value)
+                continue
+
+        ready, result = collect_from_cache(cache_directory, cell_hash)
+        if ready:
+            future = done(result)
+            futures[future] = (idx, value)
+            to_store[future] = (stores, cell_hash)
+            continue
+
+        try:
+            _guard_dead_submission(
+                label, cache_directory, cell_hash, non_modal=non_modal
+            )
+        except QueueJobFailed as exc:
+            futures[failed(exc)] = (idx, value)
+            continue
+
+        if non_modal:
+            report = queue_status_for(cache_directory, cell_hash)
+            if report["queue_id"] is not None and report["queue_status"] != "gone":
+                pending.append(cell_hash)  # still out from an earlier run
+                continue
+
+        record_submission(
+            node,
+            db=db,
+            node_hash=cell_hash,
+            executor_hash=executor_hash,
+            master_hash=parent_hash,
+            show_status=False,
+        )
+        kwargs, _ = node._call_inputs()
+        future = _submit(
+            executor,
+            node.func,
+            kwargs,
+            {"resource_dict": {"cache_key": cell_hash}},
+        )
+        submitted_now = True
+        if non_modal:
+            wait_for_queue_id(cache_directory, cell_hash)
+            pending.append(cell_hash)
+            continue
+        futures[future] = (idx, value)
+        to_store[future] = (stores, cell_hash)
+
+    if pending:
+        _note_executor(executor)
+        sweep = run.node if run is not None else node
+        sweep_hash = run.node_hash if run is not None else parent_hash
+        if run is not None and sweep_hash:
+            record_submission(sweep, db=db, node_hash=sweep_hash)
+        raise NodeSubmitted(
+            label=f"{getattr(sweep, 'label', 'sweep')} ({len(pending)} cell(s))",
+            node_hash=sweep_hash or "",
+            cache_directory=cache_directory,
+            queue_id=None,
+            resubmitted=submitted_now,
+        )
+    return futures
+
+
 def _iterate_node(
+    node,
+    input_label: str,
+    values,
+    copy_results=True,
+    collect_input=False,
+    collect_errors=False,
+    debug=False,
+    executor=None,
+):
+    """Run *node* once per value of *values*, setting the port(s) *input_label*.
+
+    The swept ports are set on the template for each cell and put back
+    afterwards, so the template ends the sweep exactly as it started.  Left
+    holding the last cell's values, it would carry them into the sweep's hash
+    — making the next run's cache key depend on run history — and, on the
+    canvas, into ports the user cannot see.
+    """
+    labels = _sweep_labels(input_label)
+    _check_sweep_values(labels, values)
+    _warn_about_set_swept_ports(node, labels)
+    saved = {
+        label: (port._value, port.ready)
+        for label in labels
+        if (port := node.inputs.ports.get(label)) is not None
+    }
+    try:
+        return _iterate_node_unguarded(
+            node,
+            input_label,
+            values,
+            copy_results=copy_results,
+            collect_input=collect_input,
+            collect_errors=collect_errors,
+            debug=debug,
+            executor=executor,
+        )
+    finally:
+        for label, (value, ready) in saved.items():
+            port = node.inputs.ports[label]
+            port._value = value
+            port.ready = ready
+
+
+def _iterate_node_unguarded(
     node,
     input_label: str,
     values,
@@ -187,22 +620,18 @@ def _iterate_node(
     inp_lst = [] if collect_input else None
     err_lst = [] if collect_errors else None
 
-    # Resolve per-iteration storage context (no-op unless template.store=True
-    # and a database is reachable through the template's graph).
+
+    # Resolve per-iteration storage context: the database of the run executing
+    # the sweep, if recording is on.
     db, storage_path = _storage_context(node)
-    parent_hash = None
-    if db is not None and _node_wants_storage(node):
-        try:
-            import pyiron_database as _pdb
+    parent_hash = _parent_hash(node) if db is not None else None
 
-            parent_hash = _pdb.get_hash(node)
-        except Exception:  # noqa: BLE001 — provenance link is best-effort
-            parent_hash = None
-
+    # remotely computed cells to persist on this thread: future -> (outputs?, hash)
+    to_store: dict = {}
     if executor is None:
         # Sequential execution
         for value in values:
-            node.inputs.__setattr__(input_label, value)
+            _set_sweep_inputs(node, input_label, value)
             try:
                 out = _run_instance(node, db, storage_path, parent_hash)
                 if copy_results:
@@ -223,12 +652,17 @@ def _iterate_node(
             if debug:
                 print(f"iterating over {input_label} = {value}, out={out}")
                 print("out list: ", [id(o) for o in out_lst])
-    else:
-        # Parallel execution
+    elif _runs_in_process(executor):
+        # Parallel execution in threads of this process: the db object is
+        # shared in memory, so per-iteration storage happens in the worker.
+        # Every cell gets its own copy of the template: with one shared node,
+        # concurrent cells overwrite each other's inputs and outputs between
+        # setting them and reading them back.  The copy shares the input
+        # *values* — an engine stays one engine — only the ports are its own.
         futures = {
             executor.submit(
                 _run_instance_closure,
-                node,
+                _cell_copy(node),
                 input_label,
                 value,
                 db,
@@ -240,12 +674,68 @@ def _iterate_node(
             )
             for idx, value in enumerate(values)
         }
+    else:
+        # Parallel execution in other processes or batch jobs.  Only the node and
+        # the swept value cross over: the database handle holds locks and
+        # credentials, and an executor that cannot serialise an argument (such
+        # as executorlib's background thread) dies silently, leaving the sweep
+        # waiting forever on futures that never complete.  Storage runs here on
+        # the client instead, around each submission.
+        _check_picklable(node, values)
+        stores = db is not None and _node_wants_storage(node)
+        if db is not None and _cells_are_recoverable(node, executor):
+            futures = _submit_cells(
+                node,
+                input_label,
+                values,
+                executor,
+                db,
+                storage_path,
+                parent_hash,
+                stores,
+                to_store,
+            )
+            values_iter = ()
+        else:
+            futures = {}
+            values_iter = values
+        for idx, value in enumerate(values_iter):
+            restored = (
+                _restore_on_client(node, input_label, value, db, storage_path)
+                if stores
+                else None
+            )
+            if restored is not None:
+                futures[restored] = (idx, value)
+                continue
+            future = executor.submit(
+                _run_instance_closure, node, input_label, value, None, None, None
+            )
+            if stores:
+                to_store[future] = (True, None)
+            futures[future] = (idx, value)
+
+    if executor is not None:
         results = [None] * len(values)
         errors = [None] * len(values) if collect_errors else None
         for future in as_completed(futures):
             idx, val = futures[future]
             try:
                 out = future.result()
+                if future in to_store:
+                    outputs, cell_hash = to_store[future]
+                    _store_on_client(
+                        out,
+                        node,
+                        input_label,
+                        val,
+                        db,
+                        storage_path,
+                        parent_hash,
+                        outputs=outputs,
+                        node_hash=cell_hash,
+                        executor_hash=_executor_hash(),
+                    )
                 if copy_results:
                     out = copy(out)
                 err = None
@@ -367,6 +857,20 @@ def IterToDataFrame(
     New feature:
         – If the node returns a *dataclass* instance, each field of the
           dataclass becomes its own column in the DataFrame.
+        – Several inputs can be swept together: give ``input_label`` as a
+          comma-separated list (``"task_index,model,rep"``) and make every
+          element of ``values`` a tuple with one entry per label, or a dict
+          keyed by label (the keys must match).  Each label gets its own
+          column.  For a full grid, wire a node that returns the cartesian
+          product (e.g. ``benchmark.BenchmarkGrid``), or type the tuples into
+          ``InputVector`` (``"[(0, 'a'), (1, 'b')]"``).
+        – The swept ports belong to the sweep: they are set for every cell and
+          restored afterwards, the canvas hides them on the template, and a
+          value set on one in code is ignored with a warning.
+        – ``store=True`` on the *template* stores every cell as its own row
+          (linked to this sweep, restored on re-run).  On a cluster executor
+          the cells are check-pointed regardless and can be collected after a
+          crash; with ``non_modal`` the sweep submits them and returns.
 
     Parameters
     ----------
@@ -374,9 +878,10 @@ def IterToDataFrame(
         The node that will be executed for each value.
     input_label : str
         Name of the input attribute on ``node`` that receives each element of
-        ``values``.
+        ``values`` — or several names, comma-separated, to sweep them jointly.
     values : list | np.ndarray
-        Iterable of input values.
+        Iterable of input values; tuples of matching length when
+        ``input_label`` names several ports.
     debug : bool, optional
         Print debugging information.
     executor : concurrent.futures.Executor, optional
@@ -413,13 +918,18 @@ def IterToDataFrame(
     data_dict: dict[str, List[Any]] = {}
 
     # ------------------------------------------------------------------
-    # 2.1 Input column – avoid name clash with node outputs
+    # 2.1 Input column(s) – one per swept label, avoiding name clashes
+    #     with node outputs
     # ------------------------------------------------------------------
     output_labels = [label for label in node.outputs.keys() if label != "self"]
-    if input_label in output_labels:
-        data_dict[f"input_{input_label}"] = inp_lst
-    else:
-        data_dict[input_label] = inp_lst
+    labels = _sweep_labels(input_label)
+    for idx, label in enumerate(labels):
+        column = f"input_{label}" if label in output_labels else label
+        data_dict[column] = (
+            inp_lst
+            if len(labels) == 1
+            else [_sweep_items(labels, value)[idx] for value in inp_lst]
+        )
 
     # ------------------------------------------------------------------
     # 3️⃣ Analyse the first output to decide how to unpack the rest
