@@ -490,7 +490,13 @@ def BenchmarkGrid(
     reps = range(1, max(1, int(repeats)) + 1)
 
     cells = [
-        {"tier": tier, "task_index": index, "model_other": model, "arm": arm, "rep": rep}
+        {
+            "tier": tier,
+            "task_index": index,
+            "model_other": model,
+            "arm": arm,
+            "rep": rep,
+        }
         for model, rep, arm, index in product(model_list, reps, arm_list, indices)
     ]
     return cells
@@ -1202,6 +1208,7 @@ def WorkflowAgent(
         # Pass the outcome dict directly so write_reasoning_digest can build
         # the verdict block without needing outcome.json to exist yet.
         import dataclasses as _dc
+
         outcome.reasoning_path = workflow_bench.write_reasoning_digest(
             scratch, f"{arm}: {task}", outcome=_dc.asdict(outcome)
         )
@@ -1520,7 +1527,9 @@ def _workdir_of_runs(df) -> str:
         print("no row has a task_dir — results.csv not written")
         return ""
     if len(roots) != 1:
-        raise ValueError(f"rows ran in {len(roots)} work dirs {sorted(roots)}; wire `workdir`")
+        raise ValueError(
+            f"rows ran in {len(roots)} work dirs {sorted(roots)}; wire `workdir`"
+        )
     return roots.pop()
 
 

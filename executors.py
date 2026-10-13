@@ -383,7 +383,7 @@ def SubgraphExecutorNode(
     executor_type: str = "database",
     working_directory: str = None,
     data_directory: str = None,
-    **kwargs
+    **kwargs,
 ):
     """
     Create a SubgraphExecutor for remote execution.

@@ -106,7 +106,9 @@ def test_dict_cells_fill_columns_in_label_order():
     assert df["y"].tolist() == [2.0, -2.5]
 
 
-@pytest.mark.parametrize("cell", [{"x": 1.0, "a": 2.0}, {"x": 1.0, "a": 2.0, "b": 0.0, "c": 1}])
+@pytest.mark.parametrize(
+    "cell", [{"x": 1.0, "a": 2.0}, {"x": 1.0, "a": 2.0, "b": 0.0, "c": 1}]
+)
 def test_dict_keys_must_match_input_label(cell):
     with pytest.raises(ValueError, match="missing|extra"):
         _iterate_node(Affine(), "x,a,b", [cell])
@@ -128,7 +130,9 @@ def test_swept_ports_are_restored_after_the_sweep(parallel):
 def test_the_sweep_hash_does_not_depend_on_run_history():
     pdb = pytest.importorskip("pyiron_database")
     template = Affine(b=1.0)
-    sweep = IterToDataFrame(node=template, input_label="x,a", values=[(1.0, 2.0), (3.0, 4.0)])
+    sweep = IterToDataFrame(
+        node=template, input_label="x,a", values=[(1.0, 2.0), (3.0, 4.0)]
+    )
     before = pdb.get_hash(template)
     sweep.run()
     assert pdb.get_hash(template) == before

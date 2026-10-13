@@ -84,7 +84,9 @@ def _restore_instance(node, db, storage_path) -> bool:
     return False
 
 
-def _store_instance(node, db, storage_path, outputs=True, node_hash=None, executor_hash=None) -> None:
+def _store_instance(
+    node, db, storage_path, outputs=True, node_hash=None, executor_hash=None
+) -> None:
     """Persist an executed instance as its own database row (+ HDF5 output)."""
     import pyiron_database as _pdb
 
@@ -619,7 +621,6 @@ def _iterate_node_unguarded(
     out_lst = []
     inp_lst = [] if collect_input else None
     err_lst = [] if collect_errors else None
-
 
     # Resolve per-iteration storage context: the database of the run executing
     # the sweep, if recording is on.
