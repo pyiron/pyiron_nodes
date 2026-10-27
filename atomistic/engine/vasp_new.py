@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -16,7 +15,7 @@ from pymatgen.io.vasp.inputs import Incar, Kpoints
 from vaspparser.vasp.output import Output, parse_vasp_output
 from vaspparser.vasp.volumetric_data import VaspVolumetricData
 
-from core import as_function_node
+from core import as_function_node, run_external
 from pyiron_nodes.atomistic.calculator.data import (
     InputMDVASP,
     InputDipoleCorrection,
@@ -887,14 +886,13 @@ def RunVaspCalculation(
         stdout = io_bundle.working_directory
         return io_bundle, stdout
 
-    result = subprocess.run(
+    # run_external kills the whole process group when the run is stopped; see
+    # the note in atomistic/engine/lammps.py.
+    result = run_external(
         vasp_command,
         cwd=io_bundle.working_directory,
-        shell=True,
-        universal_newlines=True,
         env=os.environ.copy(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        label=f"VASP ({vasp_command})",
     )
 
     if result.returncode != 0:

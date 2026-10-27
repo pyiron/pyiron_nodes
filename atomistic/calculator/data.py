@@ -94,6 +94,22 @@ class OutputCalcMD:
     species: DataArray = EmptyArrayField()
 
 
+@as_out_dataclass_node
+class SimSetupBundle:
+    structure: object = None  # ase.atoms.Atoms
+    water_potential: object = None  # pd.DataFrame (potential config)
+    bond_dict: object = None  # dict | None
+    charges: object = None  # dict of per-species charges
+    electrode_forces: object = (
+        None  # dict keyed by species (from ParseElectrodeForce), or None
+    )
+
+
+@as_inp_dataclass_node
+class SimSetupBundleInp(SimSetupBundle._original_dataclass):
+    pass
+
+
 @as_inp_dataclass_node
 class InputCalcMD:
     temperature: float = (
@@ -101,6 +117,9 @@ class InputCalcMD:
     )
     n_ionic_steps: int = 10_000
     n_print: int = 100
+    n_print_force: Optional[int] = (
+        None  # electrode-force sampling interval; None follows n_print.  Kept separate because a force sample is a few bytes and a trajectory frame is ~200 kB
+    )
     pressure: Optional[float] = None
     time_step: float = 1.0
     temperature_damping_timescale: Optional[float] = 100.0
