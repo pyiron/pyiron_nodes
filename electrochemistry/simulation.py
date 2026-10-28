@@ -19,8 +19,8 @@ def ElectrochemicalCell(
     from pyiron_nodes.electrochemistry.structure.build import (
         AddIonPair,
         FixElectrodes,
-        add_neon_layer,
-        add_water_film,
+        AddNeonLayer,
+        AddWaterFilm,
     )
     from pyiron_nodes.atomistic.structure.build import Surface
     from core import Workflow
@@ -29,13 +29,13 @@ def ElectrochemicalCell(
     inner_wf.al_slab = Surface(
         element=element, size=size, vacuum=vacuum, orthogonal=orthogonal
     )
-    inner_wf.water_cell = add_water_film(
+    inner_wf.water_cell = AddWaterFilm(
         electrode=inner_wf.al_slab, water_width=water_width, density=density
     )
     inner_wf.electrolyte_with_ions = AddIonPair(
         structure=inner_wf.water_cell, cation=cation, no_of_pairs=number, seed=seed
     )
-    inner_wf.full_cell = add_neon_layer(structure=inner_wf.electrolyte_with_ions)
+    inner_wf.full_cell = AddNeonLayer(structure=inner_wf.electrolyte_with_ions)
     inner_wf.fixed_cell_inner = FixElectrodes(
         structure=inner_wf.full_cell,
         fixed_species='["Al", "Ne"]',

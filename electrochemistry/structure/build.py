@@ -183,7 +183,7 @@ def build_water(n_mols: int = 10) -> Atoms:
 
 
 @as_function_node
-def add_water_film(
+def AddWaterFilm(
     electrode: Atoms,
     water_width: float = 10.0,
     hydrophobic_gap: float = 3.0,
@@ -281,7 +281,7 @@ def add_water_film(
 
 
 @as_function_node
-def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
+def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     """
     Add a single layer of neon atoms to the input structure above the maximum z value of an atom.
 
