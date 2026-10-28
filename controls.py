@@ -275,6 +275,13 @@ def while_loop(
         The value of ``x`` from the iteration that set the break condition.
     n_steps : int
         How many times *step* was run.
+
+    Raises
+    ------
+    ValueError
+        If *step* has no input port called *input_label*.
+    RuntimeError
+        If the break condition is still false after *max_steps* iterations.
     """
     if input_label not in step.inputs:
         raise ValueError(
@@ -283,15 +290,19 @@ def while_loop(
         )
 
     x = step.inputs[input_label].value
+    n_steps = 0
+    break_condition = False
 
-    for n_steps in range(1, max_steps + 1):
+    while not break_condition and n_steps < max_steps:
+        n_steps += 1
         step.inputs[input_label].value = x
         x, break_condition = step.run()
+        print("loop: ", n_steps, x, break_condition)
 
-        if break_condition:
-            return x, n_steps
+    if not break_condition:
+        raise RuntimeError(f"while_loop did not finish within {max_steps} steps")
 
-    raise RuntimeError(f"while_loop did not finish within {max_steps} steps")
+    return x, n_steps
 
 
 @as_function_node
