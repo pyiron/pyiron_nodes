@@ -567,6 +567,7 @@ class TestParseVaspOutputStatic(unittest.TestCase):
             cls.electrostatic_potential,
             cls.electron_density,
             cls.converged,
+            cls.restart_content,
         ) = parse_static_fixture(calc=None)
 
     def test_returns_output_calc_static(self):
@@ -730,6 +731,7 @@ class TestParseVaspOutputFullRun(unittest.TestCase):
             cls.electrostatic_potential,
             cls.electron_density,
             cls.converged,
+            cls.restart_content,
         ) = parse_full_fixture()
 
     def test_structure_read_from_the_contcar(self):
