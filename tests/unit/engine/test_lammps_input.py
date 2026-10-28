@@ -161,7 +161,9 @@ class TestLammpsThermo(unittest.TestCase):
         self.assertIn("variable thermotime equal 25", block)
 
     def test_port_overrides_dataclass(self):
-        block = LammpsThermo._original_func(io_bundle=_bundle(_md(n_print=7)), n_print=25)
+        block = LammpsThermo._original_func(
+            io_bundle=_bundle(_md(n_print=7)), n_print=25
+        )
         self.assertIn("variable thermotime equal 25", block)
 
 
@@ -234,7 +236,9 @@ class TestLammpsMinimize(unittest.TestCase):
         self.assertIn("unfix ensemble", block)
 
     def test_pressure_zero_inherited_from_dataclass(self):
-        block = LammpsMinimize._original_func(io_bundle=_bundle(_minimize(pressure=0.0)))
+        block = LammpsMinimize._original_func(
+            io_bundle=_bundle(_minimize(pressure=0.0))
+        )
         self.assertIn("box/relax", block)
 
     def test_pressure_nonzero(self):

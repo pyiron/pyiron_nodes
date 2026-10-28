@@ -432,6 +432,7 @@ def AssembleLammpsInput(
     changing it mid-chain, so later stages may simply repeat the same value.
     """
     import copy
+
     io_bundle = copy.deepcopy(io_bundle)
     is_first_stage = not io_bundle.lammps_input_string
 
@@ -514,6 +515,7 @@ def SetLammpsInputString(
     DataFrame potentials that produce an `include potential.inp` line).
     """
     import copy
+
     io_bundle = copy.deepcopy(io_bundle)
     io_bundle.lammps_input_string = lammps_input_string
     if potential_file_content:

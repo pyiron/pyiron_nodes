@@ -784,34 +784,42 @@ def RunLammpsBase(
     io_bundle: LammpsIOBundle,
     lmp_command: Optional[str] = None,
     threads_per_core: int = 1,
-    debug: bool = False
+    debug: bool = False,
 ):
     # Only reads io_bundle (to write the files and run), never modifies it, so
     # it is returned as-is without a copy.
-    #Writing
+    # Writing
     os.makedirs(io_bundle.working_directory, exist_ok=True)
-    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w") as f:
+    with open(
+        os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w"
+    ) as f:
         f.write(io_bundle.lammps_input_string)
 
-    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_structure_filename), "w") as f:
+    with open(
+        os.path.join(io_bundle.working_directory, io_bundle.lammps_structure_filename),
+        "w",
+    ) as f:
         f.write(io_bundle.lammps_structure_string)
 
-    #Running
+    # Running
     if not debug:
         if lmp_command is None:
             lmp_command = (
-                os.getenv("ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {threads_per_core} --oversubscribe lmp_mpi")
+                os.getenv(
+                    "ASE_LAMMPSRUN_COMMAND",
+                    f"mpiexec -n {threads_per_core} --oversubscribe lmp_mpi",
+                )
                 + f" -in {io_bundle.lammps_input_filename}"
             )
         result = subprocess.run(
-                lmp_command,
-                cwd=io_bundle.working_directory,
-                shell=True,
-                universal_newlines=True,
-                env=os.environ.copy(),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
+            lmp_command,
+            cwd=io_bundle.working_directory,
+            shell=True,
+            universal_newlines=True,
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         if result.returncode != 0:
             error_path = os.path.join(io_bundle.working_directory, "error.msg")
             with open(error_path, "w") as f:
@@ -819,8 +827,7 @@ def RunLammpsBase(
                 if result.stderr:
                     f.write(result.stderr)
             raise RuntimeError(
-                f"LAMMPS exited with code {result.returncode}. "
-                f"{result.stdout}"
+                f"LAMMPS exited with code {result.returncode}. " f"{result.stdout}"
             )
         output = result.stdout
     else:
