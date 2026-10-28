@@ -242,6 +242,59 @@ def loop_until(recursive_function: Node, max_steps: int = 10):
 
 
 @as_function_node
+def while_loop(
+    step: Node,
+    input_label: str = "x",
+    max_steps: int = 100,
+):
+    """Repeat *step* until it reports that it is done.
+
+    A generic ``while`` loop: it knows nothing about what *step* computes.
+    *step* is typically a group node. Its output ports, in order, are the
+    updated loop variable ``x`` and a boolean break condition. Each iteration
+    the current ``x`` is written to the input port called *input_label*, the
+    step runs, and the loop stops as soon as the break condition is true.
+
+    ``x`` can be anything the step accepts and returns: a number, a dataclass,
+    a structure, a dict. It is never converted.
+
+    Parameters
+    ----------
+    step : Node
+        Node with an input port *input_label* and outputs ``(x, break_condition)``.
+        Its current value on *input_label* is the starting ``x``.
+    input_label : str
+        Label of the input port of *step* that receives the updated ``x``.
+    max_steps : int
+        Safety limit on the number of iterations. Hitting it raises an error
+        instead of silently returning an unconverged ``x``.
+
+    Returns
+    -------
+    x
+        The value of ``x`` from the iteration that set the break condition.
+    n_steps : int
+        How many times *step* was run.
+    """
+    if input_label not in step.inputs:
+        raise ValueError(
+            f"'{input_label}' is not an input port of the step node; "
+            f"available ports: {list(step.inputs.ports)}"
+        )
+
+    x = step.inputs[input_label].value
+
+    for n_steps in range(1, max_steps + 1):
+        step.inputs[input_label].value = x
+        x, break_condition = step.run()
+
+        if break_condition:
+            return x, n_steps
+
+    raise RuntimeError(f"while_loop did not finish within {max_steps} steps")
+
+
+@as_function_node
 def branch(condition: bool, then_node: Node, else_node: Node):
     """Lazy conditional: execute exactly one of two template nodes.
 
