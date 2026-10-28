@@ -156,7 +156,7 @@ def plot_phase_diagram(
     return fig
 
 
-@as_function_node(use_cache=False)
+@as_function_node("Tm")
 def TransitionTemperature(
     phase1,
     phase2,
@@ -297,14 +297,14 @@ def ComputPhaseDiagram(
     T_max: int = 1100,
     T_steps=20,
 ):
-    import pyiron_core.pyiron_nodes as pn
+    import pyiron_nodes as pn
 
     wf = Workflow("PhaseDiagram")
-    wf.read_data = pn.utilities.ReadDataFrame(filename=filename, compression="gzip")
+    wf.read_data = pn.dataframe.ReadDataFrame(filename=filename, compression="gzip")
     wf.phases_from_df = pn.atomistic.thermodynamics.landau.phases.PhasesFromDataFrame(
         dataframe=wf.read_data
     )
-    wf.temperatures = pn.math.Linspace(
+    wf.temperatures = pn.math_utils.Linspace(
         x_min=T_min, x_max=T_max, num_points=T_steps, endpoint=True
     )
     wf.calc_phase_diagram = pn.atomistic.thermodynamics.landau.plot.CalcPhaseDiagram(
@@ -322,6 +322,7 @@ def PlotConcPhaseDiagram(
     plot_isolines: bool = False,
     plot_tielines: bool = True,
     linephase_width: float = 0.01,
+    concavity: float | None = None,
 ):
     """
     Plot a concentration-temperature phase diagram.
@@ -333,6 +334,10 @@ def PlotConcPhaseDiagram(
         plot_tielines (bool): add grey lines connecting triple points
         linephase_width (float): phases that have a solubility less than this
             will be plotted as a rectangle
+        concavity (float, optional, range in [0, 1]): how aggressive to be when
+            fitting polyhedra to the sampled phase data; lower means more ragged
+            shapes, higher means smoother; 1 corresponds to the convex hull of
+            the points.  Defaults to 0.1.
     """
     import matplotlib.pyplot as plt
     import numpy as np
@@ -345,6 +350,7 @@ def PlotConcPhaseDiagram(
     plot_phase_diagram(
         phase_data.drop("refined", errors="ignore", axis="columns"),
         min_c_width=linephase_width,
+        alpha=concavity if concavity is not None else 0.1,
         ax=ax,
     )
 

@@ -4,7 +4,6 @@ from typing import Optional
 from ase import Atoms
 import numpy as np
 import re
-import warnings
 
 from core import as_function_node
 from pathlib import Path
@@ -24,16 +23,6 @@ _default_potcar_lib_path: str = _potcar_config.get("default_POTCAR_path", "")
 
 @dataclass
 class CEParameters:
-    """Values substituted into a constant-potential VASP plugin template.
-
-    One bundle carries the parameters for both the CCE and CDCE plugins. The
-    fields above ``i_Ne`` are common to both; the ``CCE-specific`` and
-    ``CDCE-specific`` blocks are only filled by the corresponding setup node and
-    default to ``None`` otherwise. The ``ax``/``ay``/``az``, ``d_electrode`` and
-    the species-count fields are derived from the structure inside ``CCESetup`` /
-    ``CDCESetup`` rather than passed in by the user.
-    """
-
     path_to_plugin: str  # Default path to plugin template
     phi0: float  # Target voltage (V)
     Q0: float  # Adjusted charge for plugin (C), includes precision-matched ZVAL adjustment
@@ -61,7 +50,7 @@ def _plugin_content(ce_params: CEParameters):
     Fill the vasp_plugin.py template with CCE parameters and write
     it to the working directory.
 
-    Must be called after CreateVaspInputResources has created the working directory.
+    Must be called after WriteVaspInputSet has created the working directory.
 
     Parameters
     ----------
@@ -119,6 +108,10 @@ def CCESetup(
     Q0: float = 0.0,
     grid_position_frac: float = 0.85,
     grid_roll_frac: float = 0.1,
+    temperature: float = 300.0,
+    n_steps: int = 500,
+    potim: float = 0.5,
+    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
     """Build the Ne-CCE thermopotentiostat plugin setup for a VASP MD calculation.
@@ -316,6 +309,10 @@ def CDCESetup(
     grid_roll_frac: float = 0.1,
     pos_right_wall: float = 0.75,  # for now this is in fractional coordinates
     width_wall: float = 6.5,
+    temperature: float = 300.0,
+    n_steps: int = 500,
+    potim: float = 0.5,
+    langevin_gamma: float = 5.0,
     tau: float = 50.0,
 ):
     """Build the CDCE (charged-dielectric counter-charge) plugin setup for a VASP MD run.
@@ -438,13 +435,17 @@ def CDCESetup(
 
     nelect_adjusted = float(nelect_neutral) + np.round(Q0)
 
+    # Langevin gamma string - must have one value per element in the system
+    n_elements = len(unique_elements)
+    langevin_gamma_str = " ".join([str(langevin_gamma)] * n_elements)
+
     # -------------------------------------------------------------------------
     # INCAR dictionary
     # -------------------------------------------------------------------------
 
     cdce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=potential,
+        phi0=phi0,
         Q0=Q0,
         Q_pos=Q_pos,
         nelect_neutral=nelect_neutral,
@@ -481,39 +482,19 @@ def CDCESetup(
 
 @as_function_node
 def ParsePotential(
-    io_bundle: VaspInputResources,
+    input_resources: VaspInputResources,
 ):
-    """Read the constant-potential plugin's output traces from the working dir.
-
-    Loads the three files the CCE/CDCE plugin writes over the MD run — electrode
-    charge (``Q.dat``), electrode potential (``phi.dat``) and the planar-averaged
-    electrostatic potential (``el_pot_z.dat``) — and reshapes the flat
-    electrostatic-potential trace into ``(NSW, nz)``, one profile per ionic step.
-    ``NSW`` is taken from ``extra_incar`` if present, otherwise from the MD
-    settings on the calc.
+    """
+    Reads electrode charge (Q.dat), potential (phi.dat), and electrostatic
+    potential (el_pot_z.dat) from VASP working directory and saves the data.
 
     Parameters
     ----------
-    io_bundle : VaspInputResources
-        Bundle whose ``working_directory`` holds the plugin output files.
+    input_resources : VaspInputResources
+        Input dataclass containing VASP resources.
 
-    Returns
-    -------
-    electrostatic_potential_z_2d : numpy.ndarray
-        Planar-averaged electrostatic potential, shape ``(NSW, nz)``.
-    charge_list : numpy.ndarray
-        Electrode charge per step, from ``Q.dat``.
-    pot_list : numpy.ndarray
-        Electrode potential per step, from ``phi.dat``.
-
-    Raises
-    ------
-    FileNotFoundError
-        If any of ``Q.dat`` / ``phi.dat`` / ``el_pot_z.dat`` is missing.
-    ValueError
-        If ``NSW`` can be found neither in ``extra_incar`` nor on the MD calc.
     """
-    working_dir = io_bundle.working_directory
+    working_dir = input_resources.working_directory
 
     # --- Check files exist ---
     files = {
@@ -533,23 +514,19 @@ def ParsePotential(
     electrostatic_potential_z = np.loadtxt(files["el_pot_z.dat"])
 
     # --- Check for NSW ---
-    nsw = None
-    if io_bundle.extra_incar is not None:
-        nsw = io_bundle.extra_incar.get("NSW") or io_bundle.extra_incar.get("nsw")
-    if nsw is None and io_bundle.calc is not None:
-        md = io_bundle.calc.md
-        if md is not None:
-            nsw = md.n_ionic_steps
-    if nsw is None:
-        raise ValueError(
-            "Could not determine NSW: not present in extra_incar and no MD "
-            "settings found on the calc."
+    if input_resources.extra_incar is not None:
+        nsw = input_resources.extra_incar.get("NSW") or input_resources.extra_incar.get(
+            "nsw"
         )
+        if nsw is None:
+            nsw = getattr(input_resources.calc, "NSW", None) or getattr(
+                input_resources.calc, "nsw", None
+            )
 
     # --- Reshape electrostatic potential ---
     nz = electrostatic_potential_z.shape[0] // nsw
     electrostatic_potential_z_2d = electrostatic_potential_z.reshape([nsw, nz])
-    # cell_z       = io_bundle.vasp_resources.structure.cell[2][2]
+    # cell_z       = input_resources.vasp_resources.structure.cell[2][2]
     # z_coords     = np.linspace(0, cell_z, nz)
 
     return electrostatic_potential_z_2d, charge_list, pot_list
