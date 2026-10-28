@@ -161,6 +161,7 @@ class VaspInputResources:
     plugin_content: Optional[str] = None
     restart_content: Optional[dict] = None
 
+
 @dataclass
 class VaspPlugin:
     plugin_content: str = None
@@ -762,7 +763,9 @@ def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
             with open(os.path.join(workdir, name), mode) as f:
                 f.write(content)
 
+
 _RESTART_FILE_MODE = {"CONTCAR": "text", "WAVECAR": "binary", "CHGCAR": "text"}
+
 
 def _read_restart_file(workdir: str, name: str) -> Optional[str | bytes]:
     """Read one restart file as text or bytes, ``None`` if it is not there.
@@ -804,6 +807,7 @@ def _collect_restart_content(workdir: str, save_restart_files: tuple[str, ...]) 
             restart_content[name] = content
     return restart_content
 
+
 def _safe_restart_content(restart_content: Optional[dict]) -> dict:
     """Only ever restart from a payload that actually contains CONTCAR.
 
@@ -820,6 +824,7 @@ def _safe_restart_content(restart_content: Optional[dict]) -> dict:
             )
         return {}
     return restart_content
+
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
@@ -910,7 +915,7 @@ def CreateVaspInputResources(
     """
 
     restart_content = _safe_restart_content(restart_content)
-    
+
     io_bundle = VaspInputResources(
         structure=structure,
         calc=calc,
