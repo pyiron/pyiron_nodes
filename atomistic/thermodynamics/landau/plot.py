@@ -397,7 +397,7 @@ def PlotMuPhaseDiagram(phase_data):
 
     border = None
     if "border" not in phase_data.columns:
-        body = phase_data.query("not border")
+        body = phase_data
     else:
         border = phase_data.query("border")
         body = phase_data.query("not border")
