@@ -445,7 +445,7 @@ def CDCESetup(
 
     cdce_params = CEParameters(
         path_to_plugin=path_to_plugin,
-        phi0=phi0,
+        phi0=potential,
         Q0=Q0,
         Q_pos=Q_pos,
         nelect_neutral=nelect_neutral,
