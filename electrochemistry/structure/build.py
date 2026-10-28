@@ -4,8 +4,123 @@ from ase.atoms import Atoms
 from core import as_function_node
 
 
+@as_function_node
+def ConfigurePBC(
+    structure: Atoms,
+    charges: dict,
+    slab_factor: float = 3.0,
+    bottom_margin: float = 2.0,
+) -> Atoms:
+    """
+    Set the z boundary condition to match the potential's ``quasi_2d`` setting.
+
+    PPPM slab mode needs ``boundary p p f`` (derived from ``pbc``, written before
+    ``read_data``) together with ``kspace_modify slab`` (set in the potential
+    Config).  ``quasi_2d`` is read from the potential's ``charges`` dict so the
+    two always agree.
+
+    For the quasi-2D case the cell is also padded along z: atoms are lifted off
+    the fixed z=0 boundary by ``bottom_margin`` and the box is grown to
+    ``slab_factor`` times the filled thickness.  Without this the slab
+    correction is invalid and atoms touching the boundary are deleted by LAMMPS.
+    """
+    import numpy as np
+
+    structure = structure.copy()
+    quasi_2d = charges["quasi_2d"]
+
+    if quasi_2d:
+        z = structure.positions[:, 2]
+        thickness = z.max() - z.min()
+        structure.positions[:, 2] += bottom_margin - z.min()
+
+        cell = structure.cell.array.copy()
+        cell[2, 2] = max(slab_factor * thickness, thickness + 2 * bottom_margin)
+        structure.set_cell(cell, scale_atoms=False)
+
+    structure.pbc = [True, True, not quasi_2d]
+    return structure
+
+
+@as_function_node("new_structure")
+def FixElectrodes(
+    structure: Atoms,
+    fixed_species: str = '["Al", "Ne"]',
+    piston_species: str = "",
+) -> Atoms:
+    """Freeze the electrodes, optionally leaving one of them free along z.
+
+    Every species in ``fixed_species`` gets a ``FixAtoms`` constraint, except
+    ``piston_species``, which instead gets a ``FixedPlane`` that pins it in xy
+    and leaves z free so a barostat can push it (see
+    ``pyiron_nodes.atomistic.engine.lammps.CreateLammpsMDInput``).
+
+    With ``piston_species=""`` this is equivalent to
+    ``FixSpecies(fixed_species=fixed_species)``.
+
+    Parameters
+    ----------
+    structure : ase.Atoms
+        Cell to constrain.  Copied; the original is untouched.
+    fixed_species : str
+        A single symbol (``"Al"``) or a string holding a list of them
+        (``'["Al", "Ne"]'``), matching ``FixSpecies``.
+    piston_species : str
+        Symbol of the electrode to leave free along z, or ``""`` for none.
+        It does not have to appear in ``fixed_species``.
+
+    Notes
+    -----
+    ``lammpsparser``'s ``_get_fixed_atom_boolean_vector`` reads
+    ``FixedPlane.direction`` as a *mask of frozen degrees of freedom*, not as
+    ASE's plane normal.  ``direction=[1, 1, 0]`` therefore means "x and y
+    frozen, z free" and becomes ``fix ... setforce 0.0 0.0 NULL``.  ASE
+    normalises the vector to ``[1/√2, 1/√2, 0]``, which that helper also
+    accepts, so the round-trip is stable.
+    """
+    import ast
+    from ase.constraints import FixAtoms, FixedPlane
+
+    try:
+        parsed = ast.literal_eval(fixed_species)
+    except (SyntaxError, ValueError):
+        parsed = fixed_species
+
+    if isinstance(parsed, str):
+        species_set = {parsed}
+    elif isinstance(parsed, (list, tuple, set)):
+        if not all(isinstance(item, str) for item in parsed):
+            raise ValueError("All entries in the element list must be strings.")
+        species_set = set(parsed)
+    else:
+        raise ValueError(
+            "fixed_species must be a single element symbol or a string "
+            "representation of a list/tuple of symbols."
+        )
+
+    symbols = structure.get_chemical_symbols()
+    piston_indices = [i for i, s in enumerate(symbols) if s == piston_species]
+    if piston_species and not piston_indices:
+        raise ValueError(
+            f"piston_species={piston_species!r} does not occur in the structure; "
+            f"present species are {sorted(set(symbols))}"
+        )
+    frozen_mask = [s in species_set and s != piston_species for s in symbols]
+
+    constraints = []
+    if any(frozen_mask):
+        constraints.append(FixAtoms(mask=frozen_mask))
+    if piston_indices:
+        constraints.append(FixedPlane(indices=piston_indices, direction=[1, 1, 0]))
+
+    new_structure = structure.copy()
+    if constraints:
+        new_structure.set_constraint(constraints)
+    return new_structure
+
+
 @as_function_node("water")
-def BuildWater(n_mols: int = 10) -> Atoms:
+def build_water(n_mols: int = 10) -> Atoms:
     """
     Construct a bulk water super‑cell with a target number of water molecules.
 
@@ -64,17 +179,16 @@ def BuildWater(n_mols: int = 10) -> Atoms:
     # )
 
     water = water.repeat([n, n, n])
-    structure = water.copy()
-
-    return structure
+    return water
 
 
 @as_function_node
-def AddWaterFilm(
+def add_water_film(
     electrode: Atoms,
     water_width: float = 10.0,
     hydrophobic_gap: float = 3.0,
     density: float = 1.0e-24,
+    seed: int = 42,
 ) -> Atoms:
     """
     Append a thin slab of liquid water on top of an existing electrode structure.
@@ -131,18 +245,43 @@ def AddWaterFilm(
     H2O = molecule("H2O", cell=cell / cell_repeat)
     H2O.set_pbc(True)
     H2O = H2O.repeat(cell_repeat)
+
+    # Give every molecule a random orientation about its own oxygen.  Repeating
+    # a single molecule leaves them all pointing the same way, so neighbouring
+    # hydrogens face each other at ~1.8 A.  In TIP3P hydrogen carries a charge
+    # but no LJ radius, so nothing keeps them apart and the initial structure
+    # starts at a large positive electrostatic energy.
+    def _random_rotation(rng):
+        u1, u2, u3 = rng.random(3)
+        x = np.sqrt(1 - u1) * np.sin(2 * np.pi * u2)
+        y = np.sqrt(1 - u1) * np.cos(2 * np.pi * u2)
+        z = np.sqrt(u1) * np.sin(2 * np.pi * u3)
+        w = np.sqrt(u1) * np.cos(2 * np.pi * u3)
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+
+    rng = np.random.default_rng(seed)
+    for mol in range(len(H2O) // 3):
+        block = slice(3 * mol, 3 * mol + 3)
+        positions = H2O.positions[block]
+        oxygen = positions[0]
+        H2O.positions[block] = oxygen + (positions - oxygen) @ _random_rotation(rng).T
+
     H2O.positions[:, 2] += zmin + hydrophobic_gap
     H2O.set_cell(electrode.cell)
 
     electrochemical_cell = electrode + H2O
 
-    structure = electrochemical_cell.copy()
-
-    return structure
+    return electrochemical_cell
 
 
 @as_function_node
-def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
+def add_neon_layer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     """
     Add a single layer of neon atoms to the input structure above the maximum z value of an atom.
 
@@ -191,9 +330,7 @@ def AddNeonLayer(structure, d_eq: float = 3, hydrophobic_gap: float = 3.0):
     # Add the neon layer to the modified structure
     modified_structure.extend(neon_layer)
 
-    structure = modified_structure.copy()
-
-    return structure
+    return modified_structure
 
 
 @as_function_node
@@ -209,8 +346,8 @@ def AddIonPair(
 
     The function selects ``number`` oxygen atoms at random, replaces the first
     half with the provided ``anion`` species and the second half with the
-    ``cation`` species.  After the substitution, two H atoms closest to the
-    selected oxygen atoms are also removed – this mimics the removal of water
+    ``cation`` species.  After the substitution, two atoms immediately above
+    each selected oxygen are removed – this mimics the removal of water
     molecules that would otherwise coordinate the ion.
 
     Parameters
@@ -225,8 +362,9 @@ def AddIonPair(
     cation : str
         Chemical symbol of the cation to place on the second half of the
         selected oxygen sites.
-    no_of_pairs : int
-        Number of ion pairs to be put in the structure.
+    number : int
+        Total number of oxygen atoms to be replaced.  Must be an even number;
+        otherwise the integer division ``number // 2`` determines the split.
     seed : int, optional
         Random seed for reproducible selection of oxygen atoms.  Default is
         ``1234``.
@@ -243,24 +381,23 @@ def AddIonPair(
 
     # Work on a copy to avoid side‑effects on the input structure
     electrolyte = structure.copy()
-    number = 2 * no_of_pairs  # number of O atoms to be replaced
 
     # Indices of all oxygen atoms in the structure
     # ind_O = electrolyte.select_index("O")
     ind_O = [atom.index for atom in electrolyte if atom.symbol == "O"]
 
-    # Randomly choose ``number`` distinct oxygen indices
+    # Randomly choose ``no_of_pairs`` distinct oxygen indices
     rng = np.random.default_rng(seed)
-    picked = np.sort(rng.choice(ind_O, int(number), replace=False)).tolist()
+    picked = np.sort(rng.choice(ind_O, int(no_of_pairs), replace=False)).tolist()
 
     # Replace the first half with the anion and the second half with the cation
-    half = number // 2
+    half = no_of_pairs // 2
 
     # get all chemical symbols as a list and modify it
     symbols = electrolyte.get_chemical_symbols()
     for i in picked[:half]:
         symbols[i] = anion
-    for i in picked[half:number]:
+    for i in picked[half:no_of_pairs]:
         symbols[i] = cation
 
     # set the modified symbols back
@@ -286,3 +423,6 @@ def AddIonPair(
         del electrolyte[i]
 
     return electrolyte
+
+
+add_ion_pair = AddIonPair
