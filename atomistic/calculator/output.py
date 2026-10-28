@@ -11,8 +11,10 @@ def GetEnergyLast(
     store: bool = False,
     _db=None,
 ) -> float:
-    if isinstance(calculator, OutputCalcMinimize.pure_dataclass):
+    if hasattr(calculator, "final") and hasattr(calculator.final, "energy"):
         energy_last = calculator.final.energy
-    elif isinstance(calculator, OutputCalcStaticList.pure_dataclass):
+    elif hasattr(calculator, "energies_pot"):
         energy_last = calculator.energies_pot[-1]
+    else:
+        raise TypeError(f"Unrecognised calculator output type: {type(calculator)}")
     return energy_last

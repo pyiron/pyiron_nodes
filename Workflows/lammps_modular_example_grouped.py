@@ -6,7 +6,7 @@ from pyiron_nodes.atomistic.engine.lammps import (
 from pyiron_nodes.atomistic.engine.lammps_input import LammpsInit, WriteFile
 from pyiron_nodes.atomistic.structure.build import Bulk
 from pyiron_nodes.controls import pick_element
-from pyiron_nodes.executors import SlurmAdvancedSettings, SlurmExecutor
+from pyiron_nodes.executors import SlurmExecutor
 from core import Workflow
 from core import group_node
 
@@ -79,16 +79,13 @@ wf = Workflow("modular_example_grouped")
 
 wf.Bulk = Bulk(name="Al", cubic=True)
 
-wf.SlurmAdvancedSettings = SlurmAdvancedSettings(
-    threads_per_core=4,
-    submission_template="",
-    pysqa_config_directory="/cmmc/u/sanand/pyiron/projects/03_DFT/02_02_Formalizing_Workflow/pysqa_config",
-)
-
 wf.ListPotentials = ListPotentials(structure=wf.Bulk)
 
 wf.SlurmExecutor = SlurmExecutor(
-    partition="s.cmmg", cache_directory="./cache2", advanced=wf.SlurmAdvancedSettings
+    partition="s.cmmg",
+    threads_per_core=4,
+    pysqa_config_directory="/cmmc/u/sanand/pyiron/projects/03_DFT/02_02_Formalizing_Workflow/pysqa_config",
+    cache_directory="./cache2",
 )
 
 wf.pick_element = pick_element(lst=wf.ListPotentials, index=0)

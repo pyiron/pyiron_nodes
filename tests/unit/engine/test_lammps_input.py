@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pandas as pd
 from ase.build import bulk
 from lammpsparser.units import LAMMPS_UNIT_CONVERSIONS
 
@@ -22,7 +23,6 @@ from pyiron_nodes.atomistic.engine.lammps_input import (
     SetLammpsInputString,
     WriteFile,
 )
-from pyiron_nodes.electrochemistry.structure.equilibrate import TIP3PSlabPotential
 
 AL_POTENTIAL = "1999--Mishin-Y--Al--LAMMPS--ipr1"
 RESOURCE_PATH = os.environ.get(
@@ -37,6 +37,23 @@ def _bundle(calc_input=None, **kwargs):
     kwargs.setdefault("resource_path", RESOURCE_PATH)
     return LammpsIOBundle(
         structure=bulk("Al", cubic=True), calc_input=calc_input, **kwargs
+    )
+
+
+def _dataframe_potential():
+    """A minimal one-row potential DataFrame in the potential-table layout.
+
+    Uses lj/cut, which needs no parameter file, so it resolves without a
+    resource path and exercises the DataFrame (`include potential.inp`) branch.
+    """
+    return pd.DataFrame(
+        {
+            "Name": ["Dummy--Al"],
+            "Filename": [[]],
+            "Model": ["Custom"],
+            "Species": [["Al"]],
+            "Config": [["pair_style lj/cut 5.0\n", "pair_coeff * * 0.1 2.5\n"]],
+        }
     )
 
 
@@ -91,18 +108,18 @@ class TestLammpsPotential(unittest.TestCase):
         self.assertEqual(potential_file_content, "")
 
     def test_include_branch_for_dataframe_potential(self):
-        slab_potential, _ = TIP3PSlabPotential._original_func()
+        df_potential = _dataframe_potential()
         section, potential_file_content = LammpsPotential._original_func(
-            io_bundle=_bundle(potential=slab_potential, resource_path=None)
+            io_bundle=_bundle(potential=df_potential, resource_path=None)
         )
         self.assertEqual(section, "include potential.inp\n")
         self.assertIn("pair_style", potential_file_content)
 
     def test_potential_filename_from_bundle(self):
-        slab_potential, _ = TIP3PSlabPotential._original_func()
+        df_potential = _dataframe_potential()
         section, _ = LammpsPotential._original_func(
             io_bundle=_bundle(
-                potential=slab_potential,
+                potential=df_potential,
                 resource_path=None,
                 lammps_potential_filename="mypot.inp",
             )
@@ -416,8 +433,8 @@ class TestAssembleLammpsInputSingleStage(unittest.TestCase):
         self.assertNotIn("run ", s)
 
     def test_potential_file_content_sets_potential_string(self):
-        slab_potential, _ = TIP3PSlabPotential._original_func()
-        bundle = _bundle(potential=slab_potential, resource_path=None)
+        df_potential = _dataframe_potential()
+        bundle = _bundle(potential=df_potential, resource_path=None)
         section, potential_file_content = LammpsPotential._original_func(
             io_bundle=bundle
         )

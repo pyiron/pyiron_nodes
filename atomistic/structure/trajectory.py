@@ -1,5 +1,5 @@
 from typing import Literal, List
-from pyiron_core import as_function_node
+from core import as_function_node
 from pyiron_nodes.atomistic.calculator.data import OutputCalcMD
 from ase.atoms import Atoms
 

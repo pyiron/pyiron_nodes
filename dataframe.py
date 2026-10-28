@@ -41,6 +41,23 @@ def ReadPickleDataFrame(filename: str, compression: str = "infer"):
     return file
 
 
+@as_function_node("csv")
+def ReadCSV(
+    filename: str,
+    header: list = [0, 1],
+    decimal: str = ",",
+    delimiter: str = ";",
+):
+    """Read a delimited text file into a DataFrame.
+
+    The defaults follow the European convention (';' separator, ',' decimal
+    mark) and a two-row header, as produced by common lab instruments.
+    """
+    import pandas as pd
+
+    return pd.read_csv(filename, delimiter=delimiter, header=header, decimal=decimal)
+
+
 # get column from dataframe
 @as_function_node
 def GetColumnFromDataFrame(df, column_name: str, as_array: bool = False):
