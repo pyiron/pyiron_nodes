@@ -13,7 +13,7 @@ from core import as_function_node
 from core.graph import Graph
 from pyiron_database.instance_database.InstanceDatabase import InstanceDatabase
 
-from controls import branch, _iterate_node
+from pyiron_nodes.controls import branch, _iterate_node
 
 
 class MemDB(InstanceDatabase):
@@ -254,7 +254,7 @@ def _sweep_graph(template, executor=None, values=(1, 2, 3)):
     """Build like a workflow file, run like the GUI: a *copy* holds the db."""
     from core import Workflow
 
-    from controls import IterToDataFrame
+    from pyiron_nodes.controls import IterToDataFrame
 
     wf = Workflow("cells")
     wf.T = template

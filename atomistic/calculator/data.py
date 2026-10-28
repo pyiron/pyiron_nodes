@@ -64,6 +64,9 @@ class OutputCalcStaticList:
 
 @as_out_dataclass_node
 class OutputCalcMinimize:
+    cells: DataArray = EmptyArrayField()
+    positions: DataArray = EmptyArrayField()
+    species: DataArray = EmptyArrayField()
     initial: Optional[OutputCalcStatic] = field(
         default_factory=lambda: OutputCalcStatic.pure_dataclass(),
         metadata=wfMetaData(log_level=0),
