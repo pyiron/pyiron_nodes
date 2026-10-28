@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import asdict
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 
 from ase.atoms import Atoms
 
@@ -41,8 +41,12 @@ class LammpsIOBundle:
     read_restart_filename: Optional[str] = None
     write_restart_filename: Optional[str] = None
     units: str = "metal"
-    resource_path: Optional[str] = None
+    atom_style: str = "atomic"
     lammps_pending_fix_ids: str = ""
+    # The calculation dataclass (InputCalcMD / InputCalcMinimize instance) that
+    # the modular section nodes in lammps_input.py inherit unset values from.
+    calc_input: Optional[Any] = None
+    resource_path: Optional[str] = None
 
 
 @as_function_node
@@ -101,6 +105,7 @@ def CreateLammpsStructure(
     ] = "atomic",
     bond_dict: Optional[dict] = None,
     resource_path: Optional[str] = None,
+    calc_input: Optional[InputCalcMD | InputCalcMinimize] = None,
 ) -> LammpsIOBundle:
     from lammpsparser.compatibility.file import _get_potential
 
@@ -119,7 +124,9 @@ def CreateLammpsStructure(
         potential=potential,
         working_directory=working_directory,
         units=units,
+        atom_style=atom_type,
         resource_path=resource_path,
+        calc_input=calc_input,
     )
     _, potential_replace, potential_elements = _get_potential(
         potential=potential, resource_path=resource_path
@@ -178,6 +185,11 @@ def CreateLammpsMDInput(
         _get_potential,
     )
 
+    import copy
+
+    # Work on a copy: writing into the incoming bundle would also change the
+    # cached output of the upstream node (e.g. CreateLammpsStructure).
+    io_bundle = copy.deepcopy(io_bundle)
     io_bundle.read_restart_filename = read_restart_filename
     io_bundle.write_restart_filename = write_restart_filename
 
@@ -270,10 +282,16 @@ def CreateLammpsStaticInput(
     io_bundle: LammpsIOBundle,
     # calc_dataclass: Optional[InputCalcStatic] = None,
 ):
+    import copy
+
     from lammpsparser.compatibility.file import (
         lammps_file_initialization,
         _get_potential,
     )
+
+    # Work on a copy: writing into the incoming bundle would also change the
+    # cached output of the upstream node (e.g. CreateLammpsStructure).
+    io_bundle = copy.deepcopy(io_bundle)
 
     os.makedirs(io_bundle.working_directory, exist_ok=True)
     potential_lst, potential_replace, _ = _get_potential(
@@ -326,10 +344,16 @@ def CreateLammpsMinimizeInput(
     io_bundle: LammpsIOBundle,
     calc_dataclass: InputCalcMinimize,
 ):
+    import copy
+
     from lammpsparser.compatibility.file import (
         lammps_file_initialization,
         _get_potential,
     )
+
+    # Work on a copy: writing into the incoming bundle would also change the
+    # cached output of the upstream node (e.g. CreateLammpsStructure).
+    io_bundle = copy.deepcopy(io_bundle)
 
     os.makedirs(io_bundle.working_directory, exist_ok=True)
     potential_lst, potential_replace, _ = _get_potential(
@@ -390,6 +414,56 @@ def CreateLammpsMinimizeInput(
 
 
 @as_function_node
+def RunLammpsBase(
+    io_bundle: LammpsIOBundle,
+    lmp_command: Optional[str] = None,
+    threads_per_core: int = 1,
+    debug: bool = False
+):
+    # Only reads io_bundle (to write the files and run), never modifies it, so
+    # it is returned as-is without a copy.
+    #Writing
+    os.makedirs(io_bundle.working_directory, exist_ok=True)
+    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_input_filename), "w") as f:
+        f.write(io_bundle.lammps_input_string)
+
+    with open(os.path.join(io_bundle.working_directory, io_bundle.lammps_structure_filename), "w") as f:
+        f.write(io_bundle.lammps_structure_string)
+
+    #Running
+    if not debug:
+        if lmp_command is None:
+            lmp_command = (
+                os.getenv("ASE_LAMMPSRUN_COMMAND", f"mpiexec -n {threads_per_core} --oversubscribe lmp_mpi")
+                + f" -in {io_bundle.lammps_input_filename}"
+            )
+        result = subprocess.run(
+                lmp_command,
+                cwd=io_bundle.working_directory,
+                shell=True,
+                universal_newlines=True,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        if result.returncode != 0:
+            error_path = os.path.join(io_bundle.working_directory, "error.msg")
+            with open(error_path, "w") as f:
+                f.write(result.stdout)
+                if result.stderr:
+                    f.write(result.stderr)
+            raise RuntimeError(
+                f"LAMMPS exited with code {result.returncode}. "
+                f"{result.stdout}"
+            )
+        output = result.stdout
+    else:
+        output = io_bundle.working_directory
+
+    return io_bundle, output
+
+
+@as_function_node
 def RunLammpsCalculation(
     io_bundle: LammpsIOBundle,
     lmp_command: Optional[str] = None,
@@ -398,6 +472,7 @@ def RunLammpsCalculation(
     executor=None,
 ):
     # Writing
+    # ! deepcopy for the io_bundle in all functions !
     print(f"Running LAMMPS on {threads_per_core} cores")
     os.makedirs(io_bundle.working_directory, exist_ok=True)
     with open(

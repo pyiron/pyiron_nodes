@@ -15,7 +15,6 @@ from core import group_node
 
 @group_node("io_bundle")
 def LammpsMiniimze(
-    potential,
     io_bundle,
     init,
     e_tol,
@@ -34,12 +33,12 @@ def LammpsMiniimze(
     from core import Workflow
 
     inner_wf = Workflow("LammpsMiniimze")
-    inner_wf.LammpsDump = LammpsDump()
+    inner_wf.LammpsDump = LammpsDump(io_bundle=io_bundle)
     inner_wf.LammpsMinimize = LammpsMinimize(
-        e_tol=e_tol, f_tol=f_tol, pressure=pressure
+        io_bundle=io_bundle, e_tol=e_tol, f_tol=f_tol, pressure=pressure
     )
-    inner_wf.LammpsPotential = LammpsPotential(potential=potential)
-    inner_wf.LammpsThermo = LammpsThermo()
+    inner_wf.LammpsPotential = LammpsPotential(io_bundle=io_bundle)
+    inner_wf.LammpsThermo = LammpsThermo(io_bundle=io_bundle)
     inner_wf.AssembleLammpsInput = AssembleLammpsInput(
         io_bundle=io_bundle,
         init=init,
@@ -63,8 +62,8 @@ def LammpsMD(io_bundle, run=None, write_restart=None):
     from core import Workflow
 
     inner_wf = Workflow("LammpsMD")
-    inner_wf.LammpsEnsemble = LammpsEnsemble()
-    inner_wf.LammpsVelocity = LammpsVelocity()
+    inner_wf.LammpsEnsemble = LammpsEnsemble(io_bundle=io_bundle)
+    inner_wf.LammpsVelocity = LammpsVelocity(io_bundle=io_bundle)
     inner_wf.AssembleLammpsInput_1 = AssembleLammpsInput(
         io_bundle=io_bundle,
         calculation=inner_wf.LammpsEnsemble.outputs.ensemble,
@@ -88,8 +87,6 @@ wf.SlurmAdvancedSettings = SlurmAdvancedSettings(
 
 wf.ListPotentials = ListPotentials(structure=wf.Bulk)
 
-wf.LammpsInit = LammpsInit(structure=wf.Bulk)
-
 wf.SlurmExecutor = SlurmExecutor(
     partition="s.cmmg", cache_directory="./cache2", advanced=wf.SlurmAdvancedSettings
 )
@@ -100,8 +97,9 @@ wf.CreateLammpsStructure = CreateLammpsStructure(
     structure=wf.Bulk, potential=wf.pick_element, working_directory="./modLammps"
 )
 
+wf.LammpsInit = LammpsInit(io_bundle=wf.CreateLammpsStructure)
+
 wf.LammpsMiniimze = LammpsMiniimze(
-    potential=wf.pick_element,
     io_bundle=wf.CreateLammpsStructure,
     init=wf.LammpsInit,
     e_tol=0.001,

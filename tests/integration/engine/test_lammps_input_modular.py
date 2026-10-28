@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core import Workflow
 
+from pyiron_nodes.atomistic.calculator.data import InputCalcMD, InputCalcMinimize
 from pyiron_nodes.atomistic.engine.lammps import CreateLammpsStructure, RunLammpsCalculation
 from pyiron_nodes.atomistic.engine.lammps_input import (
     AssembleLammpsInput,
@@ -16,6 +17,7 @@ from pyiron_nodes.atomistic.engine.lammps_input import (
     LammpsPotential,
     LammpsThermo,
     LammpsVelocity,
+    SetLammpsCalcInput,
 )
 from pyiron_nodes.atomistic.structure.build import Bulk
 
@@ -46,22 +48,23 @@ class TestModularLammpsTwoStageRun(unittest.TestCase):
         wf = Workflow("test_modular_two_stage")
 
         wf.Bulk = Bulk(name="Al", cubic=True)
+        # Stage 1: minimize (zero-pressure box relax, then a static run=0
+        # re-evaluation), writing a restart file at the end of the stage.
+        # Its parameters come from the InputCalcMinimize dataclass attached to
+        # the bundle, which the section nodes inherit from.
+        wf.MinimizeInput = InputCalcMinimize(e_tol=0.001, f_tol=0.001, pressure=0.0)
         wf.CreateLammpsStructure = CreateLammpsStructure(
             structure=wf.Bulk,
             potential=AL_POTENTIAL,
             working_directory=os.path.join(cls._tmp.name, "modular"),
             resource_path=RESOURCE_PATH,
+            calc_input=wf.MinimizeInput,
         )
-        wf.LammpsInit = LammpsInit(structure=wf.Bulk)
-
-        # Stage 1: minimize (zero-pressure box relax, then a static run=0
-        # re-evaluation), writing a restart file at the end of the stage.
-        wf.LammpsPotential = LammpsPotential(
-            potential=AL_POTENTIAL, resource_path=RESOURCE_PATH
-        )
-        wf.LammpsDump = LammpsDump()
-        wf.LammpsThermo = LammpsThermo()
-        wf.LammpsMinimize = LammpsMinimize(e_tol=0.001, f_tol=0.001, pressure=0.0)
+        wf.LammpsInit = LammpsInit(io_bundle=wf.CreateLammpsStructure)
+        wf.LammpsPotential = LammpsPotential(io_bundle=wf.CreateLammpsStructure)
+        wf.LammpsDump = LammpsDump(io_bundle=wf.CreateLammpsStructure)
+        wf.LammpsThermo = LammpsThermo(io_bundle=wf.CreateLammpsStructure)
+        wf.LammpsMinimize = LammpsMinimize(io_bundle=wf.CreateLammpsStructure)
         wf.AssembleStage1 = AssembleLammpsInput(
             io_bundle=wf.CreateLammpsStructure,
             init=wf.LammpsInit,
@@ -74,11 +77,16 @@ class TestModularLammpsTwoStageRun(unittest.TestCase):
         )
 
         # Stage 2: short NVT production continuing from the minimized
-        # structure, appended onto the same io_bundle.
-        wf.LammpsEnsemble = LammpsEnsemble(temperature=300.0)
-        wf.LammpsVelocity = LammpsVelocity(temperature=300.0, time_step=1.0)
+        # structure, appended onto the same io_bundle with its own
+        # InputCalcMD attached for this stage's sections.
+        wf.MDInput = InputCalcMD(temperature=300.0, time_step=1.0)
+        wf.Stage2Bundle = SetLammpsCalcInput(
+            io_bundle=wf.AssembleStage1, calc_input=wf.MDInput
+        )
+        wf.LammpsEnsemble = LammpsEnsemble(io_bundle=wf.Stage2Bundle)
+        wf.LammpsVelocity = LammpsVelocity(io_bundle=wf.Stage2Bundle)
         wf.AssembleStage2 = AssembleLammpsInput(
-            io_bundle=wf.AssembleStage1,
+            io_bundle=wf.Stage2Bundle,
             calculation=wf.LammpsEnsemble.outputs.ensemble,
             calculation_fix_ids=wf.LammpsEnsemble.outputs.fix_ids,
             velocity=wf.LammpsVelocity,
@@ -101,6 +109,9 @@ class TestModularLammpsTwoStageRun(unittest.TestCase):
     def test_assembled_input_has_both_stages_in_order(self):
         bundle = self.wf.AssembleStage2.outputs.io_bundle.value
         s = bundle.lammps_input_string
+        self.assertIn("minimize 0.001 0.001", s)  # inherited from InputCalcMinimize
+        self.assertIn("box/relax", s)  # pressure=0.0 inherited, not dropped
+        self.assertIn("fix ensemble all nvt", s)  # inherited from InputCalcMD
         self.assertIn("min_style", s)
         self.assertIn(f"run {self.RUN_STEPS}", s)
         self.assertLess(s.index("min_style"), s.index(f"run {self.RUN_STEPS}"))

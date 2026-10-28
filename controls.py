@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from core import Node, as_function_node
-from core.node import run_closure_with_input
+from core.node import inject_executor_resource_kwargs, run_closure_with_input
 
 
 @as_function_node
@@ -65,6 +65,15 @@ def _iterate_node(
                 print("out list: ", [id(o) for o in out_lst])
     else:
         # Parallel execution
+        # Mirror GroupNode.execute()'s resource injection: the executor here
+        # lives on the *iterating* node (this function), not on `node` itself
+        # (e.g. a GroupNode like LammpsCalc), so GroupNode.execute()'s own
+        # injection never fires for it. Inject directly — on `node`'s own
+        # ports and, if it is a GroupNode, on its inner subgraph nodes too —
+        # before submitting, since the injected values are the same for
+        # every iteration.
+        inject_executor_resource_kwargs(node, executor)
+
         futures = {
             executor.submit(run_closure_with_input, node, **{input_label: value}): (
                 idx,
