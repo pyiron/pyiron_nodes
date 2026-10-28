@@ -1,9 +1,13 @@
 """
-Reproduces the "Data mining using pyiron tables" notebook
-(potential_scan project: equilibrium lattice parameter / bulk modulus per
-potential, from the Murnaghan jobs) using BuildTable from
-pyiron_nodes.databases.pyiron_tables - no pyiron_base / pyiron_atomistics
-dependency, reads the project directory and job HDF5 files directly.
+Example of "data mining using pyiron tables": equilibrium lattice parameter,
+bulk modulus and potential per Murnaghan job in a pyiron project, using
+BuildTable from pyiron_nodes.databases.pyiron_tables - no pyiron_base /
+pyiron_atomistics dependency, reads the project directory and job HDF5 files
+directly.
+
+Run it with the path of a project that contains Murnaghan jobs:
+
+    python pyiron_table_potential_scan.py /path/to/project
 """
 
 import sys
@@ -18,9 +22,10 @@ from pyiron_nodes.databases.pyiron_tables import (
 )
 
 
-def make_workflow(
-    project_path: str = "/u/pchilaka/1_Work/1_My_Notebooks/1_Beginners_Guide/DONE/potential_scan",
-) -> Workflow:
+def make_workflow(project_path: str = "") -> Workflow:
+    """Table of lattice parameter, bulk modulus and potential for the finished
+    Murnaghan jobs in *project_path*. The path has to be set, here or on the
+    BuildTable node, before the workflow can run."""
     wf = Workflow("pyiron_table_potential_scan")
 
     wf.DbFilterFunction = DbFilterFunction(hamilton="Murnaghan")
@@ -47,7 +52,8 @@ def make_workflow(
 wf = make_workflow()
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        wf = make_workflow(project_path=sys.argv[1])
+    if len(sys.argv) != 2:
+        sys.exit(f"usage: python {sys.argv[0]} <path to pyiron project>")
+    wf = make_workflow(project_path=sys.argv[1])
     out = wf.run()
     print(out)

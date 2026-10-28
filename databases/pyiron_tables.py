@@ -6,6 +6,60 @@ as plain functions, reading directly from the project directory and job HDF5 fil
 No dependency on pyiron_base or pyiron_atomistics - only on the lightweight libraries
 pyiron_base itself builds on: pyfileindex (file-system indexing) and h5io_browser
 (HDF5 read access).
+
+How it works
+------------
+``index_project`` lists every ``*.h5`` file under a project directory and reads each
+job's ``status``, ``TYPE`` and ``job_id`` into a job table (files that are not pyiron
+jobs are skipped). ``filter_job_table`` keeps the wanted status values and applies an
+optional ``db_filter_function(job_table) -> bool Series``. ``build_table`` then calls
+every property function on every remaining job and returns one DataFrame: ``job_id``,
+``job`` and ``hamilton`` first, then one column per property.
+
+Property functions
+------------------
+A property function has the signature ``(file_name, job_name) -> value`` and reads from
+the job's HDF5 file with ``read_value(file_name, job_name, "<hdf5/path>")``, the
+equivalent of ``job["<hdf5/path>"]`` in pyiron. Any transform is plain Python on the
+returned value, as ``get_lattice_parameter`` does. To find a path, list the groups in a
+real job file with ``h5py``. A function that raises for a job gives ``None`` for that
+row instead of stopping the whole table, so a wrong path shows up as an all-``None``
+column and not as an error.
+
+``get_bulk_modulus``, ``get_potential`` and ``get_lattice_parameter`` are written for
+Murnaghan jobs (``get_potential`` expects a child job named ``Al_ref``); they are
+examples of the pattern, not general functions.
+
+Nodes
+-----
+``IndexProject`` and ``BuildTable`` wrap the functions above. ``DbFilterFunction`` builds
+a ``db_filter_function`` from a job type (``hamilton``), status and name substring.
+Every property function has a matching ``Add<Property>`` node that adds
+``{"<property>": get_<property>}`` to a ``functions`` dict and returns a copy. The key is
+the table's column name, so it is the bare property name without ``get_``. Chain the
+nodes by passing each one's output into the next as ``functions``, and pass the result
+to ``BuildTable``. This only works when the nodes are connected in a ``Workflow``; called
+as plain Python objects they do not pull their upstream outputs.
+
+    wf = Workflow("my_table")
+    wf.DbFilterFunction = DbFilterFunction(hamilton="Murnaghan")
+    wf.BulkModulus = AddBulkModulus()
+    wf.Potential = AddPotential(functions=wf.BulkModulus)
+    wf.BuildTable = BuildTable(
+        project_path="/path/to/project",
+        functions=wf.Potential,
+        db_filter_function=wf.DbFilterFunction,
+    )
+    table = wf.run()
+
+A complete example is ``Workflows/pyiron_table_potential_scan.py``.
+
+Adding a property
+-----------------
+Add ``get_<property>`` next to the other ``get_*`` functions, then an
+``Add<Property>`` node next to the others, copying their shape: one ``functions: dict =
+None`` input, a copy of the incoming dict (never mutate it), a local import of the
+function, and the bare property name as the key.
 """
 
 from core import as_function_node
@@ -87,6 +141,9 @@ def index_project(project_path: str, recursive: bool = True):
 
     import pandas as pd
     from pyfileindex import PyFileIndex
+
+    if not project_path:
+        raise ValueError("project_path is empty: set the path of the pyiron project")
 
     def _is_h5(file_name: str) -> bool:
         return file_name.endswith(".h5")
