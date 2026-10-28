@@ -482,7 +482,7 @@ def CDCESetup(
 
 @as_function_node
 def ParsePotential(
-    input_resources: VaspInputResources,
+    io_bundle: VaspInputResources,
 ):
     """
     Reads electrode charge (Q.dat), potential (phi.dat), and electrostatic
@@ -490,11 +490,11 @@ def ParsePotential(
 
     Parameters
     ----------
-    input_resources : VaspInputResources
+    io_bundle : VaspInputResources
         Input dataclass containing VASP resources.
 
     """
-    working_dir = input_resources.working_directory
+    working_dir = io_bundle.working_directory
 
     # --- Check files exist ---
     files = {
@@ -514,19 +514,19 @@ def ParsePotential(
     electrostatic_potential_z = np.loadtxt(files["el_pot_z.dat"])
 
     # --- Check for NSW ---
-    if input_resources.extra_incar is not None:
-        nsw = input_resources.extra_incar.get("NSW") or input_resources.extra_incar.get(
-            "nsw"
-        )
-        if nsw is None:
-            nsw = getattr(input_resources.calc, "NSW", None) or getattr(
-                input_resources.calc, "nsw", None
-            )
+    nsw = None
+    if io_bundle.extra_incar is not None:
+        nsw = io_bundle.extra_incar.get("NSW") or io_bundle.extra_incar.get("nsw")
+    if nsw is None and io_bundle.calc is not None:
+        if io_bundle.calc.md is not None:
+            nsw = io_bundle.calc.md.n_ionic_steps
+    if nsw is None:
+        raise ValueError("NSW is not set in extra_incar or in the MD settings")
 
     # --- Reshape electrostatic potential ---
     nz = electrostatic_potential_z.shape[0] // nsw
     electrostatic_potential_z_2d = electrostatic_potential_z.reshape([nsw, nz])
-    # cell_z       = input_resources.vasp_resources.structure.cell[2][2]
+    # cell_z       = io_bundle.vasp_resources.structure.cell[2][2]
     # z_coords     = np.linspace(0, cell_z, nz)
 
     return electrostatic_potential_z_2d, charge_list, pot_list
