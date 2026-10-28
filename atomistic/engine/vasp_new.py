@@ -158,7 +158,7 @@ class VaspInputResources:
     potcar_content: Optional[str] = None
     kpoints_content: Optional[str] = None
     plugin_content: Optional[str] = None
-
+    restart_content: Optional[dict] = None
 
 @dataclass
 class VaspPlugin:
@@ -751,6 +751,74 @@ def _write_vasp_input_files(io_bundle: "VaspInputResources") -> None:
         with open(os.path.join(workdir, name), "w") as f:
             f.write(content)
 
+    # Extra restart files beyond CONTCAR (which is already folded into
+    # poscar_content above) — e.g. WAVECAR/CHGCAR for electronic continuation.
+    if io_bundle.restart_content:
+        for name, content in io_bundle.restart_content.items():
+            if name == "CONTCAR":
+                continue
+            mode = "w" if isinstance(content, str) else "wb"
+            with open(os.path.join(workdir, name), mode) as f:
+                f.write(content)
+
+_RESTART_FILE_MODE = {"CONTCAR": "text", "WAVECAR": "binary", "CHGCAR": "text"}
+
+def _read_restart_file(workdir: str, name: str) -> Optional[str | bytes]:
+    """Read one restart file as text or bytes, ``None`` if it is not there.
+
+    Files not listed in ``_RESTART_FILE_MODE`` default to binary, the safer
+    assumption for arbitrary VASP output files.
+    """
+    path = os.path.join(workdir, name)
+    if not os.path.isfile(path):
+        return None
+    mode = _RESTART_FILE_MODE.get(name, "binary")
+    with open(path, "rb" if mode == "binary" else "r") as f:
+        return f.read()
+
+
+def _collect_restart_content(workdir: str, save_restart_files: tuple[str, ...]) -> dict:
+    """Read back the requested restart files, gated on CONTCAR being present.
+
+    CONTCAR carries the positions (and, for MD, velocities) the next segment
+    restarts from; WAVECAR/CHGCAR are only meaningful alongside it. If CONTCAR
+    is missing or empty — e.g. the run crashed or was killed before writing it
+    — this returns an empty dict, so the caller cleanly falls back to a fresh
+    start instead of silently restarting electronic structure against the
+    wrong (or no) geometry.
+    """
+    contcar_path = os.path.join(workdir, "CONTCAR")
+    if not os.path.isfile(contcar_path) or os.stat(contcar_path).st_size == 0:
+        print(
+            f"Warning: no CONTCAR found in {workdir!r} — "
+            "skipping restart-file collection; next segment will start fresh."
+        )
+        return {}
+
+    restart_content = {}
+    files_to_read = set(save_restart_files) | {"CONTCAR"}
+    for name in files_to_read:
+        content = _read_restart_file(workdir, name)
+        if content is not None:
+            restart_content[name] = content
+    return restart_content
+
+def _safe_restart_content(restart_content: Optional[dict]) -> dict:
+    """Only ever restart from a payload that actually contains CONTCAR.
+
+    Guards against a caller supplying WAVECAR/CHGCAR without the matching
+    CONTCAR — using those against a freshly built POSCAR would silently mix an
+    old electronic state with the wrong geometry. Returns ``{}`` (meaning: no
+    restart, start this segment fresh) whenever that guard trips.
+    """
+    if not restart_content or "CONTCAR" not in restart_content:
+        if restart_content:
+            print(
+                "Warning: restart_content given without 'CONTCAR' — "
+                "ignoring it and starting this segment fresh."
+            )
+        return {}
+    return restart_content
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
@@ -793,6 +861,7 @@ def CreateVaspInputResources(
     plugin_data: Optional[VaspPlugin] = None,
     working_directory: Optional[str] = None,
     potcar_symbols: Optional[list[str]] = None,
+    restart_content: Optional[dict] = None,
 ) -> VaspInputResources:
     """Resolve the working directory and render the VASP input file content.
 
@@ -816,6 +885,16 @@ def CreateVaspInputResources(
         Where the input files will be written; defaults to a content hash.
     potcar_symbols
         Explicit POTCAR folder names, overriding the CSV lookup.
+    restart_content
+        Optional filename -> content mapping carried over from a previous
+        segment's ``ParseVaspOutput`` (e.g. for a chained AIMD restart).
+        ``"CONTCAR"`` (str) overrides the rendered POSCAR, carrying positions
+        and — for MD — velocities forward. ``"WAVECAR"``/``"CHGCAR"`` (bytes),
+        if present, are written verbatim and switch on the matching INCAR
+        restart tags (``ISTART``/``ICHARG``). The whole dict is ignored (with
+        a warning) if it does not contain ``"CONTCAR"`` — see
+        ``_safe_restart_content`` — since restarting electronic structure
+        without the matching geometry is unsafe.
 
     Returns
     -------
@@ -829,6 +908,8 @@ def CreateVaspInputResources(
         If ``scf.kpoints`` is not three integers.
     """
 
+    restart_content = _safe_restart_content(restart_content)
+    
     io_bundle = VaspInputResources(
         structure=structure,
         calc=calc,
@@ -836,6 +917,7 @@ def CreateVaspInputResources(
         potcar_lib_path=potcar_lib_path,
         potcar_symbols=potcar_symbols,
         extra_incar=calc.extra_incar,
+        restart_content=restart_content or None,
     )
 
     if io_bundle.working_directory is None:
@@ -845,9 +927,14 @@ def CreateVaspInputResources(
     unordered_atoms = io_bundle.structure.copy()
     grouped_atoms = _grouped_atoms(unordered_atoms)
 
-    # POSCAR
-    pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
-    io_bundle.poscar_content = pmg_structure.to(fmt="poscar")
+    # POSCAR — restart content (if any) overrides a freshly rendered POSCAR.
+    # This is the only place positions + velocities for a continued MD run
+    # come from; the ASE structure passed in alone cannot carry velocities.
+    if "CONTCAR" in restart_content:
+        io_bundle.poscar_content = restart_content["CONTCAR"]
+    else:
+        pmg_structure = AseAtomsAdaptor.get_structure(grouped_atoms)
+        io_bundle.poscar_content = pmg_structure.to(fmt="poscar")
 
     # POTCAR — look up paths from CSV, concatenate files in POSCAR order
     if plugin_data is not None and plugin_data.potcar_lib_path is not None:
@@ -886,6 +973,16 @@ def CreateVaspInputResources(
                 io_bundle.potcar_content = io_bundle.potcar_content.replace(
                     old_line, new_line, 1
                 )
+    # Electronic restart flags — driven purely by which files survived the
+    # CONTCAR gate above.
+    extra_incar = dict(io_bundle.extra_incar or {})
+    have_wavecar = "WAVECAR" in restart_content
+    have_chgcar = "CHGCAR" in restart_content
+    if have_wavecar:
+        extra_incar["ISTART"] = 1
+    if have_chgcar:
+        extra_incar["ICHARG"] = 1
+    io_bundle.extra_incar = extra_incar
 
     # INCAR
     incar = _build_incar(io_bundle.calc, io_bundle.extra_incar, io_bundle.structure)
@@ -986,6 +1083,7 @@ def ParseVaspOutput(
     dos_source: str = "vasprun",
     parse_electron_density: bool = True,
     parse_electrostatic_potential: bool = True,
+    save_restart_files: str = "CONTCAR",
 ):
     """Collect the whole working directory with ``vaspparser``.
 
@@ -1033,6 +1131,16 @@ def ParseVaspOutput(
         of a spin-polarized CHGCAR.
     converged
         Electronic convergence, and ionic convergence too for a relaxation.
+        restart_content
+        Filename -> content mapping of whatever restart files were requested
+        via ``save_restart_files`` (a comma-separated string, e.g.
+        ``"CONTCAR, CHGCAR"``), read back as in-memory text/bytes so the data
+        can travel through a workflow loop without depending on this working
+        directory being reachable later (relevant when runs are dispatched to
+        different machines, e.g. via executorlib/SLURM). Gated on CONTCAR
+        actually being present and non-empty: if the run crashed or was killed
+        before writing CONTCAR, this is an empty dict, never a partial
+        WAVECAR/CHGCAR-only payload — see ``_collect_restart_content``.
 
     ``parse_electron_density`` / ``parse_electrostatic_potential`` exist because
     CHGCAR and LOCPOT are large and slow to read; switch them off to leave the
@@ -1087,6 +1195,11 @@ def ParseVaspOutput(
     else:
         out = _static_from_output(output, -1, last_structure)
 
+    restart_file_names = tuple(
+        name.strip() for name in save_restart_files.split(",") if name.strip()
+    )
+    restart_content = _collect_restart_content(workdir, restart_file_names)
+
     return (
         out,
         last_structure,
@@ -1096,4 +1209,5 @@ def ParseVaspOutput(
         electrostatic_potential,
         electron_density,
         converged,
+        restart_content,
     )
