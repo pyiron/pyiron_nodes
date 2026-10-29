@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from core import Node, as_function_node
-from core.node import _node_wants_storage
+from core.node import _node_wants_storage, inject_executor_resource_kwargs
 
 # ---------------------------------------------------------------------------
 # Per-iteration content-addressed storage for higher-order nodes
@@ -693,6 +693,16 @@ def _iterate_node_unguarded(
 
     # remotely computed cells to persist on this thread: future -> (outputs?, hash)
     to_store: dict = {}
+    if executor is not None:
+        # Mirror GroupNode.execute()'s resource injection: the executor here
+        # lives on the *iterating* node (this function), not on `node` itself
+        # (e.g. a GroupNode like LammpsCalc), so GroupNode.execute()'s own
+        # injection never fires for it. Inject directly — on `node`'s own
+        # ports and, if it is a GroupNode, on its inner subgraph nodes too —
+        # before either parallel branch below: the in-process branch copies
+        # the template per cell (_cell_copy) and the out-of-process branch
+        # pickles it, so both carry the injected values.
+        inject_executor_resource_kwargs(node, executor)
     if executor is None:
         # Sequential execution
         for value in values:

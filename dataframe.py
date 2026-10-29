@@ -103,18 +103,44 @@ def MergeDataFrames(
     return merged_df
 
 
+def _bound_kwargs_excluding_first(func: Node) -> tuple[str, dict]:
+    """The wrapped function's first parameter name, and a kwargs dict of its
+    other declared parameters' current port values (only the ones that are
+    ready — i.e. actually bound to something, not left at NotData).
+
+    ``Node``/``FunctionNode`` no longer exposes ``.kwargs``/``._func`` (an
+    older ``core`` API) — this reconstructs the same thing from
+    ``func.func`` (the wrapped callable) and ``func.inputs``.
+    """
+    import inspect
+
+    param_names = list(inspect.signature(func.func).parameters)
+    first_arg = param_names[0]
+    kwargs = {
+        name: func.inputs.ports[name].value
+        for name in param_names[1:]
+        if name in func.inputs and func.inputs.ports[name].ready
+    }
+    return first_arg, kwargs
+
+
 # Using apply to map the function on the Series
 @as_function_node
 def ApplyFunctionToSeries(series: pd.Series, func: Node, store: bool = False):
     """
     Apply a function to each element of a pandas Series.
+
+    ``series`` also accepts a plain list/array — e.g. straight from
+    ``GetColumnFromDataFrame``, which returns a list rather than a
+    ``pd.Series`` — and is coerced internally.
     """
     import numpy as np
 
-    kwargs = func.kwargs
-    first_arg = list(kwargs.keys())[0]
-    del kwargs[first_arg]
-    transformed_series = np.stack(series.apply(func._func, **kwargs))
+    if not isinstance(series, pd.Series):
+        series = pd.Series(series)
+
+    _, kwargs = _bound_kwargs_excluding_first(func)
+    transformed_series = np.stack(series.apply(func.func, **kwargs))
 
     return transformed_series
 
@@ -124,14 +150,19 @@ def ApplyFunctionToSeries(series: pd.Series, func: Node, store: bool = False):
 def ApplyFunctionToSeriesNew(series: pd.Series, function: Node, store: bool = False):
     """
     Apply a function to each element of a pandas Series.
+
+    ``series`` also accepts a plain list/array — e.g. straight from
+    ``GetColumnFromDataFrame``, which returns a list rather than a
+    ``pd.Series`` — and is coerced internally.
     """
     import numpy as np
 
-    kwargs = function.kwargs
-    first_arg = list(kwargs.keys())[0]
-    del kwargs[first_arg]
-    out = series.apply(function._func, **kwargs)
-    print(f"apply function: {function._func}, out")
+    if not isinstance(series, pd.Series):
+        series = pd.Series(series)
+
+    _, kwargs = _bound_kwargs_excluding_first(function)
+    out = series.apply(function.func, **kwargs)
+    print(f"apply function: {function.func}, out")
     transformed_series = np.stack(out)
 
     return transformed_series

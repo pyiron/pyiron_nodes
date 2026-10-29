@@ -1,0 +1,3 @@
+variable dumptime equal {{ n_print }}
+dump 1 all custom ${dumptime} {{ filename }} id type xsu ysu zsu fx fy fz vx vy vz
+dump_modify 1 sort id format line "%d %d %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g %20.15g"

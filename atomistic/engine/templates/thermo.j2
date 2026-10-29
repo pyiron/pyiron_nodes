@@ -1,0 +1,4 @@
+variable thermotime equal {{ n_print }}
+thermo_style custom step temp pe etotal pxx pxy pxz pyy pyz pzz vol
+thermo_modify format float %20.15g
+thermo ${thermotime}

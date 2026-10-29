@@ -1,0 +1,13 @@
+{% if mode == "nve" %}
+fix ensemble all nve
+{% elif mode == "npt" %}
+fix ensemble all npt temp {{ t }} {{ t }} {{ t_damp }} iso {{ p }} {{ p }} {{ p_damp }}
+{% elif mode == "nph_langevin" %}
+fix ensemble all nph iso {{ p }} {{ p }} {{ p_damp }}
+fix langevin all langevin {{ t }} {{ t }} {{ t_damp }} {{ seed }} zero yes
+{% elif mode == "nvt" %}
+fix ensemble all nvt temp {{ t }} {{ t }} {{ t_damp }}
+{% elif mode == "nve_langevin" %}
+fix ensemble all nve
+fix langevin all langevin {{ t }} {{ t }} {{ t_damp }} {{ seed }} zero yes
+{% endif %}
